@@ -1,8 +1,4 @@
-import Fastify, {
-  type FastifyInstance,
-  type FastifyReply,
-  type FastifyRequest,
-} from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   AuthValidationError,
   EmailAlreadyRegisteredError,
@@ -74,11 +70,7 @@ function getBearerToken(request: FastifyRequest): string {
   return match[1];
 }
 
-function setRefreshCookie(
-  reply: FastifyReply,
-  session: AuthRouteSession,
-  secure: boolean,
-): void {
+function setRefreshCookie(reply: FastifyReply, session: AuthRouteSession, secure: boolean): void {
   const maxAge = Math.max(
     0,
     Math.floor((session.refreshTokenExpiresAt.getTime() - Date.now()) / 1000),
