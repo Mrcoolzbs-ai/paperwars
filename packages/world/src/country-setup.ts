@@ -12,7 +12,6 @@ import type {
   AvailableSocialSystem,
   CountrySetupService,
   CreateCountryInput,
-  CreatedCountry,
   OfficialSystemType,
   SocialSystemAvailabilityPolicy,
   StartBuildingPlacement,
