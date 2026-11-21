@@ -12,6 +12,7 @@ import {
   SimulationPhaseConfigurationError,
   TURN_PHASE_ORDER,
   type TurnPhase,
+  type TurnPhaseContext,
   type TurnPhaseHandlerMap,
 } from '@paper-wars/simulation';
 
@@ -85,10 +86,12 @@ function createHandlers(
   const handlers = Object.fromEntries(
     TURN_PHASE_ORDER.map((phase) => [
       phase,
-      (context: {
-        readonly state: TestState;
-        readonly phase: TurnPhase;
-      }) => {
+      (context: TurnPhaseContext<
+        TestState,
+        TestOrderPayload,
+        RulesetManifest,
+        TestEvent
+      >) => {
         onPhase?.(context.phase);
         const nextCount = context.state.count + 1;
         const nextState: TestState = {
