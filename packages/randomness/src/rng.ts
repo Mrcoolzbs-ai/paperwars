@@ -84,19 +84,14 @@ export function drawUniform(
   return min + offset;
 }
 
-export function drawWeighted<T>(
-  ctx: RNGContext,
-  domain: string,
-  drawId: string,
-  table: ReadonlyArray<WeightedEntry<T>>,
-): T {
+function getTotalWeight<T>(table: ReadonlyArray<WeightedEntry<T>>): number {
   if (table.length === 0) {
     throw new RangeError('Weighted table must not be empty');
   }
 
   let totalWeight = 0;
   for (const entry of table) {
-    if (entry.id.trim().length === 0) {
+    if (typeof entry.id !== 'string' || entry.id.trim().length === 0) {
       throw new TypeError('Weighted entry id must not be empty');
     }
     if (!Number.isSafeInteger(entry.weight) || entry.weight <= 0) {
@@ -107,8 +102,26 @@ export function drawWeighted<T>(
       throw new RangeError('Total weight must not exceed 2^32');
     }
   }
+  return totalWeight;
+}
 
-  const target = drawUniform(ctx, domain, drawId, 0, totalWeight - 1);
+export function drawWeightedIndex<T>(
+  ctx: RNGContext,
+  domain: string,
+  drawId: string,
+  table: ReadonlyArray<WeightedEntry<T>>,
+): number {
+  const totalWeight = getTotalWeight(table);
+  return drawUniform(ctx, domain, drawId, 0, totalWeight - 1);
+}
+
+export function drawWeighted<T>(
+  ctx: RNGContext,
+  domain: string,
+  drawId: string,
+  table: ReadonlyArray<WeightedEntry<T>>,
+): T {
+  const target = drawWeightedIndex(ctx, domain, drawId, table);
   let cumulativeWeight = 0;
 
   for (const entry of table) {
