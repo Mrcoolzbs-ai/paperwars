@@ -269,17 +269,27 @@ export async function reapExpiredTurnJobs(pool: Pool, batchSize = 100): Promise<
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) {
     throw new RangeError('batchSize must be in [1, 1000]');
   }
-  const result = await pool.query<ReapedTurnJob>(
+  const result = await pool.query<{
+    id: string;
+    status: 'pending' | 'failed';
+    generation: number;
+    retry_count: number;
+  }>(
     'WITH expired AS (' +
-    "SELECT id FROM turn_jobs WHERE status = 'processing' AND lease_until < clock_timestamp() " +
-    'ORDER BY lease_until, id FOR UPDATE SKIP LOCKED LIMIT $1) ' +
-    'UPDATE turn_jobs AS job SET status = CASE WHEN job.retry_count < $2 THEN $3 ELSE $4 END, ' +
-    'retry_count = CASE WHEN job.retry_count < $2 THEN job.retry_count + 1 ELSE job.retry_count END, ' +
-    'worker_id = NULL, lease_until = NULL FROM expired WHERE job.id = expired.id ' +
-    'RETURNING job.id, job.status, job.generation, job.retry_count',
+      "SELECT id FROM turn_jobs WHERE status = 'processing' AND lease_until < clock_timestamp() " +
+      'ORDER BY lease_until, id FOR UPDATE SKIP LOCKED LIMIT $1) ' +
+      'UPDATE turn_jobs AS job SET status = CASE WHEN job.retry_count < $2 THEN $3 ELSE $4 END, ' +
+      'retry_count = CASE WHEN job.retry_count < $2 THEN job.retry_count + 1 ELSE job.retry_count END, ' +
+      'worker_id = NULL, lease_until = NULL FROM expired WHERE job.id = expired.id ' +
+      'RETURNING job.id, job.status, job.generation, job.retry_count',
     [batchSize, MAX_RETRIES, 'pending', 'failed'],
   );
-  return result.rows;
+  return result.rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    generation: row.generation,
+    retryCount: row.retry_count,
+  }));
 }
 
 /**
