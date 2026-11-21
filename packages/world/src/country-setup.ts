@@ -377,10 +377,6 @@ export function createCountrySetupService(options: {
       if (systemType !== 'religion' && systemType !== 'ideology') {
         throw new CountrySetupValidationError('System type must be religion or ideology');
       }
-      if (options.systemAvailabilityPolicy === undefined) {
-        throw new SystemAvailabilityNotConfiguredError();
-      }
-
       const result = await options.pool.connect();
       try {
         const membership = await result.query(
@@ -389,6 +385,10 @@ export function createCountrySetupService(options: {
           [campaignId, userId],
         );
         if (membership.rows.length === 0) throw new NotActiveCampaignMemberError();
+
+        if (options.systemAvailabilityPolicy === undefined) {
+          throw new SystemAvailabilityNotConfiguredError();
+        }
 
         const campaign = await result.query<{ map_width: number | null; map_height: number | null }>(
           'SELECT map_width, map_height FROM campaigns WHERE id = $1',
