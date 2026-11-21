@@ -126,7 +126,10 @@ export interface CampaignGameService {
   getCurrentWorldSnapshot(
     userId: string,
     campaignId: string,
-  ): Promise<{ readonly snapshot: CampaignWorldSnapshot; readonly membership: CampaignMembershipView }>;
+  ): Promise<{
+    readonly snapshot: CampaignWorldSnapshot;
+    readonly membership: CampaignMembershipView;
+  }>;
 }
 
 export interface CampaignGameServiceOptions {
@@ -287,7 +290,7 @@ async function readMembership(
   campaignId: string,
 ): Promise<CampaignMembershipView> {
   const result = await pool.query<MembershipRow>(
-    "SELECT campaign_id, user_id, country_id, status, orders_confirmed, joined_at " +
+    'SELECT campaign_id, user_id, country_id, status, orders_confirmed, joined_at ' +
       "FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'",
     [campaignId, userId],
   );
@@ -302,7 +305,7 @@ async function lockActiveMembership(
   campaignId: string,
 ): Promise<MembershipRow> {
   const result = await tx.query<MembershipRow>(
-    "SELECT campaign_id, user_id, country_id, status, orders_confirmed, joined_at " +
+    'SELECT campaign_id, user_id, country_id, status, orders_confirmed, joined_at ' +
       "FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = 'active' FOR UPDATE",
     [campaignId, userId],
   );
@@ -336,7 +339,9 @@ function mapTurnStatus(row: TurnRow): CampaignTurnStatusView {
   };
 }
 
-export function createCampaignGameService(options: CampaignGameServiceOptions): CampaignGameService {
+export function createCampaignGameService(
+  options: CampaignGameServiceOptions,
+): CampaignGameService {
   return {
     async getMembership(userId, campaignId) {
       assertUuid(userId, 'userId');
@@ -349,7 +354,7 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
       assertUuid(campaignId, 'campaignId');
       await readMembership(options.pool, userId, campaignId);
       const result = await options.pool.query<MembershipRow>(
-        "SELECT campaign_id, user_id, country_id, status, orders_confirmed, joined_at " +
+        'SELECT campaign_id, user_id, country_id, status, orders_confirmed, joined_at ' +
           "FROM campaign_memberships WHERE campaign_id = $1 AND status = 'active' " +
           'ORDER BY joined_at, user_id',
         [campaignId],
@@ -364,7 +369,7 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
         const currentTurn = await lockCampaignForMembershipWrite(tx, campaignId);
         const member = await lockActiveMembership(tx, userId, campaignId);
         const count = await tx.query<{ count: string }>(
-          "SELECT count(*)::text AS count FROM campaign_memberships " +
+          'SELECT count(*)::text AS count FROM campaign_memberships ' +
             "WHERE campaign_id = $1 AND status = 'active'",
           [campaignId],
         );
@@ -373,8 +378,8 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
         let discardedOrderCount = 0;
         if (member.country_id !== null) {
           const discarded = await tx.query(
-            "UPDATE orders SET status = 'discarded', updated_at = clock_timestamp() " +
-              "WHERE campaign_id = $1 AND country_id = $2 AND turn_number = $3 " +
+            'UPDATE orders SET status = 'discarded', updated_at = clock_timestamp() ' +
+              'WHERE campaign_id = $1 AND country_id = $2 AND turn_number = $3 ' +
               "AND status IN ('draft', 'unconfirmed', 'confirmed')",
             [campaignId, member.country_id, currentTurn],
           );
@@ -424,13 +429,14 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
         const member = await lockActiveMembership(tx, userId, campaignId);
         const countryId = requireCountryId(member);
         const inserted = await tx.query<OrderRow>(
-          "INSERT INTO orders (campaign_id, country_id, turn_number, schema_version, order_type, payload, status) " +
+          'INSERT INTO orders (campaign_id, country_id, turn_number, schema_version, order_type, payload, status) ' +
             "VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'draft') " +
             'RETURNING id, campaign_id, country_id, turn_number, order_type, schema_version, payload, status, created_at, updated_at',
           [campaignId, countryId, turnNumber, schemaVersion, orderType, payload],
         );
         const row = inserted.rows[0];
-        if (!row) throw new CampaignGameError('ORDER_CREATE_FAILED', 500, 'Order insert returned no row');
+        if (!row)
+          throw new CampaignGameError('ORDER_CREATE_FAILED', 500, 'Order insert returned no row');
         await tx.query(
           'UPDATE campaign_memberships SET orders_confirmed = FALSE WHERE campaign_id = $1 AND user_id = $2',
           [campaignId, userId],
@@ -454,16 +460,20 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
         const member = await lockActiveMembership(tx, userId, campaignId);
         const countryId = requireCountryId(member);
         const selected = await tx.query<OrderRow>(
-          "SELECT id, campaign_id, country_id, turn_number, order_type, schema_version, payload, status, created_at, updated_at " +
-            "FROM orders WHERE id = $1 AND campaign_id = $2 AND country_id = $3 " +
+          'SELECT id, campaign_id, country_id, turn_number, order_type, schema_version, payload, status, created_at, updated_at ' +
+            'FROM orders WHERE id = $1 AND campaign_id = $2 AND country_id = $3 ' +
             "AND turn_number = $4 AND status IN ('draft', 'unconfirmed', 'confirmed') FOR UPDATE",
           [orderId, campaignId, countryId, turnNumber],
         );
         const current = selected.rows[0];
         if (!current) throw new CampaignOrderNotFoundError();
         const orderType = hasOrderType ? validateOrderType(input.orderType) : current.order_type;
-        const schemaVersion = hasSchemaVersion ? validateSchemaVersion(input.schemaVersion) : current.schema_version;
-        const payload = hasPayload ? serializePayload(input.payload) : JSON.stringify(current.payload);
+        const schemaVersion = hasSchemaVersion
+          ? validateSchemaVersion(input.schemaVersion)
+          : current.schema_version;
+        const payload = hasPayload
+          ? serializePayload(input.payload)
+          : JSON.stringify(current.payload);
         const updated = await tx.query<OrderRow>(
           "UPDATE orders SET order_type = $2, schema_version = $3, payload = $4::jsonb, status = 'draft', " +
             'updated_at = clock_timestamp() WHERE id = $1 ' +
@@ -489,7 +499,7 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
         const member = await lockActiveMembership(tx, userId, campaignId);
         const countryId = requireCountryId(member);
         const deleted = await tx.query(
-          "DELETE FROM orders WHERE id = $1 AND campaign_id = $2 AND country_id = $3 " +
+          'DELETE FROM orders WHERE id = $1 AND campaign_id = $2 AND country_id = $3 ' +
             "AND turn_number = $4 AND status IN ('draft', 'unconfirmed', 'confirmed') RETURNING id",
           [orderId, campaignId, countryId, turnNumber],
         );
@@ -510,7 +520,7 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
         const countryId = requireCountryId(member);
         const updated = await tx.query(
           "UPDATE orders SET status = 'confirmed', updated_at = clock_timestamp() " +
-            "WHERE campaign_id = $1 AND country_id = $2 AND turn_number = $3 " +
+            'WHERE campaign_id = $1 AND country_id = $2 AND turn_number = $3 ' +
             "AND status IN ('draft', 'unconfirmed')",
           [campaignId, countryId, turnNumber],
         );
@@ -531,12 +541,12 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
       assertUuid(userId, 'userId');
       assertUuid(campaignId, 'campaignId');
       const result = await options.pool.query<TurnRow>(
-        "SELECT c.id AS campaign_id, c.status AS campaign_status, c.current_turn, c.orders_locked, " +
+        'SELECT c.id AS campaign_id, c.status AS campaign_status, c.current_turn, c.orders_locked, ' +
           'c.deadline_at, j.status AS job_status, m.orders_confirmed, ' +
-          "(SELECT count(*)::integer FROM campaign_memberships AS active_member " +
+          '(SELECT count(*)::integer FROM campaign_memberships AS active_member ' +
           " WHERE active_member.campaign_id = c.id AND active_member.status = 'active') AS active_member_count " +
-          "FROM campaigns AS c JOIN campaign_memberships AS m ON m.campaign_id = c.id " +
-          "LEFT JOIN turn_jobs AS j ON j.campaign_id = c.id AND j.turn_number = c.current_turn " +
+          'FROM campaigns AS c JOIN campaign_memberships AS m ON m.campaign_id = c.id ' +
+          'LEFT JOIN turn_jobs AS j ON j.campaign_id = c.id AND j.turn_number = c.current_turn ' +
           "WHERE c.id = $1 AND m.user_id = $2 AND m.status = 'active'",
         [campaignId, userId],
       );
@@ -573,7 +583,9 @@ export function createCampaignGameService(options: CampaignGameServiceOptions): 
       const campaignRow = campaign.rows[0];
       if (!campaignRow) throw new CampaignAccessDeniedError();
       const snapshotTurn =
-        campaignRow.status === 'completed' ? campaignRow.current_turn + 1 : campaignRow.current_turn;
+        campaignRow.status === 'completed'
+          ? campaignRow.current_turn + 1
+          : campaignRow.current_turn;
       const snapshot = await options.pool.query<{
         turn_number: number;
         version: number;

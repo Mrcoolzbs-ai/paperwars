@@ -215,7 +215,7 @@ async function closeOrdersInTransaction(
 
   if (requestingUserId !== undefined) {
     const requesterMembership = await tx.query<{ user_id: string }>(
-      "SELECT user_id FROM campaign_memberships " +
+      'SELECT user_id FROM campaign_memberships ' +
         "WHERE campaign_id = $1 AND user_id = $2 AND status = 'active' FOR SHARE",
       [campaignId, requestingUserId],
     );

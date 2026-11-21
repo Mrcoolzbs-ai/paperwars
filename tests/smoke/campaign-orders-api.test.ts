@@ -51,9 +51,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             rngVersion: 'hmac-v1',
           });
     const game =
-      persistence === undefined
-        ? undefined
-        : createCampaignGameService({ pool: persistence.pool });
+      persistence === undefined ? undefined : createCampaignGameService({ pool: persistence.pool });
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'hmac-v1',
@@ -84,12 +82,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     }
 
     beforeAll(async () => {
-      if (!persistence || !auth || !campaigns) throw new Error('PostgreSQL services are unavailable');
+      if (!persistence || !auth || !campaigns)
+        throw new Error('PostgreSQL services are unavailable');
       await runMigrations(persistence.pool);
 
       const suffix = randomUUID();
-      const firstSession = await auth.register('owner-' + suffix + '@example.test', 'test password for campaign owner');
-      const secondSession = await auth.register('member-' + suffix + '@example.test', 'test password for campaign member');
+      const firstSession = await auth.register(
+        'owner-' + suffix + '@example.test',
+        'test password for campaign owner',
+      );
+      const secondSession = await auth.register(
+        'member-' + suffix + '@example.test',
+        'test password for campaign member',
+      );
       firstUserId = firstSession.user.id;
       secondUserId = secondSession.user.id;
       firstAccessToken = firstSession.accessToken;
@@ -180,7 +185,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers: { authorization: 'Bearer ' + firstAccessToken },
       });
       expect(world.statusCode).toBe(200);
-      expect(world.json<{ world: { turn: number; countryId: string; marker: string } }>().world).toEqual({
+      expect(
+        world.json<{ world: { turn: number; countryId: string; marker: string } }>().world,
+      ).toEqual({
         turn: 1,
         countryId: firstCountryId,
         marker: 'visible-marker',
@@ -208,7 +215,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         },
       });
       expect(created.statusCode).toBe(201);
-      const createdOrder = created.json<{ order: { id: string; orderType: string; status: string } }>().order;
+      const createdOrder = created.json<{
+        order: { id: string; orderType: string; status: string };
+      }>().order;
       firstOrderId = createdOrder.id;
       expect(createdOrder.orderType).toBe('build.farm');
       expect(createdOrder.status).toBe('draft');
@@ -237,7 +246,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { payload: { cellId: 'cell-1', building: 'factory' } },
       });
       expect(updated.statusCode).toBe(200);
-      expect(updated.json<{ order: { status: string; payload: { building: string } } }>().order).toMatchObject({
+      expect(
+        updated.json<{ order: { status: string; payload: { building: string } } }>().order,
+      ).toMatchObject({
         status: 'draft',
         payload: { building: 'factory' },
       });
@@ -248,7 +259,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers: { authorization: 'Bearer ' + secondAccessToken },
       });
       expect(left.statusCode).toBe(200);
-      expect(left.json<{ membership: { status: string; discardedOrderCount: number } }>().membership).toEqual({
+      expect(
+        left.json<{ membership: { status: string; discardedOrderCount: number } }>().membership,
+      ).toMatchObject({
         status: 'left',
         discardedOrderCount: 1,
       });
@@ -274,7 +287,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers: { authorization: 'Bearer ' + firstAccessToken },
       });
       expect(confirmed.statusCode).toBe(200);
-      expect(confirmed.json<{ ordersConfirmed: boolean; confirmedOrderCount: number }>()).toMatchObject({
+      expect(
+        confirmed.json<{ ordersConfirmed: boolean; confirmedOrderCount: number }>(),
+      ).toMatchObject({
         ordersConfirmed: true,
         confirmedOrderCount: 1,
       });
@@ -285,8 +300,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers: { authorization: 'Bearer ' + firstAccessToken },
       });
       expect(turnBeforeClose.statusCode).toBe(200);
-      expect(turnBeforeClose.json<{ turn: { ownOrdersConfirmed: boolean; ordersLocked: boolean } }>().turn)
-        .toMatchObject({ ownOrdersConfirmed: true, ordersLocked: false });
+      expect(
+        turnBeforeClose.json<{ turn: { ownOrdersConfirmed: boolean; ordersLocked: boolean } }>()
+          .turn,
+      ).toMatchObject({ ownOrdersConfirmed: true, ordersLocked: false });
 
       const close = await app.inject({
         method: 'POST',
@@ -301,8 +318,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         url: '/campaigns/' + campaignId + '/turn',
         headers: { authorization: 'Bearer ' + firstAccessToken },
       });
-      expect(turnAfterClose.json<{ turn: { ordersLocked: boolean; jobStatus: string } }>().turn)
-        .toMatchObject({ ordersLocked: true, jobStatus: 'pending' });
+      expect(
+        turnAfterClose.json<{ turn: { ordersLocked: boolean; jobStatus: string } }>().turn,
+      ).toMatchObject({ ordersLocked: true, jobStatus: 'pending' });
 
       const rejected = await app.inject({
         method: 'POST',

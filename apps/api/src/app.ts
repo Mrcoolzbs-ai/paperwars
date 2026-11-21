@@ -227,7 +227,6 @@ function registerCampaignRoutes(
   });
 }
 
-
 function sendCampaignGameError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof CampaignGameError) {
     return reply.code(error.statusCode).send({ error: error.code, message: error.message });
@@ -399,10 +398,7 @@ function registerCampaignGameRoutes(
     async (request, reply) => {
       try {
         const user = await authService.authenticateAccessToken(getBearerToken(request));
-        const input = await gameService.getCurrentWorldSnapshot(
-          user.id,
-          request.params.campaignId,
-        );
+        const input = await gameService.getCurrentWorldSnapshot(user.id, request.params.campaignId);
         if (worldViewProjector === undefined) {
           return reply.code(503).send({ error: 'WORLD_VIEW_NOT_CONFIGURED' });
         }
