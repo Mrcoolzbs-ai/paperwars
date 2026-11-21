@@ -1,4 +1,8 @@
-import { createAuthService, createAccessTokenSigner, createCampaignService } from '@paper-wars/auth';
+import {
+  createAuthService,
+  createAccessTokenSigner,
+  createCampaignService,
+} from '@paper-wars/auth';
 import { createPostgresPersistence } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createApp } from './app.js';
