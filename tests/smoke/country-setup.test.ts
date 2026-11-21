@@ -89,61 +89,59 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it(
-      'creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot',
-      async () => {
-        const current = getPersistence();
-        const { auth, campaigns, countrySetup } = createServices();
-        const firstUser = await auth.register(
-          `country-one-${randomUUID()}@example.test`,
-          'country setup test password one',
-        );
-        const secondUser = await auth.register(
-          `country-two-${randomUUID()}@example.test`,
-          'country setup test password two',
-        );
+    it('creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot', async () => {
+      const current = getPersistence();
+      const { auth, campaigns, countrySetup } = createServices();
+      const firstUser = await auth.register(
+        `country-one-${randomUUID()}@example.test`,
+        'country setup test password one',
+      );
+      const secondUser = await auth.register(
+        `country-two-${randomUUID()}@example.test`,
+        'country setup test password two',
+      );
 
-        const campaign = await campaigns.createCampaign(
-          firstUser.user.id,
-          `country-world-${randomUUID()}`,
-          { mapWidth: 20, mapHeight: 20 },
-        );
-        await current.pool.query(
-          `INSERT INTO campaign_memberships (
+      const campaign = await campaigns.createCampaign(
+        firstUser.user.id,
+        `country-world-${randomUUID()}`,
+        { mapWidth: 20, mapHeight: 20 },
+      );
+      await current.pool.query(
+        `INSERT INTO campaign_memberships (
              campaign_id, user_id, status, orders_confirmed
            ) VALUES ($1, $2, 'active', FALSE)`,
-          [campaign.id, secondUser.user.id],
-        );
+        [campaign.id, secondUser.user.id],
+      );
 
-        const firstCountry = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
-          name: 'Republic of the Dawn',
-          spawnX: 5,
-          spawnY: 5,
-          officialSystem: {
-            type: 'religion',
-            newSystemName: 'Dawn Covenant',
-          },
-          buildings: RELIGION_BUILDINGS,
-        });
+      const firstCountry = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
+        name: 'Republic of the Dawn',
+        spawnX: 5,
+        spawnY: 5,
+        officialSystem: {
+          type: 'religion',
+          newSystemName: 'Dawn Covenant',
+        },
+        buildings: RELIGION_BUILDINGS,
+      });
 
-        expect(firstCountry.territory).toEqual({
-          centerX: 5,
-          centerY: 5,
-          width: 5,
-          height: 5,
-        });
-        expect(firstCountry.buildingCount).toBe(7);
-        expect(firstCountry.residentCount).toBe(18);
-        expect(firstCountry.snapshotVersion).toBe(1);
-        expect(firstCountry.officialSystem.type).toBe('religion');
+      expect(firstCountry.territory).toEqual({
+        centerX: 5,
+        centerY: 5,
+        width: 5,
+        height: 5,
+      });
+      expect(firstCountry.buildingCount).toBe(7);
+      expect(firstCountry.residentCount).toBe(18);
+      expect(firstCountry.snapshotVersion).toBe(1);
+      expect(firstCountry.officialSystem.type).toBe('religion');
 
-        const firstPopulation = await current.pool.query<{
-          cell_count: string;
-          resident_count: string;
-          building_count: string;
-          building_cell_population: string;
-        }>(
-          `SELECT
+      const firstPopulation = await current.pool.query<{
+        cell_count: string;
+        resident_count: string;
+        building_count: string;
+        building_cell_population: string;
+      }>(
+        `SELECT
              count(*)::text AS cell_count,
              sum(population)::text AS resident_count,
              count(building.id)::text AS building_count,
@@ -155,156 +153,151 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             AND building.country_id = cc.country_id
             AND building.cell_id = cc.cell_id
            WHERE cc.campaign_id = $1 AND cc.country_id = $2`,
-          [campaign.id, firstCountry.id],
-        );
-        expect(firstPopulation.rows[0]).toEqual({
-          cell_count: '25',
-          resident_count: '18',
-          building_count: '7',
-          building_cell_population: '0',
-        });
+        [campaign.id, firstCountry.id],
+      );
+      expect(firstPopulation.rows[0]).toEqual({
+        cell_count: '25',
+        resident_count: '18',
+        building_count: '7',
+        building_cell_population: '0',
+      });
 
-        const firstCountryRow = await current.pool.query<{
-          setup_completed: boolean;
-          official_system_type: string;
-        }>(
-          'SELECT setup_completed, official_system_type FROM countries WHERE id = $1',
-          [firstCountry.id],
-        );
-        expect(firstCountryRow.rows[0]).toEqual({
-          setup_completed: true,
-          official_system_type: 'religion',
-        });
+      const firstCountryRow = await current.pool.query<{
+        setup_completed: boolean;
+        official_system_type: string;
+      }>('SELECT setup_completed, official_system_type FROM countries WHERE id = $1', [
+        firstCountry.id,
+      ]);
+      expect(firstCountryRow.rows[0]).toEqual({
+        setup_completed: true,
+        official_system_type: 'religion',
+      });
 
-        // Q7: state-level official systems remain exclusive per state; a different
-        // state can select an ideology in the same campaign.
-        const existingSystems = await countrySetup.listAvailableSystems(
-          firstUser.user.id,
-          campaign.id,
-          'religion',
-          12,
-          12,
-        ).catch((error: unknown) => {
+      // Q7: state-level official systems remain exclusive per state; a different
+      // state can select an ideology in the same campaign.
+      const existingSystems = await countrySetup
+        .listAvailableSystems(firstUser.user.id, campaign.id, 'religion', 12, 12)
+        .catch((error: unknown) => {
           expect(error).toBeInstanceOf(SystemAvailabilityNotConfiguredError);
           return [];
         });
-        expect(existingSystems).toEqual([]);
+      expect(existingSystems).toEqual([]);
 
-        const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
-          name: 'Free Thought Collective',
-          spawnX: 13,
-          spawnY: 13,
-          officialSystem: {
-            type: 'ideology',
-            newSystemName: 'Civic Rationalism',
-          },
-          buildings: IDEOLOGY_BUILDINGS,
-        });
-        expect(secondCountry.officialSystem.type).toBe('ideology');
-        expect(secondCountry.snapshotVersion).toBe(2);
+      const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
+        name: 'Free Thought Collective',
+        spawnX: 13,
+        spawnY: 13,
+        officialSystem: {
+          type: 'ideology',
+          newSystemName: 'Civic Rationalism',
+        },
+        buildings: IDEOLOGY_BUILDINGS,
+      });
+      expect(secondCountry.officialSystem.type).toBe('ideology');
+      expect(secondCountry.snapshotVersion).toBe(2);
 
-        const snapshot = await current.pool.query<{
-          version: number;
-          state_schema_version: number;
-          ruleset_version: string;
-          state: { countries: Array<{ id: string; officialSystem: { type: string } }> };
-        }>(
-          `SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots
+      const snapshot = await current.pool.query<{
+        version: number;
+        state_schema_version: number;
+        ruleset_version: string;
+        state: { countries: Array<{ id: string; officialSystem: { type: string } }> };
+      }>(
+        `SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots
            WHERE campaign_id = $1 AND turn_number = 1`,
-          [campaign.id],
-        );
-        expect(snapshot.rows[0]).toMatchObject({
-          version: 2,
-          state_schema_version: 1,
-          ruleset_version: 'baseline-v1',
-        });
-        expect(snapshot.rows[0]?.state.countries).toHaveLength(2);
-        expect(snapshot.rows[0]?.state.countries.map((country) => country.officialSystem.type).sort())
-          .toEqual(['ideology', 'religion']);
+        [campaign.id],
+      );
+      expect(snapshot.rows[0]).toMatchObject({
+        version: 2,
+        state_schema_version: 1,
+        ruleset_version: 'baseline-v1',
+      });
+      expect(snapshot.rows[0]?.state.countries).toHaveLength(2);
+      expect(
+        snapshot.rows[0]?.state.countries.map((country) => country.officialSystem.type).sort(),
+      ).toEqual(['ideology', 'religion']);
 
-        const totals = await current.pool.query<{
-          countries: string;
-          cells: string;
-          population: string;
-          buildings: string;
-        }>(
-          `SELECT
+      const totals = await current.pool.query<{
+        countries: string;
+        cells: string;
+        population: string;
+        buildings: string;
+      }>(
+        `SELECT
              (SELECT count(*) FROM countries
                WHERE campaign_id = $1 AND setup_completed)::text AS countries,
              (SELECT count(*) FROM country_cells WHERE campaign_id = $1)::text AS cells,
              (SELECT sum(population) FROM country_cells WHERE campaign_id = $1)::text AS population,
              (SELECT count(*) FROM country_buildings WHERE campaign_id = $1)::text AS buildings`,
-          [campaign.id],
-        );
-        expect(totals.rows[0]).toEqual({
-          countries: '2',
-          cells: '50',
-          population: '36',
-          buildings: '14',
-        });
-      },
-    );
+        [campaign.id],
+      );
+      expect(totals.rows[0]).toEqual({
+        countries: '2',
+        cells: '50',
+        population: '36',
+        buildings: '14',
+      });
+    });
 
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
       const current = getPersistence();
-      const { auth, campaigns, countrySetup } = createServices();
-      const firstUser = await auth.register(
-        `country-collision-one-${randomUUID()}@example.test`,
-        'country collision test password',
-      );
-      const secondUser = await auth.register(
-        `country-collision-two-${randomUUID()}@example.test`,
-        'country collision test password',
-      );
-      const campaign = await campaigns.createCampaign(
-        firstUser.user.id,
-        `country-collision-${randomUUID()}`,
-        { mapWidth: 20, mapHeight: 20 },
-      );
-      await current.pool.query(
-        `INSERT INTO campaign_memberships (
-           campaign_id, user_id, status, orders_confirmed
-         ) VALUES ($1, $2, 'active', FALSE)`,
-        [campaign.id, secondUser.user.id],
-      );
+ DATABASE_URL: ***127.0.0.1:5432/paperwars_test
+ PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+The files belonging to this database system will be owned by user "postgres".
+initdb: warning: enabling "trust" authentication for local connections
+This user must also own the server process.
+initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+2026-11-21 21:10:02.742 UTC [1] LOG:  starting PostgreSQL 18.7 (Debian 18.7-1.pgdg13+5) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-11-21 21:10:02.743 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-11-21 21:10:02.743 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-11-21 21:10:02.744 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-11-21 21:10:02.747 UTC [75] LOG:  database system was shut down at 2026-11-21 21:10:02 UTC
+2026-11-21 21:10:02.750 UTC [1] LOG:  database system is ready to accept connections
 
-      await expect(
-        countrySetup.createCountry(firstUser.user.id, campaign.id, {
-          name: 'Missing Extra Slot',
-          spawnX: 5,
-          spawnY: 5,
-          officialSystem: { type: 'religion', newSystemName: 'Only Six' },
-          buildings: RELIGION_BUILDINGS.slice(0, 6),
-        }),
-      ).rejects.toBeInstanceOf(CountrySetupValidationError);
+The database cluster will be initialized with locale "en_US.utf8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
 
-      await expect(
-        countrySetup.createCountry(firstUser.user.id, campaign.id, {
-          name: 'No Official System',
-          spawnX: 5,
-          spawnY: 5,
-          officialSystem: undefined as never,
-          buildings: RELIGION_BUILDINGS,
-        }),
-      ).rejects.toBeInstanceOf(CountrySetupValidationError);
+Data page checksums are enabled.
 
-      const first = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
-        name: 'First Territory',
-        spawnX: 5,
-        spawnY: 5,
-        officialSystem: { type: 'religion', newSystemName: 'First Belief' },
-        buildings: RELIGION_BUILDINGS,
-      });
+fixing permissions on existing directory /var/lib/postgresql/18/docker ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default "max_connections" ... 100
+selecting default "shared_buffers" ... 128MB
+selecting default time zone ... Etc/UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
 
-      await expect(
-        countrySetup.createCountry(secondUser.user.id, campaign.id, {
-          name: 'Overlapping Territory',
-          spawnX: 7,
-          spawnY: 5,
-          officialSystem: { type: 'ideology', newSystemName: 'Second Belief' },
-          buildings: IDEOLOGY_BUILDINGS,
-        }),
-      ).rejects.toBeInstanceOf(SpawnAreaUnavailableError);
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /var/lib/postgresql/18/docker -l logfile start
+
+waiting for server to start....2026-11-21 21:10:02.332 UTC [53] LOG:  starting PostgreSQL 18.7 (Debian 18.7-1.pgdg13+5) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-11-21 21:10:02.333 UTC [53] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-11-21 21:10:02.336 UTC [59] LOG:  database system was shut down at 2026-11-21 21:10:01 UTC
+2026-11-21 21:10:02.339 UTC [53] LOG:  database system is ready to accept connections
+ done
+server started
+CREATE DATABASE
+
+
+/usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+
+waiting for server to shut down...2026-11-21 21:10:02.523 UTC [53] LOG:  received fast shutdown request
+.2026-11-21 21:10:02.523 UTC [53] LOG:  aborting any active transactions
+2026-11-21 21:10:02.525 UTC [53] LOG:  background worker "logical replication launcher" (PID 62) exited with exit code 1
+2026-11-21 21:10:02.526 UTC [57] LOG:  shutting down
+2026-11-21 21:10:02.526 UTC [57] LOG:  checkpoint starting: shutdown immediate
+2026-11-21 21:10:02.638 UTC [57] LOG:  checkpoint complete: wrote 952 buffers (5.8%), wrote 3 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; write=0.103 s, sync=0.009 s, total=0.113 s; sync files=303, longest=0.007 s, average=0.001 s; distance=4428 kB, estimate=4428 kB; lsn=0/1BC6EB0, redo lsn=0/1BC6EB0
+2026-11-21 21:10:02.649 UTC [53] LOG:  database system is shut down
+ done
+server stopped
+
+PostgreSQL init process complete; ready for start up.
+
 
       const afterFailure = await current.pool.query<{
         country_count: string;
