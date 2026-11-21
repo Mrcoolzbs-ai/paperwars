@@ -176,9 +176,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [first.id],
         );
         const reaped = await reapExpiredTurnJobs(db().pool);
-        expect(reaped).toEqual([
-          { id: first.id, status: 'pending', generation: 1, retryCount: 5 },
-        ]);
+        expect(reaped).toEqual([{ id: first.id, status: 'pending', generation: 1, retryCount: 5 }]);
 
         const second = await claimNextTurnJob(db().pool, 'worker-b');
         expect(second?.generation).toBe(2);
@@ -190,9 +188,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [second.id],
         );
         const failed = await reapExpiredTurnJobs(db().pool);
-        expect(failed).toEqual([
-          { id: second.id, status: 'failed', generation: 2, retryCount: 5 },
-        ]);
+        expect(failed).toEqual([{ id: second.id, status: 'failed', generation: 2, retryCount: 5 }]);
       } finally {
         await data.cleanup();
       }
@@ -225,7 +221,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           turnNumber: toTurnNumber(1),
           sourceSnapshotVersion: 1,
           nextState: { turn: 2 },
-          orderResults: [{ orderId: toId<'OrderId'>(orderId), status: 'accepted' as const, resultCode: 'TEST_ACCEPTED' }],
+          orderResults: [
+            {
+              orderId: toId<'OrderId'>(orderId),
+              status: 'accepted' as const,
+              resultCode: 'TEST_ACCEPTED',
+            },
+          ],
           events: [{ type: 'turn.resolved', schemaVersion: 1, payload: { turn: 1 } }],
           randomDraws: [{ domain: 'battle', drawId, minValue: 1, maxValue: 6, value: drawValue }],
           campaignEnded: false,
@@ -357,11 +359,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           turnSeed: Buffer.alloc(32, 0x39),
         });
 
-        const campaign = await db().pool.query<{ status: string; current_turn: number; orders_locked: boolean }>(
-          'SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1',
-          [data.campaignId],
-        );
-        expect(campaign.rows[0]).toEqual({ status: 'completed', current_turn: 1, orders_locked: true });
+        const campaign = await db().pool.query<{
+          status: string;
+          current_turn: number;
+          orders_locked: boolean;
+        }>('SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1', [
+          data.campaignId,
+        ]);
+        expect(campaign.rows[0]).toEqual({
+          status: 'completed',
+          current_turn: 1,
+          orders_locked: true,
+        });
         const seed = await db().pool.query<{ count: string }>(
           'SELECT count(*)::text AS count FROM random_seeds WHERE campaign_id = $1 AND turn_number = 2',
           [data.campaignId],

@@ -106,7 +106,11 @@ async function inTransaction<T>(pool: Pool, work: (tx: PoolClient) => Promise<T>
   }
 }
 function assertWorkerId(value: string): void {
-  if (typeof value !== 'string' || value.trim().length === 0 || Buffer.byteLength(value, 'utf8') > 128) {
+  if (
+    typeof value !== 'string' ||
+    value.trim().length === 0 ||
+    Buffer.byteLength(value, 'utf8') > 128
+  ) {
     throw new RangeError('workerId must contain 1..128 UTF-8 bytes');
   }
 }
@@ -122,7 +126,10 @@ function encodeJson(value: unknown, label: string): string {
 }
 
 /** First row lock for an order mutation; call inside the same transaction as the write. */
-export async function lockCampaignForOrderWrite(tx: PoolClient, campaignId: string): Promise<number> {
+export async function lockCampaignForOrderWrite(
+  tx: PoolClient,
+  campaignId: string,
+): Promise<number> {
   const result = await tx.query<{ status: string; current_turn: number; orders_locked: boolean }>(
     'SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR SHARE',
     [campaignId],
@@ -135,7 +142,10 @@ export async function lockCampaignForOrderWrite(tx: PoolClient, campaignId: stri
 }
 
 /** First row lock for a membership mutation; serializes it with closeOrders(). */
-export async function lockCampaignForMembershipWrite(tx: PoolClient, campaignId: string): Promise<number> {
+export async function lockCampaignForMembershipWrite(
+  tx: PoolClient,
+  campaignId: string,
+): Promise<number> {
   const result = await tx.query<{ status: string; current_turn: number }>(
     'SELECT status, current_turn FROM campaigns WHERE id = $1 FOR UPDATE',
     [campaignId],
@@ -158,8 +168,8 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
       deadline_passed: boolean;
     }>(
       'SELECT status, current_turn, orders_locked, ruleset_version, ' +
-      '(deadline_at IS NOT NULL AND deadline_at <= clock_timestamp()) AS deadline_passed ' +
-      'FROM campaigns WHERE id = $1 FOR UPDATE',
+        '(deadline_at IS NOT NULL AND deadline_at <= clock_timestamp()) AS deadline_passed ' +
+          'FROM campaigns WHERE id = $1 FOR UPDATE',
       [campaignId],
     );
     const campaign = campaignResult.rows[0];
@@ -169,7 +179,7 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
 
     const snapshotResult = await tx.query<SnapshotRow>(
       'SELECT version, state_schema_version, ruleset_version FROM world_snapshots ' +
-      'WHERE campaign_id = $1 AND turn_number = $2 FOR SHARE',
+        'WHERE campaign_id = $1 AND turn_number = $2 FOR SHARE',
       [campaignId, campaign.current_turn],
     );
     const snapshot = snapshotResult.rows[0];
@@ -179,11 +189,12 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
     }
 
     const membershipResult = await tx.query<{ orders_confirmed: boolean }>(
-      "SELECT orders_confirmed FROM campaign_memberships " +
-      "WHERE campaign_id = $1 AND status = 'active' ORDER BY user_id FOR SHARE",
+      'SELECT orders_confirmed FROM campaign_memberships ' +
+        "WHERE campaign_id = $1 AND status = 'active' ORDER BY user_id FOR SHARE",
       [campaignId],
     );
-    if (membershipResult.rows.length === 0) throw new NoActiveParticipantsError('No active participants');
+    if (membershipResult.rows.length === 0)
+      throw new NoActiveParticipantsError('No active participants');
     const allConfirmed = membershipResult.rows.every((member) => member.orders_confirmed);
     if (!allConfirmed && !campaign.deadline_passed) {
       throw new OrdersNotConfirmedError('Not all active participants confirmed orders');
@@ -191,12 +202,12 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
 
     const finalized = await tx.query(
       "UPDATE orders SET status = 'finalized', finalized_at = clock_timestamp(), updated_at = clock_timestamp() " +
-      "WHERE campaign_id = $1 AND turn_number = $2 AND status = 'confirmed'",
+        "WHERE campaign_id = $1 AND turn_number = $2 AND status = 'confirmed'",
       [campaignId, campaign.current_turn],
     );
     const discarded = await tx.query(
       "UPDATE orders SET status = 'discarded', finalized_at = NULL, updated_at = clock_timestamp() " +
-      "WHERE campaign_id = $1 AND turn_number = $2 AND status IN ('draft', 'unconfirmed')",
+        "WHERE campaign_id = $1 AND turn_number = $2 AND status IN ('draft', 'unconfirmed')",
       [campaignId, campaign.current_turn],
     );
     await tx.query(
@@ -205,9 +216,14 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
     );
 
     const inserted = await tx.query<{ id: string }>(
-      "INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status, generation, retry_count) " +
-      "VALUES ($1, $2, $3, $4, 'pending', 0, 0) RETURNING id",
-      ['turn:' + campaignId + ':' + campaign.current_turn, campaignId, campaign.current_turn, snapshot.version],
+      'INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status, generation, retry_count) ' +
+        "VALUES ($1, $2, $3, $4, 'pending', 0, 0) RETURNING id",
+      [
+        'turn:' + campaignId + ':' + campaign.current_turn,
+        campaignId,
+        campaign.current_turn,
+        snapshot.version,
+      ],
     );
     const job = inserted.rows[0];
     if (!job) throw new TurnProcessingError('Turn-job insert returned no row');
@@ -227,11 +243,11 @@ export async function claimNextTurnJob(pool: Pool, workerId: string): Promise<Tu
   assertWorkerId(workerId);
   const result = await pool.query<JobRow>(
     "UPDATE turn_jobs AS job SET status = 'processing', generation = job.generation + 1, " +
-    "worker_id = $1, lease_until = clock_timestamp() + ($2::integer * INTERVAL '1 second'), " +
-    "started_at = clock_timestamp() WHERE job.id = (" +
-    "SELECT id FROM turn_jobs WHERE status = 'pending' ORDER BY created_at, id " +
-    "FOR UPDATE SKIP LOCKED LIMIT 1) " +
-    'RETURNING id, campaign_id, turn_number, snapshot_version, status, generation, worker_id, lease_until, retry_count',
+      "worker_id = $1, lease_until = clock_timestamp() + ($2::integer * INTERVAL '1 second'), " +
+      'started_at = clock_timestamp() WHERE job.id = (' +
+      "SELECT id FROM turn_jobs WHERE status = 'pending' ORDER BY created_at, id " +
+      'FOR UPDATE SKIP LOCKED LIMIT 1) ' +
+      'RETURNING id, campaign_id, turn_number, snapshot_version, status, generation, worker_id, lease_until, retry_count',
     [workerId, LEASE_SECONDS],
   );
   const row = result.rows[0];
@@ -255,8 +271,8 @@ export async function renewTurnJobLease(pool: Pool, claim: TurnJobClaim): Promis
   assertWorkerId(claim.workerId);
   const result = await pool.query<{ lease_until: Date }>(
     "UPDATE turn_jobs SET lease_until = clock_timestamp() + ($4::integer * INTERVAL '1 second') " +
-    "WHERE id = $1 AND worker_id = $2 AND generation = $3 AND status = 'processing' " +
-    'AND lease_until > clock_timestamp() RETURNING lease_until',
+      "WHERE id = $1 AND worker_id = $2 AND generation = $3 AND status = 'processing' " +
+      'AND lease_until > clock_timestamp() RETURNING lease_until',
     [claim.id, claim.workerId, claim.generation, LEASE_SECONDS],
   );
   const row = result.rows[0];
@@ -265,7 +281,10 @@ export async function renewTurnJobLease(pool: Pool, claim: TurnJobClaim): Promis
 }
 
 /** Reaper permits five reassignments after attempt one; generation remains monotonic. */
-export async function reapExpiredTurnJobs(pool: Pool, batchSize = 100): Promise<readonly ReapedTurnJob[]> {
+export async function reapExpiredTurnJobs(
+  pool: Pool,
+  batchSize = 100,
+): Promise<readonly ReapedTurnJob[]> {
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) {
     throw new RangeError('batchSize must be in [1, 1000]');
   }
@@ -312,8 +331,12 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
     throw new RangeError('turnSeed must be the verified 32-byte seed');
   }
   if (!resolution.campaignEnded) {
-    if (!options.keyProvider) throw new TurnProcessingError('keyProvider is required for the next turn seed');
-    if (!(options.nextDeadlineAt instanceof Date) || !Number.isFinite(options.nextDeadlineAt.getTime())) {
+    if (!options.keyProvider)
+      throw new TurnProcessingError('keyProvider is required for the next turn seed');
+    if (
+      !(options.nextDeadlineAt instanceof Date) ||
+      !Number.isFinite(options.nextDeadlineAt.getTime())
+    ) {
       throw new TurnProcessingError('A valid nextDeadlineAt is required');
     }
   }
@@ -329,7 +352,7 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
       rng_version: string;
     }>(
       'SELECT status, current_turn, orders_locked, ruleset_version, rng_version ' +
-      'FROM campaigns WHERE id = $1 FOR UPDATE',
+        'FROM campaigns WHERE id = $1 FOR UPDATE',
       [claim.campaignId],
     );
     const campaign = campaignResult.rows[0];
@@ -344,18 +367,21 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
 
     const snapshotResult = await tx.query<SnapshotRow>(
       'SELECT version, state_schema_version, ruleset_version FROM world_snapshots ' +
-      'WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+        'WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
       [claim.campaignId, claim.turnNumber],
     );
     const snapshot = snapshotResult.rows[0];
-    if (!snapshot || snapshot.version !== claim.snapshotVersion ||
-      snapshot.ruleset_version !== campaign.ruleset_version) {
+    if (
+      !snapshot ||
+      snapshot.version !== claim.snapshotVersion ||
+      snapshot.ruleset_version !== campaign.ruleset_version
+    ) {
       throw new StaleWorkerError(claim.id);
     }
 
     const jobResult = await tx.query<JobRow>(
       'SELECT id, campaign_id, turn_number, snapshot_version, status, generation, worker_id, lease_until, retry_count ' +
-      'FROM turn_jobs WHERE id = $1 FOR UPDATE',
+        'FROM turn_jobs WHERE id = $1 FOR UPDATE',
       [claim.id],
     );
     const job = jobResult.rows[0];
@@ -374,12 +400,22 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
     const nextTurn = claim.turnNumber + 1;
     await tx.query(
       'INSERT INTO world_snapshots (campaign_id, turn_number, version, state_schema_version, ruleset_version, state) ' +
-      'VALUES ($1, $2, 1, $3, $4, $5::jsonb)',
-      [claim.campaignId, nextTurn, snapshot.state_schema_version, campaign.ruleset_version, stateJson],
+        'VALUES ($1, $2, 1, $3, $4, $5::jsonb)',
+      [
+        claim.campaignId,
+        nextTurn,
+        snapshot.state_schema_version,
+        campaign.ruleset_version,
+        stateJson,
+      ],
     );
 
     for (const event of resolution.events) {
-      if (!event.type.trim() || !Number.isSafeInteger(event.schemaVersion) || event.schemaVersion < 1) {
+      if (
+        !event.type.trim() ||
+        !Number.isSafeInteger(event.schemaVersion) ||
+        event.schemaVersion < 1
+      ) {
         throw new TurnProcessingError('Resolved event has invalid type or schema version');
       }
       const visibility = event.visibility ?? 'public';
@@ -388,8 +424,15 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
       }
       await tx.query(
         'INSERT INTO game_events (campaign_id, turn_number, schema_version, event_type, payload, visibility) ' +
-        'VALUES ($1, $2, $3, $4, $5::jsonb, $6)',
-        [claim.campaignId, claim.turnNumber, event.schemaVersion, event.type, encodeJson(event.payload, 'Event payload'), visibility],
+          'VALUES ($1, $2, $3, $4, $5::jsonb, $6)',
+        [
+          claim.campaignId,
+          claim.turnNumber,
+          event.schemaVersion,
+          event.type,
+          encodeJson(event.payload, 'Event payload'),
+          visibility,
+        ],
       );
     }
 
@@ -405,15 +448,21 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
       if (seenDraws.has(key)) throw new TurnProcessingError('Duplicate random draw');
       seenDraws.add(key);
       const stored = await drawUniformAndRecord(
-        tx, rng, draw.domain, draw.drawId, draw.minValue, draw.maxValue,
+        tx,
+        rng,
+        draw.domain,
+        draw.drawId,
+        draw.minValue,
+        draw.maxValue,
       );
-      if (stored !== draw.value) throw new TurnProcessingError('Draw does not match verified turn seed');
+      if (stored !== draw.value)
+        throw new TurnProcessingError('Draw does not match verified turn seed');
     }
 
     for (const orderResult of resolution.orderResults) {
       await tx.query(
-        "INSERT INTO game_events (campaign_id, turn_number, schema_version, event_type, payload, visibility) " +
-        "VALUES ($1, $2, 1, 'order.resolved', $3::jsonb, 'private')",
+        'INSERT INTO game_events (campaign_id, turn_number, schema_version, event_type, payload, visibility) ' +
+          "VALUES ($1, $2, 1, 'order.resolved', $3::jsonb, 'private')",
         [claim.campaignId, claim.turnNumber, encodeJson(orderResult, 'Order result')],
       );
     }
@@ -433,7 +482,7 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
     if (resolution.campaignEnded) {
       await tx.query(
         "UPDATE campaigns SET status = 'completed', completed_at = clock_timestamp(), deadline_at = NULL, " +
-        'orders_locked = TRUE, orders_locked_at = COALESCE(orders_locked_at, clock_timestamp()) WHERE id = $1',
+          'orders_locked = TRUE, orders_locked_at = COALESCE(orders_locked_at, clock_timestamp()) WHERE id = $1',
         [claim.campaignId],
       );
     } else {
@@ -441,7 +490,8 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
         'SELECT $1::timestamptz > clock_timestamp() AS valid',
         [options.nextDeadlineAt],
       );
-      if (deadline.rows[0]?.valid !== true) throw new TurnProcessingError('nextDeadlineAt must be in the future');
+      if (deadline.rows[0]?.valid !== true)
+        throw new TurnProcessingError('nextDeadlineAt must be in the future');
       await createCommittedSeed(
         tx,
         options.keyProvider as SeedKeyProvider,
@@ -455,7 +505,7 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
       );
       await tx.query(
         'UPDATE campaigns SET current_turn = $2, orders_locked = FALSE, orders_locked_at = NULL, deadline_at = $3 ' +
-        'WHERE id = $1',
+          'WHERE id = $1',
         [claim.campaignId, nextTurn, options.nextDeadlineAt],
       );
       await tx.query(
@@ -467,8 +517,8 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
     // This must remain the last data-changing statement inside the transaction.
     const completed = await tx.query(
       "UPDATE turn_jobs SET status = 'completed', completed_at = clock_timestamp() " +
-      "WHERE id = $1 AND generation = $2 AND worker_id = $3 AND status = 'processing' " +
-      'AND lease_until > clock_timestamp() RETURNING id',
+        "WHERE id = $1 AND generation = $2 AND worker_id = $3 AND status = 'processing' " +
+        'AND lease_until > clock_timestamp() RETURNING id',
       [claim.id, claim.generation, claim.workerId],
     );
     if (completed.rowCount !== 1) throw new StaleWorkerError(claim.id);
