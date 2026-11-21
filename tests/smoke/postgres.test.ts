@@ -413,7 +413,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const countryId = country.rows[0]?.id;
         if (countryId === undefined) throw new Error('Country insert did not return id');
 
-        const snapshot = await client.query<{ state_schema_version: number; ruleset_version: string }>(
+        const snapshot = await client.query<{
+          state_schema_version: number;
+          ruleset_version: string;
+        }>(
           `INSERT INTO world_snapshots (
              campaign_id, turn_number, version, state, state_schema_version, ruleset_version
            ) VALUES ($1, 1, 1, '{}'::jsonb, 2, 'baseline-v1')
@@ -456,6 +459,5 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         client.release();
       }
     });
-
   },
 );
