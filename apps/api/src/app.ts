@@ -289,7 +289,6 @@ function registerCountryRoutes(
   app.get('/campaigns/:campaignId/social-systems/available', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
-      void user;
       const query = asRecord(request.query);
       const systemType = query['systemType'];
       if (systemType !== 'religion' && systemType !== 'ideology') {
