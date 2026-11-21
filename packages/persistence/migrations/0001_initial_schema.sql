@@ -176,11 +176,13 @@ CREATE TABLE discovery_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   cell_id TEXT NOT NULL,
-  discovered_by_country_id UUID NOT NULL REFERENCES countries(id),
+  discovered_by_country_id UUID NOT NULL,
   discovered_at_turn INTEGER NOT NULL CHECK (discovered_at_turn >= 1),
   discovery_type TEXT NOT NULL CHECK (discovery_type IN ('ruins', 'gold', 'empty')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT discovery_records_campaign_cell_unique UNIQUE (campaign_id, cell_id)
+  CONSTRAINT discovery_records_campaign_cell_unique UNIQUE (campaign_id, cell_id),
+  CONSTRAINT discovery_records_campaign_country_fk
+    FOREIGN KEY (campaign_id, discovered_by_country_id) REFERENCES countries (campaign_id, id)
 );
 
 CREATE TABLE discovery_history (
