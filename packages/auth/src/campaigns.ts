@@ -40,8 +40,8 @@ export interface CampaignSummary {
   readonly countryId: string | null;
   readonly firstTurnCommitment: string | null;
   readonly createdAt: Date;
-  readonly mapWidth: number;
-  readonly mapHeight: number;
+  readonly mapWidth: number | null;
+  readonly mapHeight: number | null;
 }
 
 export interface CampaignService {
@@ -170,8 +170,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         country_id: string | null;
         first_turn_commitment: string | null;
         created_at: Date;
-        map_width: number;
-        map_height: number;
+        map_width: number | null;
+        map_height: number | null;
       }>(
         `SELECT c.id, c.name, c.status, c.current_turn, c.orders_locked,
                 m.status AS member_status, m.country_id,
