@@ -195,7 +195,10 @@ function registerCampaignRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
-      const campaign = await campaignService.createCampaign(user.id, body['name']);
+      const campaign = await campaignService.createCampaign(user.id, body['name'], {
+        mapWidth: body['mapWidth'] as number,
+        mapHeight: body['mapHeight'] as number,
+      });
       return reply.code(201).send({ campaign });
     } catch (error) {
       return sendAuthError(error, reply);
