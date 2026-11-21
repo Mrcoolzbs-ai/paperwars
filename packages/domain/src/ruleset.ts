@@ -47,7 +47,9 @@ export function validateRulesetManifest(manifest: RulesetManifest): void {
       (version) => typeof version !== 'string' || version.trim().length === 0,
     )
   ) {
-    throw new RulesetCompatibilityError('At least one non-empty supported engine version is required');
+    throw new RulesetCompatibilityError(
+      'At least one non-empty supported engine version is required',
+    );
   }
 
   if (new Set(manifest.supportedEngineVersions).size !== manifest.supportedEngineVersions.length) {
