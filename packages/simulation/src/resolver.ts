@@ -10,6 +10,7 @@ import {
   type RulesetManifest,
   type TurnResolution,
   type TurnResolver,
+  type WeightedOutcome,
   type TurnSimulationInput,
   type WorldSnapshot,
 } from '@paper-wars/domain';
@@ -38,7 +39,6 @@ export interface TurnPhaseOutput<TState, TEvent> {
   readonly state: Readonly<TState>;
   readonly orderResults?: readonly OrderResolution[];
   readonly events?: readonly TEvent[];
-  readonly randomDraws?: readonly RandomDrawRecord[];
   readonly campaignEnded?: boolean;
 }
 
@@ -80,6 +80,117 @@ function append<T>(current: readonly T[], additions: readonly T[] | undefined): 
   return Object.freeze([...current, ...additions]);
 }
 
+export class SimulationRandomSourceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SimulationRandomSourceError';
+  }
+}
+
+export class SimulationRandomDrawConflictError extends Error {
+  constructor(domain: string, drawId: string) {
+    super(`Random draw ${domain}/${drawId} was reused with different bounds or value`);
+    this.name = 'SimulationRandomDrawConflictError';
+  }
+}
+
+const MAX_UNIFORM_RANGE = 2 ** 32;
+
+function createRecordedRandomSource(source: RandomSource): {
+  readonly random: RandomSource;
+  readonly getDraws: () => readonly RandomDrawRecord[];
+} {
+  const records = new Map<string, RandomDrawRecord>();
+
+  const record = (
+    domain: string,
+    drawId: string,
+    minValue: number,
+    maxValue: number,
+    value: number,
+  ): number => {
+    if (domain.trim().length === 0 || drawId.trim().length === 0) {
+      throw new SimulationRandomSourceError('Random draw domain and drawId must not be empty');
+    }
+    const key = `${domain.length}:${domain}${drawId.length}:${drawId}`;
+    const existing = records.get(key);
+    if (existing !== undefined) {
+      if (
+        existing.minValue !== minValue ||
+        existing.maxValue !== maxValue ||
+        existing.value !== value
+      ) {
+        throw new SimulationRandomDrawConflictError(domain, drawId);
+      }
+      return value;
+    }
+    records.set(key, Object.freeze({ domain, drawId, minValue, maxValue, value }));
+    return value;
+  };
+
+  const uniform = (domain: string, drawId: string, min: number, max: number): number => {
+    if (
+      !Number.isSafeInteger(min) ||
+      !Number.isSafeInteger(max) ||
+      min > max ||
+      max - min + 1 > MAX_UNIFORM_RANGE
+    ) {
+      throw new SimulationRandomSourceError('Uniform draw bounds are outside the supported range');
+    }
+
+    const value = source.uniform(domain, drawId, min, max);
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      throw new SimulationRandomSourceError(
+        `Random source returned ${value} outside the requested range [${min}, ${max}]`,
+      );
+    }
+    return record(domain, drawId, min, max, value);
+  };
+
+  const weighted = <T>(
+    domain: string,
+    drawId: string,
+    outcomes: readonly WeightedOutcome<T>[],
+  ): T => {
+    if (outcomes.length === 0) {
+      throw new SimulationRandomSourceError('Weighted outcome table must not be empty');
+    }
+
+    let totalWeight = 0;
+    const ids = new Set<string>();
+    for (const outcome of outcomes) {
+      if (outcome.id.trim().length === 0 || ids.has(outcome.id)) {
+        throw new SimulationRandomSourceError(
+          'Weighted outcome IDs must be non-empty and unique',
+        );
+      }
+      if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
+        throw new SimulationRandomSourceError(
+          `Weight for ${outcome.id} must be a positive safe integer`,
+        );
+      }
+      ids.add(outcome.id);
+      totalWeight += outcome.weight;
+      if (!Number.isSafeInteger(totalWeight) || totalWeight > MAX_UNIFORM_RANGE) {
+        throw new SimulationRandomSourceError('Total weighted outcome weight must not exceed 2^32');
+      }
+    }
+
+    const target = uniform(domain, drawId, 0, totalWeight - 1);
+    let cumulativeWeight = 0;
+    for (const outcome of outcomes) {
+      cumulativeWeight += outcome.weight;
+      if (target < cumulativeWeight) return outcome.value;
+    }
+    throw new SimulationRandomSourceError('Weighted outcome selection fell outside its table');
+  };
+
+  return {
+    random: Object.freeze({ uniform, weighted }),
+    getDraws: () => Object.freeze([...records.values()]),
+  };
+}
+
 /**
  * Builds a deterministic, synchronous turn resolver.
  *
@@ -111,6 +222,7 @@ export function createTurnResolver<
     let state: Readonly<TState> = input.snapshot.state;
     let orderResults: readonly OrderResolution[] = Object.freeze([]);
     let events: readonly TEvent[] = Object.freeze([]);
+    const recordedRandom = createRecordedRandomSource(input.random);
     let randomDraws: readonly RandomDrawRecord[] = Object.freeze([]);
     let campaignEnded = false;
 
@@ -121,7 +233,7 @@ export function createTurnResolver<
         state,
         orders: input.orders,
         ruleset: input.ruleset,
-        random: input.random,
+        random: recordedRandom.random,
         orderResults,
         events,
         randomDraws,
@@ -142,7 +254,7 @@ export function createTurnResolver<
       state = output.state;
       orderResults = append(orderResults, output.orderResults);
       events = append(events, output.events);
-      randomDraws = append(randomDraws, output.randomDraws);
+      randomDraws = recordedRandom.getDraws();
       campaignEnded = campaignEnded || output.campaignEnded === true;
     }
 
