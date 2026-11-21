@@ -7,7 +7,12 @@ import {
   revealCampaignSeeds,
   runMigrations,
 } from '@paper-wars/persistence';
-import type { SeedKeyProvider } from '@paper-wars/randomness';
+import type { SeedKeyProvider, RNGContext } from '@paper-wars/randomness';
+import {
+  drawUniformAndRecord,
+  drawWeightedAndRecord,
+  RandomDrawConflictError,
+} from '@paper-wars/persistence';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
@@ -290,6 +295,99 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           }),
         ).rejects.toMatchObject({ code: '23505' });
         await client.query('ROLLBACK TO SAVEPOINT duplicate_campaign_turn');
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+
+    it('persists random draws idempotently and rejects identifier reuse with changed bounds', async () => {
+      const current = getPersistence();
+      const client = await current.pool.connect();
+
+      try {
+        await client.query('BEGIN');
+        const campaign = await client.query<{ id: string }>(
+          `INSERT INTO campaigns (name, ruleset_version, rng_version)
+           VALUES ($1, $2, $3) RETURNING id`,
+          ['random-draw-audit-test', 'baseline-v1', 'hmac-v1'],
+        );
+        const campaignId = campaign.rows[0]?.id;
+        if (campaignId === undefined) {
+          throw new Error('Campaign insert did not return an id');
+        }
+
+        const context: RNGContext = {
+          campaignId,
+          turnNumber: 1,
+          rngVersion: 'hmac-v1',
+          turnSeed: Buffer.alloc(32, 0x7c),
+        };
+        const drawId = 'battle:army-1:morale:50';
+        const first = await drawUniformAndRecord(
+          client,
+          context,
+          'battle',
+          drawId,
+          1,
+          6,
+        );
+        const repeated = await drawUniformAndRecord(
+          client,
+          context,
+          'battle',
+          drawId,
+          1,
+          6,
+        );
+        expect(repeated).toBe(first);
+
+        await expect(
+          drawUniformAndRecord(client, context, 'battle', drawId, 1, 100),
+        ).rejects.toBeInstanceOf(RandomDrawConflictError);
+
+        const weightedTable = [
+          { id: 'common', weight: 80, value: 'common' },
+          { id: 'rare', weight: 15, value: 'rare' },
+          { id: 'unique', weight: 5, value: 'unique' },
+        ] as const;
+        const weightedFirst = await drawWeightedAndRecord(
+          client,
+          context,
+          'loot',
+          'ruins:cell-42',
+          weightedTable,
+        );
+        const weightedRepeated = await drawWeightedAndRecord(
+          client,
+          context,
+          'loot',
+          'ruins:cell-42',
+          weightedTable,
+        );
+        expect(weightedRepeated).toBe(weightedFirst);
+
+        const rows = await client.query<{
+          domain: string;
+          draw_id: string;
+          min_value: string;
+          max_value: string;
+          value: string;
+        }>(
+          `SELECT domain, draw_id, min_value::text, max_value::text, value::text
+           FROM random_draws WHERE campaign_id = $1 ORDER BY domain, draw_id`,
+          [campaignId],
+        );
+        expect(rows.rows).toHaveLength(2);
+        expect(rows.rows.find((row) => row.domain === 'battle')).toMatchObject({
+          min_value: '1',
+          max_value: '6',
+          value: String(first),
+        });
+        expect(rows.rows.find((row) => row.domain === 'loot')).toMatchObject({
+          min_value: '0',
+          max_value: '99',
+        });
       } finally {
         await client.query('ROLLBACK');
         client.release();
