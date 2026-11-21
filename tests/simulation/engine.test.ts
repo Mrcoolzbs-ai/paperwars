@@ -96,8 +96,7 @@ function createHandlers(
         return {
           state: nextState,
           events: [{ phase: context.phase, count: nextCount }],
-          ...(context.phase === 'VALIDATE' &&
-          context.orders.some((order) => order.id === orderId)
+          ...(context.phase === 'VALIDATE' && context.orders.some((order) => order.id === orderId)
             ? {
                 orderResults: [
                   {
