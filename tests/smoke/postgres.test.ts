@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env['DATABASE_URL'];
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'PostgreSQL persistence foundation',
