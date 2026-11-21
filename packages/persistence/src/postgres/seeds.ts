@@ -107,7 +107,7 @@ export async function createCommittedSeed(
     }
   }
 
-  throw new Error('Failed to generate unique AES-GCM nonce after 100 attempts');
+  throw new Error(`Failed to generate unique AES-GCM nonce after ${maxNonceAttempts} attempts`);
 }
 
 async function loadSeedWithStatus(
