@@ -10,9 +10,7 @@ export interface SimulationEngineDescriptor {
   readonly rngVersion: string;
 }
 
-export function createSimulationEngine(
-  config: SimulationEngineConfig,
-): SimulationEngineDescriptor {
+export function createSimulationEngine(config: SimulationEngineConfig): SimulationEngineDescriptor {
   if (config.rulesetVersion.trim().length === 0) {
     throw new RangeError('rulesetVersion must not be empty');
   }
