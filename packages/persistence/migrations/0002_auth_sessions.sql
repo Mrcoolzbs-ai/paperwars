@@ -33,3 +33,7 @@ CREATE INDEX refresh_tokens_family_idx
 
 CREATE INDEX refresh_tokens_expiry_idx
   ON refresh_tokens (expires_at);
+
+ALTER TABLE refresh_tokens
+  ADD CONSTRAINT refresh_tokens_replaced_by_fk
+  FOREIGN KEY (replaced_by_token_id) REFERENCES refresh_tokens (id);
