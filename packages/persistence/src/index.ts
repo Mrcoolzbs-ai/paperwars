@@ -4,3 +4,10 @@ export { runMigrations } from './postgres/migrate.js';
 export type { RunMigrationsOptions } from './postgres/migrate.js';
 export * as databaseSchema from './postgres/schema.js';
 export type { ReadRepository, TransactionRunner } from './ports.js';
+export {
+  createCommittedSeed,
+  loadRevealedSeed,
+  loadSeedForWorker,
+  revealCampaignSeeds,
+} from './postgres/seeds.js';
+export type { CreateCommittedSeedOptions, CreatedSeedReference } from './postgres/seeds.js';
