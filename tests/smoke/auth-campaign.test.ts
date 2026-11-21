@@ -154,7 +154,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       const campaignName = `integration-${randomUUID()}`;
 
-      const created = await campaigns.createCampaign(user.user.id, campaignName);
+      const created = await campaigns.createCampaign(user.user.id, campaignName, { mapWidth: 40, mapHeight: 30 });
       expect(created.status).toBe('active');
       expect(created.currentTurn).toBe(1);
       expect(created.ordersLocked).toBe(true);
@@ -210,9 +210,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         seedOptions: stableOptions,
       });
 
-      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`);
+      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`, { mapWidth: 40, mapHeight: 30 });
       const failedName = `should-rollback-${randomUUID()}`;
-      await expect(campaigns.createCampaign(user.user.id, failedName)).rejects.toThrow(
+      await expect(campaigns.createCampaign(user.user.id, failedName, { mapWidth: 40, mapHeight: 30 })).rejects.toThrow(
         /Failed to generate unique AES-GCM nonce/,
       );
 
