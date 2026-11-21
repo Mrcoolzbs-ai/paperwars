@@ -1,10 +1,4 @@
-import type {
-  CampaignId,
-  CountryId,
-  EventId,
-  OrderId,
-  TurnNumber,
-} from '@paper-wars/shared';
+import type { CampaignId, CountryId, EventId, OrderId, TurnNumber } from '@paper-wars/shared';
 
 export type CampaignStatus = 'active' | 'completed';
 export type CountryStatus = 'active' | 'eliminated';
@@ -66,7 +60,10 @@ export interface RandomDrawRecord {
   readonly value: number;
 }
 
-export interface TurnResolution<TState, TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>> {
+export interface TurnResolution<
+  TState,
+  TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
+> {
   readonly campaignId: CampaignId;
   readonly turnNumber: TurnNumber;
   readonly sourceSnapshotVersion: number;
@@ -102,9 +99,7 @@ export type TurnResolver<
   TPayload,
   TRuleset extends object,
   TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
-> = (
-  input: TurnSimulationInput<TState, TPayload, TRuleset>,
-) => TurnResolution<TState, TEvent>;
+> = (input: TurnSimulationInput<TState, TPayload, TRuleset>) => TurnResolution<TState, TEvent>;
 
 export class TurnResolutionInvariantError extends Error {
   constructor(message: string) {
@@ -125,13 +120,17 @@ export function assertTurnResolutionMatchesInput<TState, TEvent>(
     throw new TurnResolutionInvariantError('Turn resolution number does not match its snapshot');
   }
   if (resolution.sourceSnapshotVersion !== snapshot.version) {
-    throw new TurnResolutionInvariantError('Turn resolution was produced from a stale snapshot version');
+    throw new TurnResolutionInvariantError(
+      'Turn resolution was produced from a stale snapshot version',
+    );
   }
 
   const orderIds = new Set<string>();
   for (const result of resolution.orderResults) {
     if (orderIds.has(result.orderId)) {
-      throw new TurnResolutionInvariantError(`Order ${result.orderId} has more than one resolution`);
+      throw new TurnResolutionInvariantError(
+        `Order ${result.orderId} has more than one resolution`,
+      );
     }
     orderIds.add(result.orderId);
   }
@@ -149,11 +148,15 @@ export function assertTurnResolutionMatchesInput<TState, TEvent>(
       draw.value < draw.minValue ||
       draw.value > draw.maxValue
     ) {
-      throw new TurnResolutionInvariantError(`Random draw ${draw.domain}/${draw.drawId} has an invalid range or value`);
+      throw new TurnResolutionInvariantError(
+        `Random draw ${draw.domain}/${draw.drawId} has an invalid range or value`,
+      );
     }
     const key = `${draw.domain.length}:${draw.domain}${draw.drawId}`;
     if (drawIds.has(key)) {
-      throw new TurnResolutionInvariantError(`Random draw ${draw.domain}/${draw.drawId} is duplicated`);
+      throw new TurnResolutionInvariantError(
+        `Random draw ${draw.domain}/${draw.drawId} is duplicated`,
+      );
     }
     drawIds.add(key);
   }
