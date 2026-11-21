@@ -71,7 +71,7 @@ const orders: readonly OrderEnvelope<TestOrderPayload>[] = [
 ];
 
 const random = {
-  uniform: (_domain: string, _drawId: string, min: number, _max: number) => min,
+  uniform: (_domain: string, _drawId: string, min: number, max: number) => Math.min(min + 3, max),
   weighted: <T>(_domain: string, _drawId: string, outcomes: readonly { readonly value: T }[]) => {
     const first = outcomes[0];
     if (first === undefined) throw new Error('A weighted test outcome is required');
@@ -110,17 +110,13 @@ function createHandlers(
               }
             : {}),
           ...(context.phase === 'BATTLE'
-            ? {
-                randomDraws: [
-                  {
-                    domain: 'test',
-                    drawId: 'battle:1',
-                    minValue: 1,
-                    maxValue: 6,
-                    value: 4,
-                  },
-                ],
-              }
+            ? (context.random.uniform('test', 'battle:1', 1, 6), {})
+            : {}),
+          ...(context.phase === 'RESEARCH'
+            ? (context.random.weighted('test', 'research:choice', [
+                { id: 'common', weight: 2, value: 'common' },
+                { id: 'rare', weight: 1, value: 'rare' },
+              ]), {})
             : {}),
           ...(context.phase === 'SEASONAL_EVENTS' ? { campaignEnded: true } : {}),
         };
@@ -168,6 +164,13 @@ describe('Simulation Engine phase runner', () => {
         minValue: 1,
         maxValue: 6,
         value: 4,
+      },
+      {
+        domain: 'test',
+        drawId: 'research:choice',
+        minValue: 0,
+        maxValue: 2,
+        value: 2,
       },
     ]);
     expect(resolution.campaignEnded).toBe(true);
@@ -247,6 +250,67 @@ describe('Simulation Engine phase runner', () => {
         phaseHandlers: incomplete,
       }),
     ).toThrow(SimulationPhaseConfigurationError);
+  });
+
+  it('deduplicates identical draws and rejects reuse with changed bounds', () => {
+    const handlers = createHandlers();
+    const resolver = createTurnResolver({
+      engine,
+      phaseHandlers: {
+        ...handlers,
+        MOVE: (context) => {
+          context.random.uniform('test', 'shared:draw', 1, 6);
+          return { state: context.state };
+        },
+        BATTLE: (context) => {
+          context.random.uniform('test', 'shared:draw', 1, 6);
+          return { state: context.state };
+        },
+      },
+    });
+
+    const resolution = resolver({ snapshot, orders: [], ruleset: manifest, random });
+    expect(resolution.randomDraws.filter((draw) => draw.drawId === 'shared:draw')).toHaveLength(1);
+
+    const conflicting = createTurnResolver({
+      engine,
+      phaseHandlers: {
+        ...handlers,
+        MOVE: (context) => {
+          context.random.uniform('test', 'shared:draw', 1, 6);
+          return { state: context.state };
+        },
+        BATTLE: (context) => {
+          context.random.uniform('test', 'shared:draw', 1, 10);
+          return { state: context.state };
+        },
+      },
+    });
+
+    expect(() =>
+      conflicting({ snapshot, orders: [], ruleset: manifest, random }),
+    ).toThrow(/reused with different bounds or value/);
+  });
+
+  it('rejects invalid values returned by the supplied random source', () => {
+    const resolver = createTurnResolver({
+      engine,
+      phaseHandlers: {
+        ...createHandlers(),
+        BATTLE: (context) => {
+          context.random.uniform('test', 'outside-range', 1, 6);
+          return { state: context.state };
+        },
+      },
+    });
+    const invalidRandom = {
+      ...random,
+      uniform: () => 100,
+    };
+
+    expect(() =>
+      resolver({ snapshot, orders: [], ruleset: manifest, random: invalidRandom }),
+    ).toThrow(/outside the requested range/);
   });
 
   it('provides an explicit no-op handler for phases whose mechanics are not ready', () => {
