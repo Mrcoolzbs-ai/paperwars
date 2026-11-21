@@ -608,9 +608,9 @@ export function createCountrySetupService(options: {
         } else {
           await client.query(
             `UPDATE world_snapshots
-             SET version = $3, state = $4, created_at = clock_timestamp()
+             SET version = $2, state = $3, created_at = clock_timestamp()
              WHERE campaign_id = $1 AND turn_number = 1`,
-            [campaignId, 1, snapshotVersion, state],
+            [campaignId, snapshotVersion, state],
           );
         }
 
