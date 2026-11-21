@@ -68,6 +68,11 @@ export const refreshTokens = pgTable(
       'refresh_tokens_used_at_check',
       sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`,
     ),
+    foreignKey({
+      name: 'refresh_tokens_replaced_by_fk',
+      columns: [table.replacedByTokenId],
+      foreignColumns: [table.id],
+    }),
     check(
       'refresh_tokens_revoked_at_check',
       sql`${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}`,
