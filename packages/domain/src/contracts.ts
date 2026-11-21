@@ -1,4 +1,13 @@
-import type { CampaignId, CellId, Coordinates, CountryId, EventId, OrderId, TurnNumber, UserId } from '@paper-wars/shared';
+import type {
+  CampaignId,
+  CellId,
+  Coordinates,
+  CountryId,
+  EventId,
+  OrderId,
+  TurnNumber,
+  UserId,
+} from '@paper-wars/shared';
 
 export type CampaignStatus = 'active' | 'completed';
 export type CountryStatus = 'active' | 'eliminated';
@@ -153,7 +162,9 @@ export function assertTurnResolutionMatchesInput<TState, TPayload, TEvent>(
   const expectedOrderIds = new Set<string>();
   for (const order of inputOrders) {
     if (order.campaignId !== snapshot.campaignId || order.turnNumber !== snapshot.turnNumber) {
-      throw new TurnResolutionInvariantError('Input order does not belong to the snapshot campaign and turn');
+      throw new TurnResolutionInvariantError(
+        'Input order does not belong to the snapshot campaign and turn',
+      );
     }
     if (expectedOrderIds.has(order.id)) {
       throw new TurnResolutionInvariantError(`Input order ${order.id} is duplicated`);
@@ -164,7 +175,9 @@ export function assertTurnResolutionMatchesInput<TState, TPayload, TEvent>(
   const resolvedOrderIds = new Set<string>();
   for (const result of resolution.orderResults) {
     if (!expectedOrderIds.has(result.orderId)) {
-      throw new TurnResolutionInvariantError(`Order ${result.orderId} was not supplied to the resolver`);
+      throw new TurnResolutionInvariantError(
+        `Order ${result.orderId} was not supplied to the resolver`,
+      );
     }
     if (resolvedOrderIds.has(result.orderId)) {
       throw new TurnResolutionInvariantError(
