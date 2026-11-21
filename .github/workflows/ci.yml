@@ -11,6 +11,7 @@ on:
         stage-1.4-auth-campaign-lifecycle,
         stage-1.5-domain-ruleset-contracts,
         stage-1.7-simulation-engine-skeleton,
+        stage-1.8-turn-processing,
       ]
   pull_request:
     branches: [main]

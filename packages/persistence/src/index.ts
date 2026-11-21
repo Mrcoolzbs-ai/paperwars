@@ -16,3 +16,26 @@ export {
   drawWeightedAndRecord,
   RandomDrawConflictError,
 } from './postgres/random-draws.js';
+
+export {
+  NoActiveParticipantsError,
+  OrdersAlreadyLockedError,
+  OrdersNotConfirmedError,
+  StaleWorkerError,
+  TurnProcessingError,
+  claimNextTurnJob,
+  closeOrders,
+  finalizeTurnJob,
+  lockCampaignForMembershipWrite,
+  lockCampaignForOrderWrite,
+  reapExpiredTurnJobs,
+  renewTurnJobLease,
+} from './postgres/turn-processing.js';
+export type {
+  CloseOrdersResult,
+  FinalizeTurnJobOptions,
+  FinalizeTurnJobResult,
+  ReapedTurnJob,
+  TurnEventInput,
+  TurnJobClaim,
+} from './postgres/turn-processing.js';
