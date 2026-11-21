@@ -207,9 +207,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           /only be revealed after the campaign is completed/,
         );
 
-        await client.query("UPDATE campaigns SET status = 'completed' WHERE id = $1", [
-          campaignId,
-        ]);
+        await client.query("UPDATE campaigns SET status = 'completed' WHERE id = $1", [campaignId]);
         await expect(revealCampaignSeeds(client, campaignId)).resolves.toBe(1);
         await expect(revealCampaignSeeds(client, campaignId)).resolves.toBe(0);
         expect(await loadRevealedSeed(client, keyProvider, context)).toEqual(seed);
@@ -322,22 +320,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           turnSeed: Buffer.alloc(32, 0x7c),
         };
         const drawId = 'battle:army-1:morale:50';
-        const first = await drawUniformAndRecord(
-          client,
-          context,
-          'battle',
-          drawId,
-          1,
-          6,
-        );
-        const repeated = await drawUniformAndRecord(
-          client,
-          context,
-          'battle',
-          drawId,
-          1,
-          6,
-        );
+        const first = await drawUniformAndRecord(client, context, 'battle', drawId, 1, 6);
+        const repeated = await drawUniformAndRecord(client, context, 'battle', drawId, 1, 6);
         expect(repeated).toBe(first);
 
         await expect(
@@ -391,6 +375,5 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         client.release();
       }
     });
-
   },
 );
