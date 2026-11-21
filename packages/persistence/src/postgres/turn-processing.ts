@@ -169,7 +169,7 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
     }>(
       'SELECT status, current_turn, orders_locked, ruleset_version, ' +
         '(deadline_at IS NOT NULL AND deadline_at <= clock_timestamp()) AS deadline_passed ' +
-          'FROM campaigns WHERE id = $1 FOR UPDATE',
+        'FROM campaigns WHERE id = $1 FOR UPDATE',
       [campaignId],
     );
     const campaign = campaignResult.rows[0];
