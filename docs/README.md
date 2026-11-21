@@ -16,6 +16,7 @@
 - [Обработка хода, транзакции и Worker](architecture/turn-processing.md).
 - [Разведка, руины, золото и доступ к находкам](architecture/discovery.md).
 - [Информационная видимость и DTO-проекции](architecture/information-visibility.md).
+- [Аутентификация и lifecycle кампании](architecture/authentication.md).
 
 ## Лор
 
@@ -39,8 +40,9 @@
 - Stage 1.1 monorepo и базовый API skeleton merged в `main` (PR #3).
 - Stage 1.2 PostgreSQL/Drizzle schema, SQL migrations и integration tests merged (PR #4).
 - Stage 1.3 RNG/commit-reveal primitives, AES-256-GCM seed persistence, versioned key provider и random draw log merged (PR #5).
-- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 21 тест прошли на PostgreSQL 18.7.
+- Stage 1.4 scrypt auth, access JWT, refresh rotation/replay revocation, authenticated campaign create/list и atomic campaign+membership+first seed merged (PR #6).
+- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 26 тестов прошли на PostgreSQL 18.7.
 
-Ещё не реализованы: authentication/campaign creation, связка первого seed с созданием кампании, полный Simulation Engine, turn Worker, closeOrders/finalization, игровые API/DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
+Ещё не реализованы: participant/role management, auth rate limiting/audit, country setup и world snapshot, полный Simulation Engine, turn Worker, closeOrders/finalization, игровые world DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
 
 Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
