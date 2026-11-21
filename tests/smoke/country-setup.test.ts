@@ -89,7 +89,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot', async () => {
+    it(
+      'creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot',
+      async () => {
       const current = getPersistence();
       const { auth, campaigns, countrySetup } = createServices();
       const firstUser = await auth.register(
@@ -207,7 +209,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         ruleset_version: string;
         state: { countries: Array<{ id: string; officialSystem: { type: string } }> };
       }>(
-        'SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = 1',
+        `SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots
+         WHERE campaign_id = $1 AND turn_number = 1`, 
         [campaign.id],
       );
       expect(snapshot.rows[0]).toMatchObject({
@@ -226,7 +229,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         buildings: string;
       }>(
         `SELECT
-           (SELECT count(*) FROM countries WHERE campaign_id = $1 AND setup_completed)::text AS countries,
+           (SELECT count(*) FROM countries
+             WHERE campaign_id = $1 AND setup_completed)::text AS countries,
            (SELECT count(*) FROM country_cells WHERE campaign_id = $1)::text AS cells,
            (SELECT sum(population) FROM country_cells WHERE campaign_id = $1)::text AS population,
            (SELECT count(*) FROM country_buildings WHERE campaign_id = $1)::text AS buildings`,
