@@ -92,157 +92,158 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it(
       'creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot',
       async () => {
-      const current = getPersistence();
-      const { auth, campaigns, countrySetup } = createServices();
-      const firstUser = await auth.register(
-        `country-one-${randomUUID()}@example.test`,
-        'country setup test password one',
-      );
-      const secondUser = await auth.register(
-        `country-two-${randomUUID()}@example.test`,
-        'country setup test password two',
-      );
+        const current = getPersistence();
+        const { auth, campaigns, countrySetup } = createServices();
+        const firstUser = await auth.register(
+          `country-one-${randomUUID()}@example.test`,
+          'country setup test password one',
+        );
+        const secondUser = await auth.register(
+          `country-two-${randomUUID()}@example.test`,
+          'country setup test password two',
+        );
 
-      const campaign = await campaigns.createCampaign(
-        firstUser.user.id,
-        `country-world-${randomUUID()}`,
-        { mapWidth: 20, mapHeight: 20 },
-      );
-      await current.pool.query(
-        `INSERT INTO campaign_memberships (
-           campaign_id, user_id, status, orders_confirmed
-         ) VALUES ($1, $2, 'active', FALSE)`,
-        [campaign.id, secondUser.user.id],
-      );
+        const campaign = await campaigns.createCampaign(
+          firstUser.user.id,
+          `country-world-${randomUUID()}`,
+          { mapWidth: 20, mapHeight: 20 },
+        );
+        await current.pool.query(
+          `INSERT INTO campaign_memberships (
+             campaign_id, user_id, status, orders_confirmed
+           ) VALUES ($1, $2, 'active', FALSE)`,
+          [campaign.id, secondUser.user.id],
+        );
 
-      const firstCountry = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
-        name: 'Republic of the Dawn',
-        spawnX: 5,
-        spawnY: 5,
-        officialSystem: {
-          type: 'religion',
-          newSystemName: 'Dawn Covenant',
-        },
-        buildings: RELIGION_BUILDINGS,
-      });
+        const firstCountry = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
+          name: 'Republic of the Dawn',
+          spawnX: 5,
+          spawnY: 5,
+          officialSystem: {
+            type: 'religion',
+            newSystemName: 'Dawn Covenant',
+          },
+          buildings: RELIGION_BUILDINGS,
+        });
 
-      expect(firstCountry.territory).toEqual({
-        centerX: 5,
-        centerY: 5,
-        width: 5,
-        height: 5,
-      });
-      expect(firstCountry.buildingCount).toBe(7);
-      expect(firstCountry.residentCount).toBe(18);
-      expect(firstCountry.snapshotVersion).toBe(1);
-      expect(firstCountry.officialSystem.type).toBe('religion');
+        expect(firstCountry.territory).toEqual({
+          centerX: 5,
+          centerY: 5,
+          width: 5,
+          height: 5,
+        });
+        expect(firstCountry.buildingCount).toBe(7);
+        expect(firstCountry.residentCount).toBe(18);
+        expect(firstCountry.snapshotVersion).toBe(1);
+        expect(firstCountry.officialSystem.type).toBe('religion');
 
-      const firstPopulation = await current.pool.query<{
-        cell_count: string;
-        resident_count: string;
-        building_count: string;
-        building_cell_population: string;
-      }>(
-        `SELECT
-           count(*)::text AS cell_count,
-           sum(population)::text AS resident_count,
-           count(building.id)::text AS building_count,
-           count(*) FILTER (WHERE building.id IS NOT NULL AND cc.population <> 0)::text
-             AS building_cell_population
-         FROM country_cells AS cc
-         LEFT JOIN country_buildings AS building
-           ON building.campaign_id = cc.campaign_id
-          AND building.country_id = cc.country_id
-          AND building.cell_id = cc.cell_id
-         WHERE cc.campaign_id = $1 AND cc.country_id = $2`,
-        [campaign.id, firstCountry.id],
-      );
-      expect(firstPopulation.rows[0]).toEqual({
-        cell_count: '25',
-        resident_count: '18',
-        building_count: '7',
-        building_cell_population: '0',
-      });
+        const firstPopulation = await current.pool.query<{
+          cell_count: string;
+          resident_count: string;
+          building_count: string;
+          building_cell_population: string;
+        }>(
+          `SELECT
+             count(*)::text AS cell_count,
+             sum(population)::text AS resident_count,
+             count(building.id)::text AS building_count,
+             count(*) FILTER (WHERE building.id IS NOT NULL AND cc.population <> 0)::text
+               AS building_cell_population
+           FROM country_cells AS cc
+           LEFT JOIN country_buildings AS building
+             ON building.campaign_id = cc.campaign_id
+            AND building.country_id = cc.country_id
+            AND building.cell_id = cc.cell_id
+           WHERE cc.campaign_id = $1 AND cc.country_id = $2`,
+          [campaign.id, firstCountry.id],
+        );
+        expect(firstPopulation.rows[0]).toEqual({
+          cell_count: '25',
+          resident_count: '18',
+          building_count: '7',
+          building_cell_population: '0',
+        });
 
-      const firstCountryRow = await current.pool.query<{
-        setup_completed: boolean;
-        official_system_type: string;
-      }>(
-        'SELECT setup_completed, official_system_type FROM countries WHERE id = $1',
-        [firstCountry.id],
-      );
-      expect(firstCountryRow.rows[0]).toEqual({
-        setup_completed: true,
-        official_system_type: 'religion',
-      });
+        const firstCountryRow = await current.pool.query<{
+          setup_completed: boolean;
+          official_system_type: string;
+        }>(
+          'SELECT setup_completed, official_system_type FROM countries WHERE id = $1',
+          [firstCountry.id],
+        );
+        expect(firstCountryRow.rows[0]).toEqual({
+          setup_completed: true,
+          official_system_type: 'religion',
+        });
 
-      // Q7: state-level official systems remain exclusive per state; a different
-      // state can select an ideology in the same campaign.
-      const existingSystems = await countrySetup.listAvailableSystems(
-        firstUser.user.id,
-        campaign.id,
-        'religion',
-        12,
-        12,
-      ).catch((error: unknown) => {
-        expect(error).toBeInstanceOf(SystemAvailabilityNotConfiguredError);
-        return [];
-      });
-      expect(existingSystems).toEqual([]);
+        // Q7: state-level official systems remain exclusive per state; a different
+        // state can select an ideology in the same campaign.
+        const existingSystems = await countrySetup.listAvailableSystems(
+          firstUser.user.id,
+          campaign.id,
+          'religion',
+          12,
+          12,
+        ).catch((error: unknown) => {
+          expect(error).toBeInstanceOf(SystemAvailabilityNotConfiguredError);
+          return [];
+        });
+        expect(existingSystems).toEqual([]);
 
-      const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
-        name: 'Free Thought Collective',
-        spawnX: 13,
-        spawnY: 13,
-        officialSystem: {
-          type: 'ideology',
-          newSystemName: 'Civic Rationalism',
-        },
-        buildings: IDEOLOGY_BUILDINGS,
-      });
-      expect(secondCountry.officialSystem.type).toBe('ideology');
-      expect(secondCountry.snapshotVersion).toBe(2);
+        const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
+          name: 'Free Thought Collective',
+          spawnX: 13,
+          spawnY: 13,
+          officialSystem: {
+            type: 'ideology',
+            newSystemName: 'Civic Rationalism',
+          },
+          buildings: IDEOLOGY_BUILDINGS,
+        });
+        expect(secondCountry.officialSystem.type).toBe('ideology');
+        expect(secondCountry.snapshotVersion).toBe(2);
 
-      const snapshot = await current.pool.query<{
-        version: number;
-        state_schema_version: number;
-        ruleset_version: string;
-        state: { countries: Array<{ id: string; officialSystem: { type: string } }> };
-      }>(
-        `SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots
-         WHERE campaign_id = $1 AND turn_number = 1`, 
-        [campaign.id],
-      );
-      expect(snapshot.rows[0]).toMatchObject({
-        version: 2,
-        state_schema_version: 1,
-        ruleset_version: 'baseline-v1',
-      });
-      expect(snapshot.rows[0]?.state.countries).toHaveLength(2);
-      expect(snapshot.rows[0]?.state.countries.map((country) => country.officialSystem.type).sort())
-        .toEqual(['ideology', 'religion']);
+        const snapshot = await current.pool.query<{
+          version: number;
+          state_schema_version: number;
+          ruleset_version: string;
+          state: { countries: Array<{ id: string; officialSystem: { type: string } }> };
+        }>(
+          `SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots
+           WHERE campaign_id = $1 AND turn_number = 1`,
+          [campaign.id],
+        );
+        expect(snapshot.rows[0]).toMatchObject({
+          version: 2,
+          state_schema_version: 1,
+          ruleset_version: 'baseline-v1',
+        });
+        expect(snapshot.rows[0]?.state.countries).toHaveLength(2);
+        expect(snapshot.rows[0]?.state.countries.map((country) => country.officialSystem.type).sort())
+          .toEqual(['ideology', 'religion']);
 
-      const totals = await current.pool.query<{
-        countries: string;
-        cells: string;
-        population: string;
-        buildings: string;
-      }>(
-        `SELECT
-           (SELECT count(*) FROM countries
-             WHERE campaign_id = $1 AND setup_completed)::text AS countries,
-           (SELECT count(*) FROM country_cells WHERE campaign_id = $1)::text AS cells,
-           (SELECT sum(population) FROM country_cells WHERE campaign_id = $1)::text AS population,
-           (SELECT count(*) FROM country_buildings WHERE campaign_id = $1)::text AS buildings`,
-        [campaign.id],
-      );
-      expect(totals.rows[0]).toEqual({
-        countries: '2',
-        cells: '50',
-        population: '36',
-        buildings: '14',
-      });
-    });
+        const totals = await current.pool.query<{
+          countries: string;
+          cells: string;
+          population: string;
+          buildings: string;
+        }>(
+          `SELECT
+             (SELECT count(*) FROM countries
+               WHERE campaign_id = $1 AND setup_completed)::text AS countries,
+             (SELECT count(*) FROM country_cells WHERE campaign_id = $1)::text AS cells,
+             (SELECT sum(population) FROM country_cells WHERE campaign_id = $1)::text AS population,
+             (SELECT count(*) FROM country_buildings WHERE campaign_id = $1)::text AS buildings`,
+          [campaign.id],
+        );
+        expect(totals.rows[0]).toEqual({
+          countries: '2',
+          cells: '50',
+          population: '36',
+          buildings: '14',
+        });
+      },
+    ););
 
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
       const current = getPersistence();
