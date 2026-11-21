@@ -32,14 +32,15 @@
 - [VK discussions export](../VK_discussions_205658089_2026-11-20.docx)
 - [VK wall export](../VK_wall_205658089_2026-11-20.docx)
 
-## Статус реализации
+## Статус реализации на 21 ноября 2026 года
 
-Baseline содержит спецификации и псевдокод. Они не означают, что соответствующие механизмы уже реализованы.
+Документы остаются нормативным Baseline; часть технических контрактов уже реализована и проверена:
 
-На момент фиксации:
-- основной `main` содержит первичные архивы;
-- инфраструктурный кодовый каркас находится в отдельной ветке `stage-1.1-monorepo`;
-- схема БД, миграции, seed service, RNG и turn worker ещё требуют реализации и исполняемых тестов;
-- Q18–Q20 остаются PROPOSAL и не входят в канон.
+- Stage 1.1 monorepo и базовый API skeleton merged в `main` (PR #3).
+- Stage 1.2 PostgreSQL/Drizzle schema, SQL migrations и integration tests merged (PR #4).
+- Stage 1.3 RNG/commit-reveal primitives, AES-256-GCM seed persistence, versioned key provider и random draw log merged (PR #5).
+- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 21 тест прошли на PostgreSQL 18.7.
+
+Ещё не реализованы: authentication/campaign creation, связка первого seed с созданием кампании, полный Simulation Engine, turn Worker, closeOrders/finalization, игровые API/DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
 
 Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
