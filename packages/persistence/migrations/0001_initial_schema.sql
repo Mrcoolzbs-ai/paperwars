@@ -178,7 +178,8 @@ CREATE TABLE battle_reports (
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   turn_number INTEGER NOT NULL,
   report JSONB NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT battle_reports_turn_positive CHECK (turn_number >= 1)
 );
 
 CREATE INDEX battle_reports_campaign_turn_idx
