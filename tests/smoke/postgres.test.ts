@@ -56,7 +56,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         ['migration-test-job', 'baseline-v1', 'rng-v1'],
       );
       const campaignId = campaignResult.rows[0]?.id;
-      expect(campaignId).toBeDefined();
+      if (campaignId === undefined) {
+        throw new Error('Campaign insert did not return an id');
+      }
 
       try {
         const jobResult = await current.pool.query<{
@@ -90,16 +92,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
     it('enforces the unique AES-GCM nonce per key version', async () => {
       const current = getPersistence();
-      const campaigns = await current.pool.query<{ id: string }>(
+      const firstCampaign = await current.pool.query<{ id: string }>(
         `INSERT INTO campaigns (name, ruleset_version, rng_version)
-         VALUES ($1, $2, $3), ($4, $5, $6)
-         RETURNING id`,
-        ['nonce-test-a', 'baseline-v1', 'rng-v1', 'nonce-test-b', 'baseline-v1', 'rng-v1'],
+         VALUES ($1, $2, $3) RETURNING id`,
+        ['nonce-test-a', 'baseline-v1', 'rng-v1'],
       );
-      const firstCampaignId = campaigns.rows[0]?.id;
-      const secondCampaignId = campaigns.rows[1]?.id;
-      expect(firstCampaignId).toBeDefined();
-      expect(secondCampaignId).toBeDefined();
+      const secondCampaign = await current.pool.query<{ id: string }>(
+        `INSERT INTO campaigns (name, ruleset_version, rng_version)
+         VALUES ($1, $2, $3) RETURNING id`,
+        ['nonce-test-b', 'baseline-v1', 'rng-v1'],
+      );
+      const firstCampaignId = firstCampaign.rows[0]?.id;
+      const secondCampaignId = secondCampaign.rows[0]?.id;
+      if (firstCampaignId === undefined || secondCampaignId === undefined) {
+        throw new Error('Campaign inserts did not return ids');
+      }
 
       const nonce = Buffer.alloc(12, 7);
       const seedValues = (campaignId: string) => [
@@ -118,7 +125,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
              campaign_id, turn_number, commitment, encrypted_seed,
              encryption_key_version, nonce, auth_tag, rng_version
            ) VALUES ($1, 1, $2, $3, $4, $5, $6, $7)`,
-          seedValues(firstCampaignId as string),
+          seedValues(firstCampaignId),
         );
 
         await expect(
@@ -127,7 +134,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
                campaign_id, turn_number, commitment, encrypted_seed,
                encryption_key_version, nonce, auth_tag, rng_version
              ) VALUES ($1, 1, $2, $3, $4, $5, $6, $7)`,
-            seedValues(secondCampaignId as string),
+            seedValues(secondCampaignId),
           ),
         ).rejects.toMatchObject({ code: '23505' });
       } finally {
