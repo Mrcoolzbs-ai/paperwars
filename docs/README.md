@@ -41,8 +41,9 @@
 - Stage 1.2 PostgreSQL/Drizzle schema, SQL migrations и integration tests merged (PR #4).
 - Stage 1.3 RNG/commit-reveal primitives, AES-256-GCM seed persistence, versioned key provider и random draw log merged (PR #5).
 - Stage 1.4 scrypt auth, access JWT, refresh rotation/replay revocation, authenticated campaign create/list и atomic campaign+membership+first seed merged (PR #6).
-- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 26 тестов прошли на PostgreSQL 18.7.
+- Stage 1.5 branded domain entities, order/event/snapshot/resolution contracts, versioned RulesetManifest и state compatibility migration merged (PR #7).
+- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 55 тестов прошли на PostgreSQL 18.7.
 
-Ещё не реализованы: participant/role management, auth rate limiting/audit, country setup и world snapshot, полный Simulation Engine, turn Worker, closeOrders/finalization, игровые world DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
+Ещё не реализованы: participant/role management, auth rate limiting/audit, исполняемый Simulation Engine, turn Worker, closeOrders/finalization, Stage 2 country setup (Q24, карта и старт 7/18), игровые world DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
 
 Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
