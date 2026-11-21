@@ -14,9 +14,10 @@ const databaseUrl = process.env['DATABASE_URL'];
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'authentication and campaign HTTP API',
   () => {
-    const persistence = databaseUrl === undefined
-      ? undefined
-      : createPostgresPersistence({ connectionString: databaseUrl });
+    const persistence =
+      databaseUrl === undefined
+        ? undefined
+        : createPostgresPersistence({ connectionString: databaseUrl });
     const key: Buffer = Buffer.alloc(32, 0x18);
     const keyProvider: SeedKeyProvider = {
       getActiveKey: async () => ({ version: 'api-test-key-v1', key }),
@@ -31,21 +32,23 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       audience: 'paper-wars-web',
       ttlSeconds: 900,
     });
-    const auth = persistence === undefined
-      ? undefined
-      : createAuthService({
-          pool: persistence.pool,
-          accessTokens: signer,
-          refreshTokenTtlSeconds: 3600,
-        });
-    const campaigns = persistence === undefined
-      ? undefined
-      : createCampaignService({
-          pool: persistence.pool,
-          keyProvider,
-          rulesetVersion: 'baseline-v1',
-          rngVersion: 'rng-v1',
-        });
+    const auth =
+      persistence === undefined
+        ? undefined
+        : createAuthService({
+            pool: persistence.pool,
+            accessTokens: signer,
+            refreshTokenTtlSeconds: 3600,
+          });
+    const campaigns =
+      persistence === undefined
+        ? undefined
+        : createCampaignService({
+            pool: persistence.pool,
+            keyProvider,
+            rulesetVersion: 'baseline-v1',
+            rngVersion: 'rng-v1',
+          });
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
@@ -109,8 +112,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { name: `api-campaign-${randomUUID()}` },
       });
       expect(campaign.statusCode).toBe(201);
-      expect(campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment)
-        .toMatch(/^[a-f0-9]{64}$/);
+      expect(
+        campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment,
+      ).toMatch(/^[a-f0-9]{64}$/);
 
       const refreshed = await app.inject({
         method: 'POST',
