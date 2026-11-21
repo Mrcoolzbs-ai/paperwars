@@ -2,7 +2,7 @@
 
 > **Версия:** 1.0 (Documentation Baseline; нормативная спецификация восстановлена)  
 > **Основа:** три части финализированной авторской спецификации Documentation Baseline v1.0.  
-> **Статус:** нормативная дорожная карта; реализация начинается после фиксации Documentation Baseline v1.0.  
+> **Статус:** Documentation Baseline v1.0 зафиксирован; реализация Stage 1 выполняется по проверенным инкрементам.  
 > **Принцип:** план описывает последовательность поставки работающих возможностей, а не обещает сроки.
 
 ---
@@ -65,26 +65,28 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.1. Monorepo и инженерная среда
 
-- [ ] Утвердить структуру pnpm workspace и границы пакетов.
-- [ ] Настроить TypeScript strict, сборку, линтинг, форматирование и тестовый runner.
-- [ ] Создать пакеты Domain, Simulation, Persistence, Shared и приложения API/Web/Worker по мере необходимости.
-- [ ] Добавить CI для pull request и push.
-- [ ] Подготовить README и инструкции локальной разработки.
-- [ ] Проверить реальные install/build/typecheck/lint/test, а не только наличие конфигураций.
+- [x] Утвердить структуру pnpm workspace и границы пакетов.
+- [x] Настроить TypeScript strict, сборку, линтинг, форматирование и тестовый runner.
+- [x] Создать пакеты Domain, Simulation, Persistence, Shared и минимальное приложение Fastify API.
+- [x] Добавить CI для pull request и push.
+- [x] Подготовить README и инструкции локальной разработки.
+- [x] Проверить реальные install/build/typecheck/lint/test на GitHub Actions.
 
-**Результат:** воспроизводимый каркас monorepo с работающими проверками.
+**Результат:** воспроизводимый каркас monorepo с работающими проверками. Stage 1.1 merged в `main` через PR #3. Web-клиент и отдельный Worker остаются последующими компонентами.
 
 ### 1.2. Локальная инфраструктура и PostgreSQL
 
-- [ ] Docker Compose для PostgreSQL.
-- [ ] Переменные окружения и безопасная конфигурация без секретов в Git.
-- [ ] Drizzle ORM и механизм миграций.
-- [ ] Health checks, подключение, транзакции и тестовая БД.
-- [ ] Проверка восстановления после перезапуска контейнеров.
+- [x] Docker Compose для PostgreSQL 18.
+- [x] Переменные окружения и безопасная конфигурация без production-секретов в Git.
+- [x] Drizzle ORM и механизм SQL-миграций с advisory lock и SHA-256 checksum.
+- [x] PostgreSQL connection factory, транзакции и тестовая БД в CI.
+- [ ] Проверка восстановления состояния после перезапуска контейнера с постоянным volume.
 
-**Ограничение MVP:** Redis не добавлять; фоновые задачи хранятся в PostgreSQL.
+**Ограничение MVP:** Redis не добавлять; фоновые задачи хранятся в PostgreSQL. Stage 1.2 merged в `main` через PR #4.
 
 ### 1.3. Схема данных и миграции
+
+**Первый persistence baseline реализован:** Drizzle schema и initial SQL migration создают 16 таблиц — users, campaigns, countries, cells, memberships, snapshots, orders, events, random seeds/draws, turn jobs, reports, discovery records/history/access.
 
 Спроектировать минимальную версионируемую модель, не пытаясь сразу охватить все будущие механики:
 
@@ -104,6 +106,8 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - миграции вперёд;
 - тестирование миграции на пустой БД и предыдущей версии;
 - никаких полей и таблиц «на всякий случай» без согласованного назначения.
+
+**Приёмка текущего инкремента:** миграция успешно применяется к пустой PostgreSQL 18.7; повторный запуск идемпотентен; применённая миграция защищена checksum. Проверка upgrade с предыдущей версии пока не применима — предыдущей реализованной версии схемы ещё нет.
 
 ### 1.4. Авторизация и кампании
 
@@ -127,18 +131,21 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.6. RNG и commit-reveal
 
-- [ ] Seed на каждый ход — отдельный CSPRNG seed длиной 32 байта; seed первого хода создаётся в транзакции создания кампании.
-- [ ] Commitment: канонический binary `commit-v1` с campaignId, turnNumber, rulesetVersion, rngVersion и seed.
-- [ ] HMAC-SHA-256 с доменами и версией `rng-v1`.
-- [ ] Канонический `enc-v1` length-prefixed encoding: campaignId/drawId uint16; rngVersion/domain uint8; turnNumber uint32 BE; attempt bigint uint64 BE.
-- [ ] Rejection sampling без modulo bias и без искусственного лимита попыток.
-- [ ] Стабильные draw IDs и журнал random draws для воспроизведения.
-- [ ] Хранение seed только AES-256-GCM ciphertext; ключ не попадает в БД.
-- [ ] AAD binary encoding с campaignId, turnNumber, rngVersion и encryptionKeyVersion.
-- [ ] Nonce 12 байт и auth tag 16 байт; UNIQUE `(encryption_key_version, nonce)`; retry только при конфликте по этой паре.
-- [ ] Сервис ключей поддерживает версии ключей и расшифрование старых seed.
-- [ ] Seed и HMAC/message скрыты во время кампании; полный reveal — после завершения кампании.
-- [ ] Тесты commitment, AAD, AES-GCM, nonce collision, кодирования префиксов 13/11/14 байт, uint32/uint64 границ, независимости доменов и отсутствия modulo bias.
+- [x] CSPRNG-примитив генерации seed длиной 32 байта.
+- [ ] Подключить создание seed первого хода к транзакции создания кампании (campaign-creation service ещё не реализован).
+- [x] Commitment: канонический binary `commit-v1` с campaignId, turnNumber, rulesetVersion, rngVersion и seed.
+- [x] HMAC-SHA-256 с доменами и версией `rng-v1`.
+- [x] Канонический `enc-v1` length-prefixed encoding: campaignId/drawId uint16; rngVersion/domain uint8; turnNumber uint32 BE; attempt bigint uint64 BE.
+- [x] Rejection sampling без modulo bias и без искусственного лимита попыток.
+- [x] Стабильные draw IDs и транзакционный журнал random draws с проверкой повторного использования ID.
+- [x] Хранение seed только AES-256-GCM ciphertext; ключ не попадает в БД.
+- [x] AAD binary encoding с campaignId, turnNumber, rngVersion и encryptionKeyVersion.
+- [x] Nonce 12 байт и auth tag 16 байт; UNIQUE `(encryption_key_version, nonce)`; retry только при конфликте по этой паре.
+- [x] Версионированный сервис ключей; старые версии доступны для расшифрования.
+- [x] Persistence-level gating: Worker-загрузчик читает committed seed, reveal разрешается только после `campaign.status = completed`; публичные API endpoints ещё не реализованы.
+- [x] Тесты commitment, AAD, AES-GCM, nonce collision, кодирования префиксов 13/11/14 байт, uint32/uint64 границ, независимости доменов и отсутствия modulo bias.
+
+**Результат Stage 1.3:** package `@paper-wars/randomness`, seed persistence, random draw audit log и тесты merged в `main` через PR #5. GitHub Actions: build/typecheck/lint/format и 21 тест — успешно.
 
 **Не входит в MVP:** VRF, zero-knowledge proof, per-draw commitment и внешний источник энтропии.
 
@@ -170,10 +177,10 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.9. API и Web-каркас
 
-- [ ] Fastify API: health, auth, campaigns, membership, orders, turn status и world view.
+- [x] Минимальный Fastify API skeleton с `GET /health`.
+- [ ] API endpoints: auth, campaigns, membership, orders, turn status и world view.
 - [ ] Next.js/React Web-клиент: вход, список кампаний, базовая карта и экран приказов.
-- [ ] Валидация входящих payload.
-- [ ] DTO-проекции по уровню видимости.
+- [ ] Валидация входящих payload и DTO-проекции по уровню видимости.
 - [ ] Не сериализовать внутренний WorldState напрямую.
 - [ ] Не раскрывать скрытые находки, награды, seed или чужие приказы.
 
@@ -517,17 +524,25 @@ Q18–Q20 — причина катастрофы, природа золота �
 
 ### Documentation Baseline v1.0 — зафиксирован
 
-- Нормативные документы разнесены по `docs/rules`, `docs/architecture` и `docs/lore`.
-- Q1–Q17 и Q21–Q24 зафиксированы как закрытые решения; Q14 отдельно не существует.
+- Нормативные документы находятся в `docs/rules`, `docs/architecture` и `docs/lore`.
+- Q1–Q17 и Q21–Q24 зафиксированы как закрытые решения; Q14 объединён с Q21.
 - Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
-- Архитектурные контракты RNG/seed, закрытия приказов, worker lease/fencing, атомарной финализации, фаз хода и DiscoveryAccess согласованы.
-- В документации явно различаются спецификация и реализация.
+- Полная дословная транскрипция архивных DOCX с постраничными ссылками остаётся отдельной задачей архивации и не блокирует текущую реализацию.
 
-### Реализация — не завершена
+### Реализация — выполненные инкременты
 
-- `main` содержит исходные DOCX и README.
-- `stage-1.1-monorepo` содержит начальный TypeScript monorepo, API health-check, доменные контракты и smoke tests.
-- Реальная схема БД, миграции, seed encryption service, RNG, очередь Worker и turn finalization ещё не реализованы.
-- Тесты/CI для этих будущих подсистем должны быть написаны и реально запущены до принятия соответствующего этапа.
+- **Stage 1.1 — Monorepo bootstrap:** merged в `main` через PR #3.
+- **Stage 1.2 — PostgreSQL foundation:** Drizzle schema, initial migration, advisory-lock migrator, checksum и PostgreSQL integration tests; merged через PR #4.
+- **Stage 1.3 — RNG/seed lifecycle:** `commit-v1`, `enc-v1`, AAD, HMAC-SHA-256, rejection sampling, AES-256-GCM, versioned key provider, seed reveal gating и audit log random draws; merged через PR #5.
+- Последний чистый CI для Stage 1.3: build, typecheck, lint, format-check и **21/21 тестов** зелёные на PostgreSQL 18.7.
 
-**Следующая задача:** продолжить Этап 1 в кодовой ветке, начиная с устойчивой PostgreSQL-инфраструктуры и миграций. Не заявлять реализацию технического контракта по одному лишь наличию Markdown-спецификации.
+### Реализация — ещё не завершена
+
+- Регистрация/аутентификация, создание кампании и привязка первого seed к транзакции создания кампании.
+- Полная модель ruleset и совместимость версий состояния.
+- Реальный Simulation Engine и разрешение игровых приказов.
+- `closeOrders`, блокировки приказов, PostgreSQL Worker, lease/fencing, reaper и атомарная финализация хода.
+- API-проекции для игры, Web-клиент и публичный post-campaign reveal endpoint.
+- Definition of Done Этапа 1 в целом ещё не достигнут: отсутствует рабочий end-to-end цикл «пользователь → приказ → worker → симуляция → сохранение → API».
+
+**Следующий инкремент:** Stage 1.4 — authentication и campaign lifecycle; затем связать создание кампании с первым committed seed.
