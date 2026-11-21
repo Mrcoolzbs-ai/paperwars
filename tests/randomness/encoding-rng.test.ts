@@ -42,10 +42,12 @@ describe('canonical randomness encodings', () => {
     expect(computeCommitment('camp-01', 1, 'baseline-v1', 'hmac-v1', seed)).toBe(
       '95e6ebab84c677ceb27e67abe06597c87f76a369a5481f622ece036854ffcc65',
     );
-    expect(verifyCommitment(
-      '95e6ebab84c677ceb27e67abe06597c87f76a369a5481f622ece036854ffcc65',
-      computeCommitment('camp-01', 1, 'baseline-v1', 'hmac-v1', seed),
-    )).toBe(true);
+    expect(
+      verifyCommitment(
+        '95e6ebab84c677ceb27e67abe06597c87f76a369a5481f622ece036854ffcc65',
+        computeCommitment('camp-01', 1, 'baseline-v1', 'hmac-v1', seed),
+      ),
+    ).toBe(true);
   });
 
   it('encodes enc-v1 and AAD fields with the prescribed widths and order', () => {
@@ -73,12 +75,12 @@ describe('canonical randomness encodings', () => {
     expect(() => encodeCommitment('camp-01', 0, 'rules-v1', 'hmac-v1', seed)).toThrow(
       /turnNumber out of uint32 range/,
     );
-    expect(() =>
-      encodeDrawMessage('camp-01', 1, 'hmac-v1', 'battle', 'draw-1', -1n),
-    ).toThrow(/attempt out of uint64 range/);
-    expect(() =>
-      encodeDrawMessage('camp-01', 1, 'hmac-v1', 'battle', 'draw-1', 1n << 64n),
-    ).toThrow(/attempt out of uint64 range/);
+    expect(() => encodeDrawMessage('camp-01', 1, 'hmac-v1', 'battle', 'draw-1', -1n)).toThrow(
+      /attempt out of uint64 range/,
+    );
+    expect(() => encodeDrawMessage('camp-01', 1, 'hmac-v1', 'battle', 'draw-1', 1n << 64n)).toThrow(
+      /attempt out of uint64 range/,
+    );
   });
 
   it('distinguishes adjacent and delimiter-containing draw identifiers', () => {
