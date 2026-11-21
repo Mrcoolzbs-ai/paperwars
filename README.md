@@ -5,11 +5,12 @@
 ## Текущий статус
 
 - **Documentation Baseline v1.0** зафиксирован в `main`.
-- **Stage 1.1**: TypeScript monorepo, границы пакетов, Fastify health-check и базовые smoke tests — merged.
-- **Stage 1.2**: PostgreSQL persistence, Drizzle schema, SQL migrations и integration tests — в разработке.
-- Игровые алгоритмы, RNG/seed service, закрытие приказов и Worker добавляются поэтапно после соответствующих инфраструктурных контрактов.
+- **Stage 1.1** — monorepo bootstrap, API health-check и базовый CI: merged (PR #3).
+- **Stage 1.2** — PostgreSQL 18, Drizzle schema, миграции и integration tests: merged (PR #4).
+- **Stage 1.3** — deterministic RNG, commit-reveal seed service, AES-256-GCM, versioned keys и random draw audit log: merged (PR #5).
+- Последний чистый CI: build, typecheck, lint, format-check и 21/21 тестов прошли на PostgreSQL 18.7.
 
-Спецификация и псевдокод не означают, что функциональность уже реализована. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
+Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
 ## Структура
 
@@ -65,9 +66,11 @@ Health-check: `GET http://127.0.0.1:3000/health`.
 ## Текущие ограничения
 
 - Authentication flow и refresh-token storage пока не реализованы.
+- Создание кампании ещё не связывает транзакционно campaign и первый committed seed.
 - Simulation Engine пока не исполняет игровые ходы.
-- RNG, commit-reveal, шифрование seed и Worker orchestration будут добавлены отдельными задачами.
-- Игровые механики не добавляются в Stage 1.2.
+- PostgreSQL Worker, закрытие приказов, lease/fencing и atomic turn finalization ещё не реализованы.
+- Публичный API seed reveal и Web-клиент ещё не реализованы.
+- Игровые механики не следует считать готовыми только потому, что RNG/seed primitives уже существуют.
 
 ## Seed encryption configuration
 
