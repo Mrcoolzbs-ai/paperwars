@@ -68,3 +68,7 @@ Health-check: `GET http://127.0.0.1:3000/health`.
 - Simulation Engine пока не исполняет игровые ходы.
 - RNG, commit-reveal, шифрование seed и Worker orchestration будут добавлены отдельными задачами.
 - Игровые механики не добавляются в Stage 1.2.
+
+## Seed encryption configuration
+
+Copy `.env.example` to `.env` for local development. The included `dev-v1` key is a public placeholder and must never be used for deployed or production campaigns. Production keys must be supplied through a protected environment, Docker secrets, Vault or KMS; never commit real key material. Keep every historical key version available until all campaigns encrypted with it have completed and their seeds have been revealed.
