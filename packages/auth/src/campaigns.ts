@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { createCommittedSeed, type CreateCommittedSeedOptions } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
-import { AuthValidationError } from './errors.js';
+import { AuthValidationError, UnauthenticatedError } from './errors.js';
 
 export interface CampaignServiceOptions {
   readonly pool: Pool;
@@ -66,6 +66,14 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       try {
         await client.query('BEGIN');
         transactionOpen = true;
+
+        const owner = await client.query<{ id: string }>(
+          `SELECT id FROM users WHERE id = $1 AND status = 'active' FOR UPDATE`,
+          [ownerUserId],
+        );
+        if (owner.rows[0] === undefined) {
+          throw new UnauthenticatedError();
+        }
 
         const created = await client.query<{
           id: string;
