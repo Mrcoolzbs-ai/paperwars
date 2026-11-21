@@ -104,6 +104,33 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(accessAfterRefreshReplay.id).toBe(registered.user.id);
 
       await auth.logout(loggedIn.refreshToken);
+
+      const concurrent = await auth.register(
+        `concurrent-${randomUUID()}@example.test`,
+        password,
+      );
+      const attempts = await Promise.allSettled([
+        auth.refresh(concurrent.refreshToken),
+        auth.refresh(concurrent.refreshToken),
+      ]);
+      const fulfilled = attempts.filter(
+        (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof auth.refresh>>> =>
+          result.status === 'fulfilled',
+      );
+      const rejected = attempts.filter((result) => result.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.status).toBe('rejected');
+      if (rejected[0]?.status === 'rejected') {
+        expect(rejected[0].reason).toBeInstanceOf(RefreshTokenReuseDetectedError);
+      }
+      const concurrentReplacement = fulfilled[0]?.value;
+      if (concurrentReplacement === undefined) {
+        throw new Error('One concurrent refresh attempt should have returned a session');
+      }
+      await expect(auth.refresh(concurrentReplacement.refreshToken)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
     });
 
     it('creates a campaign, membership and the first committed seed in one transaction', async () => {
