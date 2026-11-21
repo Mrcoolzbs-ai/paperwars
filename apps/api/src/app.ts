@@ -113,7 +113,7 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   ) {
     return reply.code(401).send({ error: 'UNAUTHENTICATED' });
   }
-  return reply.send(error);
+  return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
 
 function registerAuthRoutes(
