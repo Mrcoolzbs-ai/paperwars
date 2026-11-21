@@ -12,10 +12,10 @@ import {
   releaseTurnJobLeaseForRetry,
   StaleWorkerError,
   type FinalizeTurnJobResult,
+  type PostgresPersistence,
   type TurnEventInput,
   type TurnJobClaim,
 } from '@paper-wars/persistence';
-import type { PostgresPersistence } from '@paper-wars/persistence';
 import {
   drawUniform,
   drawWeighted,
