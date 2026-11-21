@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createCommittedSeed,
@@ -391,7 +392,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const user = await client.query<{ id: string }>(
           `INSERT INTO users (email, password_hash)
            VALUES ($1, $2) RETURNING id`,
-          [`schema-version-${crypto.randomUUID()}@example.test`, 'test-hash'],
+          [`schema-version-${randomUUID()}@example.test`, 'test-hash'],
         );
         const userId = user.rows[0]?.id;
         if (userId === undefined) throw new Error('User insert did not return id');
