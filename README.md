@@ -13,7 +13,7 @@
 - **Stage 1.7** — deterministic phase runner, 14 фаз и RNG audit: PR #9, CI 63/63 теста, ожидает merge. Это orchestration layer, не готовые игровые механики.
 - **Stage 1.8** — closeOrders, PostgreSQL jobs, leases, reaper и atomic finalize: PR #10, CI 69/69 тестов, ожидает merge после PR #9.
 - **Worker runtime** — PostgreSQL worker process, verified input loader, deterministic RNG, heartbeat и atomic finalize: PR #11, CI 73/73 теста.
-- **Campaign/Orders API** — отдельный stacked PR готовится: membership view/leave, собственные приказы, подтверждение и закрытие хода, turn status и безопасная world DTO-проекция.
+- **Stage 1.9 — Campaign/Orders API** — PR #12, stacked поверх Worker Runtime; membership view/leave, собственные приказы CRUD/confirm, turn status/close и fail-closed world DTO-projection. CI: **75/75 тестов**.
 
 Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
@@ -81,6 +81,10 @@ corepack pnpm dev:worker
 Перед запуском необходимо задать `WORKER_ADAPTER_MODULE` — абсолютный путь к собранному JavaScript-модулю, который экспортирует `createWorkerAdapter(context)`. Адаптер предоставляет версионируемый ruleset, resolver с реальными phase handlers и функцию вычисления следующего дедлайна. В репозитории пока нет утверждённых игровых обработчиков; Worker намеренно не запускается с фиктивной no-op симуляцией.
 
 Параметры polling/heartbeat задаются через `WORKER_IDLE_POLL_MS`, `WORKER_HEARTBEAT_MS` и `WORKER_REAPER_BATCH_SIZE`. Worker использует те же PostgreSQL и seed-encryption ключи, что API.
+
+## Следующий этап: Stage 2 — вертикальный игровой прототип
+
+Цель — провести первую тестируемую партию двух игроков: приглашение второго участника, регистрация стран, генерация карты, обязательный выбор официальной религии/идеологии по Q24, стартовая конфигурация (2 фабрики, 2 поля, шахта, столица, дополнительный слот — всего 7 зданий и 18 жителей), затем первые build/colonize приказы.
 
 ## Текущие ограничения
 
