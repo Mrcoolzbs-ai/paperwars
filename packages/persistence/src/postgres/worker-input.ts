@@ -18,7 +18,7 @@ export interface LoadedTurnJobInput<TState extends Record<string, unknown>, TPay
   /** Verified plaintext for this turn only; never log or persist it. */
   readonly turnSeed: Buffer;
 }
-export interface LoadTurnJobInputOptions<TState extends Record<string, unknown>, TPayload extends Record<string, unknown>, TRuleset extends RulesetManifest> {
+export interface LoadTurnJobInputOptions<TRuleset extends RulesetManifest> {
   readonly pool: Pool;
   readonly claim: TurnJobClaim;
   readonly keyProvider: SeedKeyProvider;
@@ -60,7 +60,7 @@ function asJsonRecord(value: unknown, label: string): Record<string, unknown> {
 
 /** Loads campaign, snapshot, finalized orders and verified committed seed from one DB view. */
 export async function loadTurnJobInput<TState extends Record<string, unknown>, TPayload extends Record<string, unknown>, TRuleset extends RulesetManifest>(
-  options: LoadTurnJobInputOptions<TState, TPayload, TRuleset>,
+  options: LoadTurnJobInputOptions<TRuleset>,
 ): Promise<LoadedTurnJobInput<TState, TPayload, TRuleset>> {
   const { pool, claim, keyProvider, loadRuleset } = options;
   const tx = await pool.connect();
