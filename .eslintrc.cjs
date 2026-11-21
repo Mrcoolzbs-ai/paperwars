@@ -17,6 +17,19 @@ module.exports = {
     '@typescript-eslint/consistent-type-imports': 'error',
     '@typescript-eslint/no-explicit-any': 'error',
     'import/no-duplicates': 'error',
+    // TypeScript NodeNext resolves relative .js specifiers to the corresponding .ts source.
+    // The TypeScript compiler validates these paths; eslint-plugin-import's Node resolver does not.
+    'import/no-unresolved': ['error', { ignore: ['^\\.\\./.*\\.js
+    'no-console': ['warn', { allow: ['warn', 'error'] }]
+  },
+  ignorePatterns: ['**/dist/**', '**/node_modules/**', '**/coverage/**', 'pnpm-lock.yaml']
+};
+, '^\\./.*\\.js
+    'no-console': ['warn', { allow: ['warn', 'error'] }]
+  },
+  ignorePatterns: ['**/dist/**', '**/node_modules/**', '**/coverage/**', 'pnpm-lock.yaml']
+};
+] }],
     'no-console': ['warn', { allow: ['warn', 'error'] }]
   },
   ignorePatterns: ['**/dist/**', '**/node_modules/**', '**/coverage/**', 'pnpm-lock.yaml']
