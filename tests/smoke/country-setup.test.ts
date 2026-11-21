@@ -203,12 +203,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       const snapshot = await current.pool.query<{
         version: number;
+        state_schema_version: number;
+        ruleset_version: string;
         state: { countries: Array<{ id: string; officialSystem: { type: string } }> };
       }>(
-        'SELECT version, state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = 1',
+        'SELECT version, state_schema_version, ruleset_version, state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = 1',
         [campaign.id],
       );
-      expect(snapshot.rows[0]?.version).toBe(2);
+      expect(snapshot.rows[0]).toMatchObject({
+        version: 2,
+        state_schema_version: 1,
+        ruleset_version: 'baseline-v1',
+      });
       expect(snapshot.rows[0]?.state.countries).toHaveLength(2);
       expect(snapshot.rows[0]?.state.countries.map((country) => country.officialSystem.type).sort())
         .toEqual(['ideology', 'religion']);
