@@ -116,7 +116,7 @@ describe('deterministic HMAC RNG', () => {
       { id: 'low', weight: 1, value: 'LOW' },
       { id: 'high', weight: 3, value: 'HIGH' },
     ] as const;
-    expect(drawWeighted(context, 'loot', 'ruins:cell:11', table)).toBeOneOf(['LOW', 'HIGH']);
+    expect(['LOW', 'HIGH']).toContain(drawWeighted(context, 'loot', 'ruins:cell:11', table));
     expect(() =>
       drawWeighted(context, 'loot', 'bad-table', [{ id: 'zero', weight: 0, value: 'x' }]),
     ).toThrow(/positive safe integer/);
