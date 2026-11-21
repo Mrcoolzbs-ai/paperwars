@@ -66,6 +66,10 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Inspect Prettier output (temporary)
+        run: |
+          pnpm exec prettier --write apps/api/src/app.ts packages/gameplay/src/campaign-invitations.ts packages/gameplay/src/errors.ts packages/persistence/src/postgres/schema.ts tests/smoke/campaign-invitations-api.test.ts
+          git diff -- apps/api/src/app.ts packages/gameplay/src/campaign-invitations.ts packages/gameplay/src/errors.ts packages/persistence/src/postgres/schema.ts tests/smoke/campaign-invitations-api.test.ts
       - name: Format check
         run: pnpm format:check
       - name: Tests
