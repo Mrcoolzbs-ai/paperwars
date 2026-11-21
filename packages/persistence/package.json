@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist",
-    "db:migrate": "tsx src/postgres/migrate-cli.ts"
+    "db:migrate": "node --env-file=../../.env --import tsx src/postgres/migrate-cli.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
