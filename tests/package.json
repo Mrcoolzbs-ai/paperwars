@@ -1,0 +1,19 @@
+{
+  "name": "@paper-wars/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint smoke --ext .ts"
+  },
+  "dependencies": {
+    "@paper-wars/api": "workspace:*",
+    "@paper-wars/domain": "workspace:*",
+    "@paper-wars/persistence": "workspace:*",
+    "@paper-wars/shared": "workspace:*",
+    "@paper-wars/simulation": "workspace:*"
+  },
+  "devDependencies": { "vitest": "^2.1.9" }
+}
