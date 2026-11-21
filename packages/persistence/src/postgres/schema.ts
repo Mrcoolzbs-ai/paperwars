@@ -123,6 +123,7 @@ export const socialSystems = pgTable(
   },
   (table) => [
     uniqueIndex('social_systems_campaign_id_id_unique').on(table.campaignId, table.id),
+    uniqueIndex('social_systems_campaign_type_id_unique').on(table.campaignId, table.systemType, table.id),
     index('social_systems_campaign_type_idx').on(table.campaignId, table.systemType),
     check('social_systems_type_check', sql`${table.systemType} in ('religion', 'ideology')`),
     check('social_systems_name_length_check', sql`char_length(btrim(${table.name})) between 2 and 60`),
@@ -153,13 +154,13 @@ export const countries = pgTable(
     uniqueIndex('countries_campaign_owner_unique').on(table.campaignId, table.ownerUserId),
     foreignKey({
       name: 'countries_official_system_fk',
-      columns: [table.campaignId, table.officialSystemId],
-      foreignColumns: [socialSystems.campaignId, socialSystems.id],
+      columns: [table.campaignId, table.officialSystemType, table.officialSystemId],
+      foreignColumns: [socialSystems.campaignId, socialSystems.systemType, socialSystems.id],
     }),
     check('countries_status_check', sql`${table.status} in ('active', 'eliminated')`),
     check(
       'countries_official_system_pair_check',
-      sql`(${table.officialSystemType} is null and ${table.officialSystemId} is null) or (${table.officialSystemType} in ('religion', 'ideology') and ${table.officialSystemId} is not null)`,
+      sql`(${table.officialSystemType} is null and ${table.officialSystemId} is null) or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null and ${table.officialSystemType} in ('religion', 'ideology'))`,
     ),
     check(
       'countries_setup_official_system_check',
@@ -184,7 +185,7 @@ export const cells = pgTable(
     uniqueIndex('cells_campaign_coordinates_unique').on(table.campaignId, table.x, table.y),
     check(
       'cells_coordinate_pair_check',
-      sql`(${table.x} is null and ${table.y} is null) or (${table.x} >= 0 and ${table.y} >= 0)`,
+      sql`(${table.x} is null and ${table.y} is null) or (${table.x} is not null and ${table.y} is not null and ${table.x} >= 0 and ${table.y} >= 0)`,
     ),
   ],
 );
