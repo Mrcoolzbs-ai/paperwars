@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
-  bytea,
+  customType,
   check,
   foreignKey,
   index,
@@ -15,6 +15,12 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+  toDriver: (value) => value,
+  fromDriver: (value) => Buffer.from(value),
+});
 
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow();
