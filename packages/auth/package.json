@@ -11,7 +11,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -20,7 +22,9 @@
   },
   "dependencies": {
     "@paper-wars/persistence": "workspace:*",
-    "@paper-wars/randomness": "workspace:*",
-    "pg": "^8.23.1"
+    "@paper-wars/randomness": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
   }
 }
