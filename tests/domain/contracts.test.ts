@@ -77,6 +77,14 @@ describe('versioned ruleset compatibility', () => {
 });
 
 describe('turn-resolution contracts', () => {
+  const orderId = toId<'OrderId'>('order-1');
+  const inputOrders = [
+    {
+      id: orderId,
+      campaignId: snapshot.campaignId,
+      turnNumber: snapshot.turnNumber,
+    },
+  ] as const;
   const resolution: TurnResolution<{ readonly value: number }> = {
     campaignId: snapshot.campaignId,
     turnNumber: snapshot.turnNumber,
@@ -84,7 +92,7 @@ describe('turn-resolution contracts', () => {
     nextState: { value: 12 },
     orderResults: [
       {
-        orderId: toId<'OrderId'>('order-1'),
+        orderId,
         status: 'accepted',
         resultCode: 'BUILD_QUEUED',
       },
@@ -103,24 +111,24 @@ describe('turn-resolution contracts', () => {
   };
 
   it('accepts a matching resolution and in-range deterministic draw log', () => {
-    expect(() => assertTurnResolutionMatchesInput(snapshot, resolution)).not.toThrow();
+    expect(() => assertTurnResolutionMatchesInput(snapshot, inputOrders, resolution)).not.toThrow();
   });
 
   it('rejects a wrong campaign, turn or stale source snapshot', () => {
     expect(() =>
-      assertTurnResolutionMatchesInput(snapshot, {
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
         ...resolution,
         campaignId: toId<'CampaignId'>('campaign-2'),
       }),
     ).toThrow(TurnResolutionInvariantError);
     expect(() =>
-      assertTurnResolutionMatchesInput(snapshot, {
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
         ...resolution,
         turnNumber: toTurnNumber(2),
       }),
     ).toThrow(TurnResolutionInvariantError);
     expect(() =>
-      assertTurnResolutionMatchesInput(snapshot, {
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
         ...resolution,
         sourceSnapshotVersion: 2,
       }),
@@ -129,22 +137,46 @@ describe('turn-resolution contracts', () => {
 
   it('rejects invalid or duplicate random draw records and duplicate order results', () => {
     expect(() =>
-      assertTurnResolutionMatchesInput(snapshot, {
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
         ...resolution,
         randomDraws: [{ ...resolution.randomDraws[0]!, value: 101 }],
       }),
     ).toThrow(TurnResolutionInvariantError);
     expect(() =>
-      assertTurnResolutionMatchesInput(snapshot, {
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
         ...resolution,
         randomDraws: [...resolution.randomDraws, resolution.randomDraws[0]!],
       }),
     ).toThrow(TurnResolutionInvariantError);
     expect(() =>
-      assertTurnResolutionMatchesInput(snapshot, {
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
         ...resolution,
         orderResults: [...resolution.orderResults, resolution.orderResults[0]!],
       }),
+    ).toThrow(TurnResolutionInvariantError);
+    expect(() =>
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
+        ...resolution,
+        orderResults: [],
+      }),
+    ).toThrow(TurnResolutionInvariantError);
+    expect(() =>
+      assertTurnResolutionMatchesInput(snapshot, inputOrders, {
+        ...resolution,
+        orderResults: [
+          {
+            ...resolution.orderResults[0]!,
+            orderId: toId<'OrderId'>('order-foreign'),
+          },
+        ],
+      }),
+    ).toThrow(TurnResolutionInvariantError);
+    expect(() =>
+      assertTurnResolutionMatchesInput(
+        snapshot,
+        [{ ...inputOrders[0]!, campaignId: toId<'CampaignId'>('campaign-foreign') }],
+        resolution,
+      ),
     ).toThrow(TurnResolutionInvariantError);
   });
 });
