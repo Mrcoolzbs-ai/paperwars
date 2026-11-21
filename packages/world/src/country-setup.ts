@@ -108,9 +108,7 @@ function validateCountryName(value: unknown): string {
   return name;
 }
 
-function validateOfficialSystemChoice(
-  choice: CreateCountryInput['officialSystem'],
-): {
+function validateOfficialSystemChoice(choice: CreateCountryInput['officialSystem']): {
   readonly type: OfficialSystemType;
   readonly existingSystemId?: string;
   readonly newSystemName?: string;
@@ -199,9 +197,7 @@ function validateBuildingPlacements(
   }
 
   const extraTypes: ReadonlyArray<StartBuildingType> =
-    officialSystemType === 'religion'
-      ? ['religious_building']
-      : ['science', 'barracks', 'tower'];
+    officialSystemType === 'religion' ? ['religious_building'] : ['science', 'barracks', 'tower'];
   const extraCount = extraTypes.reduce((sum, type) => sum + (counts.get(type) ?? 0), 0);
   if (extraCount !== 1) {
     throw new CountrySetupValidationError(
@@ -408,10 +404,7 @@ export function createCountrySetupService(options: {
         const campaign = await result.query<{
           map_width: number | null;
           map_height: number | null;
-        }>(
-          'SELECT map_width, map_height FROM campaigns WHERE id = $1',
-          [campaignId],
-        );
+        }>('SELECT map_width, map_height FROM campaigns WHERE id = $1', [campaignId]);
         const row = campaign.rows[0];
         if (row === undefined || row.map_width === null || row.map_height === null) {
           throw new CampaignSetupNotReadyError();
