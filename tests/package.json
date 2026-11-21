@@ -9,6 +9,7 @@
     "lint": "eslint smoke --ext .ts"
   },
   "dependencies": {
+    "@paper-wars/randomness": "workspace:*",
     "@paper-wars/api": "workspace:*",
     "@paper-wars/domain": "workspace:*",
     "@paper-wars/persistence": "workspace:*",
