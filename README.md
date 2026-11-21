@@ -12,7 +12,7 @@
 - **Stage 1.5** — branded domain entities, snapshot/order/event/turn contracts, ruleset compatibility и schema-version migrations: merged (PR #7).
 - **Stage 1.7** — deterministic phase runner, 14 фаз и RNG audit: PR #9, CI 63/63 теста, ожидает merge. Это orchestration layer, не готовые игровые механики.
 - **Stage 1.8** — closeOrders, PostgreSQL jobs, leases, reaper и atomic finalize: PR #10, CI 69/69 тестов, ожидает merge после PR #9.
-- **Worker runtime** — приложение-процесс, согласованная загрузка входов, RNG context, heartbeat и retry recovery: отдельный stacked PR готовится; для исполнения нужны gameplay adapter и реальные phase handlers.
+- **Worker runtime** — PostgreSQL worker process, verified snapshot/orders/ruleset/seed loader, RNG context, heartbeat, retry recovery и graceful shutdown: PR #11, CI 73/73 теста, ожидает merge после PR #10. Для исполнения игровых ходов требуется deployment adapter с реальными phase handlers; такие механики ещё не реализованы.
 
 Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
