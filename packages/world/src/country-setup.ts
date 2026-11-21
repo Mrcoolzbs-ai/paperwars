@@ -197,10 +197,11 @@ function validateBuildingPlacements(
     );
   }
 
-  for (const [type, count] of counts) {
-    const allowed = required.some(([requiredType]) => requiredType === type) || extraTypes.includes(type);
-    if (!allowed || count !== 1 && !required.some(([requiredType]) => requiredType === type && requiredType === type && count === 2)) {
-      throw new CountrySetupValidationError(`Unexpected duplicate or incompatible start building: ${type}`);
+  for (const type of counts.keys()) {
+    const allowed =
+      required.some(([requiredType]) => requiredType === type) || extraTypes.includes(type);
+    if (!allowed) {
+      throw new CountrySetupValidationError(`Unexpected start building type: ${type}`);
     }
   }
 }
