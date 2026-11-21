@@ -144,9 +144,7 @@ export const orders = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     status: text('status').notNull().default('draft'),
     createdAt: createdAt(),
-    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     finalizedAt: timestamp('finalized_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
@@ -377,9 +375,7 @@ export const discoveryAccess = pgTable(
       .references(() => discoveryHistory.id),
     revokedAtTurn: integer('revoked_at_turn'),
     revokedByEventId: uuid('revoked_by_event_id').references(() => discoveryHistory.id),
-    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('discovery_access_unique').on(table.discoveryId, table.countryId),
