@@ -170,13 +170,7 @@ describe('commit-reveal and AES-256-GCM', () => {
   });
 
   it('encrypts and decrypts with AES-256-GCM and verifies the commitment', () => {
-    const encrypted = encryptSeed(
-      seed,
-      keyVersion,
-      key,
-      context,
-      () => Buffer.alloc(12, 0x44),
-    );
+    const encrypted = encryptSeed(seed, keyVersion, key, context, () => Buffer.alloc(12, 0x44));
 
     expect(encrypted.nonce).toHaveLength(12);
     expect(encrypted.authTag).toHaveLength(16);
@@ -186,13 +180,7 @@ describe('commit-reveal and AES-256-GCM', () => {
   });
 
   it('rejects changed ciphertext, authentication tag and AAD context', () => {
-    const encrypted = encryptSeed(
-      seed,
-      keyVersion,
-      key,
-      context,
-      () => Buffer.alloc(12, 0x55),
-    );
+    const encrypted = encryptSeed(seed, keyVersion, key, context, () => Buffer.alloc(12, 0x55));
     const corruptedCiphertext = Buffer.from(encrypted.encryptedSeed);
     corruptedCiphertext[0] = (corruptedCiphertext[0] ?? 0) ^ 0xff;
 
@@ -217,14 +205,10 @@ describe('commit-reveal and AES-256-GCM', () => {
       ),
     ).toThrow();
     expect(() =>
-      decryptSeed(
-        encrypted.encryptedSeed,
-        encrypted.nonce,
-        encrypted.authTag,
-        keyVersion,
-        key,
-        { ...context, turnNumber: context.turnNumber + 1 },
-      ),
+      decryptSeed(encrypted.encryptedSeed, encrypted.nonce, encrypted.authTag, keyVersion, key, {
+        ...context,
+        turnNumber: context.turnNumber + 1,
+      }),
     ).toThrow();
   });
 
