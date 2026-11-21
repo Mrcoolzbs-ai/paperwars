@@ -5,9 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 
 const MIGRATION_LOCK_ID = '73194280512001';
-const DEFAULT_MIGRATIONS_DIRECTORY = fileURLToPath(
-  new URL('../../migrations/', import.meta.url),
-);
+const DEFAULT_MIGRATIONS_DIRECTORY = fileURLToPath(new URL('../../migrations/', import.meta.url));
 
 export interface RunMigrationsOptions {
   readonly migrationsDirectory?: string;
