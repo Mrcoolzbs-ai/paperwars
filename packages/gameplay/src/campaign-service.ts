@@ -378,7 +378,7 @@ export function createCampaignGameService(
         let discardedOrderCount = 0;
         if (member.country_id !== null) {
           const discarded = await tx.query(
-            'UPDATE orders SET status = 'discarded', updated_at = clock_timestamp() ' +
+            "UPDATE orders SET status = 'discarded', updated_at = clock_timestamp() " +
               'WHERE campaign_id = $1 AND country_id = $2 AND turn_number = $3 ' +
               "AND status IN ('draft', 'unconfirmed', 'confirmed')",
             [campaignId, member.country_id, currentTurn],
