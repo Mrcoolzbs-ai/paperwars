@@ -1,10 +1,26 @@
 # Случайность, seed и commit-reveal
 
-**Baseline v1.0.** Все блоки ниже — нормативные спецификации, а не реализованный код.
+**Baseline v1.0.** Документ остаётся нормативным источником форматов и поведения RNG/seed.
+
+**Статус реализации на 21 ноября 2026 года:** основные криптографические примитивы и persistence-level операции реализованы в `packages/randomness` и `packages/persistence`, merged в `main` через PR #5. Чистый GitHub Actions CI прошёл build, typecheck, lint, format-check и 21 тест на PostgreSQL 18.7.
+
+Реализовано:
+- канонические бинарные кодировщики `commit-v1`, `enc-v1` и AAD с domain prefixes 13/11/14 байт;
+- SHA-256 commitment, HMAC-SHA-256 RNG и rejection sampling без modulo bias;
+- валидация uint32 turnNumber и сериализация uint64 bigint attempt;
+- AES-256-GCM encrypt/decrypt и проверка commitment;
+- версионированный key provider;
+- создание и загрузка encrypted seed, точечный nonce-collision retry и reveal gating по `campaign.status = completed`;
+- transactional random draw persistence с идемпотентностью и conflict detection.
+
+Ещё не интегрировано:
+- автоматическое создание первого seed в транзакции создания кампании;
+- вызовы RNG из Simulation Engine/Worker и использование в игровых механиках;
+- публичный API reveal после завершения кампании.
 
 ## 5. Техническая спецификация случайности и seed
 
-Все пункты этого раздела — нормативные контракты будущей реализации. Наличие спецификации не означает, что криптографический код уже реализован или проверен тестами.
+Технические форматы и требования ниже остаются обязательными независимо от текущего состояния интеграции. Реализация отдельных примитивов не означает, что полный игровой commit-reveal цикл уже доступен пользователям.
 
 ### 5.1. Seed на каждый ход и жизненный цикл
 
