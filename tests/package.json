@@ -6,9 +6,10 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint smoke --ext .ts"
+    "lint": "eslint . --ext .ts"
   },
   "dependencies": {
+    "@paper-wars/randomness": "workspace:*",
     "@paper-wars/api": "workspace:*",
     "@paper-wars/domain": "workspace:*",
     "@paper-wars/persistence": "workspace:*",
