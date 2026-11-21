@@ -111,14 +111,17 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.4. Авторизация и кампании
 
-- [ ] Регистрация и вход пользователя.
-- [ ] JWT access tokens и безопасная стратегия refresh tokens.
-- [ ] Отзыв и ротация refresh tokens.
-- [ ] Создание кампании и управление её участниками.
-- [ ] Проверки ролей и доступа к кампании.
-- [ ] Аудит критичных действий.
+- [x] Регистрация и вход пользователя с scrypt-хешированием пароля.
+- [x] JWT access tokens HS256 с проверкой issuer/audience/iat/exp.
+- [x] Refresh tokens: хранение только hash, ротация, replay detection и отзыв всей token family.
+- [x] Базовое создание кампании и membership владельца.
+- [x] Authenticated доступ к списку кампаний пользователя и повторная проверка active user.
+- [x] Атомарное создание campaign + owner membership + first committed seed.
+- [ ] Приглашения/управление другими участниками и полноценные роли кампании.
+- [ ] Audit log критичных действий.
+- [ ] Rate limiting для публичных auth endpoints, password reset/email verification и дополнительные меры защиты cookie endpoints.
 
-**Результат:** пользователь может войти и создать изолированную кампанию.
+**Результат текущего инкремента:** регистрация, вход и базовый campaign create/list работают. Stage 1.4 merged в `main` через PR #6; полный participant/role/audit/security lifecycle ещё не закрыт.
 
 ### 1.5. Domain, контракты и ruleset
 
@@ -132,7 +135,7 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 ### 1.6. RNG и commit-reveal
 
 - [x] CSPRNG-примитив генерации seed длиной 32 байта.
-- [ ] Подключить создание seed первого хода к транзакции создания кампании (campaign-creation service ещё не реализован).
+- [x] Создание seed первого хода подключено к транзакции создания кампании: campaign, owner membership и committed seed фиксируются одним COMMIT.
 - [x] Commitment: канонический binary `commit-v1` с campaignId, turnNumber, rulesetVersion, rngVersion и seed.
 - [x] HMAC-SHA-256 с доменами и версией `rng-v1`.
 - [x] Канонический `enc-v1` length-prefixed encoding: campaignId/drawId uint16; rngVersion/domain uint8; turnNumber uint32 BE; attempt bigint uint64 BE.
@@ -178,7 +181,8 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 ### 1.9. API и Web-каркас
 
 - [x] Минимальный Fastify API skeleton с `GET /health`.
-- [ ] API endpoints: auth, campaigns, membership, orders, turn status и world view.
+- [x] API endpoints: register/login/refresh/logout/me и базовые campaigns create/list.
+- [ ] API endpoints: управление membership, orders, turn status и world view.
 - [ ] Next.js/React Web-клиент: вход, список кампаний, базовая карта и экран приказов.
 - [ ] Валидация входящих payload и DTO-проекции по уровню видимости.
 - [ ] Не сериализовать внутренний WorldState напрямую.
@@ -534,15 +538,17 @@ Q18–Q20 — причина катастрофы, природа золота �
 - **Stage 1.1 — Monorepo bootstrap:** merged в `main` через PR #3.
 - **Stage 1.2 — PostgreSQL foundation:** Drizzle schema, initial migration, advisory-lock migrator, checksum и PostgreSQL integration tests; merged через PR #4.
 - **Stage 1.3 — RNG/seed lifecycle:** `commit-v1`, `enc-v1`, AAD, HMAC-SHA-256, rejection sampling, AES-256-GCM, versioned key provider, seed reveal gating и audit log random draws; merged через PR #5.
-- Последний чистый CI для Stage 1.3: build, typecheck, lint, format-check и **21/21 тестов** зелёные на PostgreSQL 18.7.
+- **Stage 1.4 — Auth/campaign core:** scrypt passwords, HS256 access JWT, hashed/rotating refresh tokens с replay revocation, HTTP auth/campaign routes и атомарное создание campaign + membership + first seed; merged в `main` через PR #6.
+- Чистый CI Stage 1.4 на PostgreSQL 18.7: build, typecheck, lint, format-check и **26/26 тестов** зелёные в 5 suites.
 
 ### Реализация — ещё не завершена
 
-- Регистрация/аутентификация, создание кампании и привязка первого seed к транзакции создания кампании.
+- Приглашения участников, полноценное управление membership/roles, аудит критичных действий и меры против brute force.
 - Полная модель ruleset и совместимость версий состояния.
+- Регистрация государства: выбор official system, размещение стартовых зданий/населения, генерация карты и начальный world snapshot.
 - Реальный Simulation Engine и разрешение игровых приказов.
 - `closeOrders`, блокировки приказов, PostgreSQL Worker, lease/fencing, reaper и атомарная финализация хода.
-- API-проекции для игры, Web-клиент и публичный post-campaign reveal endpoint.
+- Полные DTO-проекции игрового мира, Web-клиент и публичный post-campaign reveal endpoint.
 - Definition of Done Этапа 1 в целом ещё не достигнут: отсутствует рабочий end-to-end цикл «пользователь → приказ → worker → симуляция → сохранение → API».
 
-**Следующий инкремент:** Stage 1.4 — authentication и campaign lifecycle; затем связать создание кампании с первым committed seed.
+**Следующий инкремент:** Stage 1.5 — country setup и начальное состояние мира; после него — closeOrders и Worker.
