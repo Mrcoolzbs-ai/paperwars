@@ -80,12 +80,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(body.accessToken.length).toBeGreaterThan(40);
       expect(response.body).not.toContain('refreshToken');
 
-      const cookieHeader = response.headers['set-cookie'];
+      const setCookieHeader = response.headers['set-cookie'];
+      const cookieHeader = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
+      if (cookieHeader === undefined) {
+        throw new Error('Registration response did not set a refresh cookie');
+      }
       expect(cookieHeader).toContain('HttpOnly');
       expect(cookieHeader).toContain('SameSite=Strict');
       expect(cookieHeader).toContain('Path=/auth');
       expect(cookieHeader).not.toContain('Secure');
       const cookie = cookieHeader.split(';')[0];
+      if (cookie === undefined) {
+        throw new Error('Refresh cookie header was empty');
+      }
 
       const me = await app.inject({
         method: 'GET',
