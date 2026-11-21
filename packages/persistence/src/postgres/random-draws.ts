@@ -49,15 +49,7 @@ async function persistOrVerifyDraw(
   max: number,
   value: number,
 ): Promise<number> {
-  const parameters = [
-    context.campaignId,
-    context.turnNumber,
-    domain,
-    drawId,
-    min,
-    max,
-    value,
-  ];
+  const parameters = [context.campaignId, context.turnNumber, domain, drawId, min, max, value];
   const inserted = await tx.query<StoredRandomDraw>(INSERT_DRAW_SQL, parameters);
   let row = inserted.rows[0];
 
