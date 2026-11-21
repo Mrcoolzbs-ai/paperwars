@@ -62,10 +62,6 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
-      - name: Format preview (temporary diagnostic)
-        run: |
-          pnpm exec prettier --write packages/simulation/src/resolver.ts tests/simulation/engine.test.ts
-          git --no-pager diff -- packages/simulation/src/resolver.ts tests/simulation/engine.test.ts
       - name: Format check
         run: pnpm format:check
       - name: Tests
