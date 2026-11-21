@@ -12,6 +12,11 @@ export interface CampaignServiceOptions {
   readonly clock?: () => Date;
 }
 
+export interface CampaignMapSize {
+  readonly mapWidth: number;
+  readonly mapHeight: number;
+}
+
 export interface CreatedCampaign {
   readonly id: string;
   readonly name: string;
@@ -20,6 +25,8 @@ export interface CreatedCampaign {
   readonly ordersLocked: true;
   readonly rulesetVersion: string;
   readonly rngVersion: string;
+  readonly mapWidth: number;
+  readonly mapHeight: number;
   readonly firstTurnCommitment: string;
 }
 
@@ -33,10 +40,12 @@ export interface CampaignSummary {
   readonly countryId: string | null;
   readonly firstTurnCommitment: string | null;
   readonly createdAt: Date;
+  readonly mapWidth: number;
+  readonly mapHeight: number;
 }
 
 export interface CampaignService {
-  createCampaign(ownerUserId: string, nameInput: unknown): Promise<CreatedCampaign>;
+  createCampaign(ownerUserId: string, nameInput: unknown, mapSize: CampaignMapSize): Promise<CreatedCampaign>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
 
@@ -52,7 +61,19 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
   const clock = options.clock ?? (() => new Date());
 
   return {
-    async createCampaign(ownerUserId, nameInput) {
+    async createCampaign(ownerUserId, nameInput, mapSize) {
+      if (
+        !Number.isSafeInteger(mapSize?.mapWidth) ||
+        !Number.isSafeInteger(mapSize?.mapHeight) ||
+        mapSize.mapWidth < 5 ||
+        mapSize.mapHeight < 5 ||
+        mapSize.mapWidth > 0x7fffffff ||
+        mapSize.mapHeight > 0x7fffffff
+      ) {
+        throw new AuthValidationError(
+          'Campaign map dimensions must be safe integers in the PostgreSQL range and at least 5x5',
+        );
+      }
       if (typeof nameInput !== 'string') {
         throw new AuthValidationError('Campaign name must be a string');
       }
@@ -84,10 +105,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         }>(
           `INSERT INTO campaigns (
              name, status, current_turn, orders_locked, orders_locked_at,
-             ruleset_version, rng_version
-           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4)
-           RETURNING id, name, status, current_turn, orders_locked`,
-          [name, clock(), options.rulesetVersion, options.rngVersion],
+             ruleset_version, rng_version, map_width, map_height
+           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6)
+           RETURNING id, name, status, current_turn, orders_locked, map_width, map_height`,
+          [name, clock(), options.rulesetVersion, options.rngVersion, mapSize.mapWidth, mapSize.mapHeight],
         );
         const campaign = created.rows[0];
         if (campaign === undefined) {
@@ -123,6 +144,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           ordersLocked: true,
           rulesetVersion: options.rulesetVersion,
           rngVersion: options.rngVersion,
+          mapWidth: mapSize.mapWidth,
+          mapHeight: mapSize.mapHeight,
           firstTurnCommitment: seed.commitment,
         };
       } catch (error) {
@@ -147,10 +170,13 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         country_id: string | null;
         first_turn_commitment: string | null;
         created_at: Date;
+        map_width: number;
+        map_height: number;
       }>(
         `SELECT c.id, c.name, c.status, c.current_turn, c.orders_locked,
                 m.status AS member_status, m.country_id,
-                seed.commitment AS first_turn_commitment, c.created_at
+                seed.commitment AS first_turn_commitment, c.created_at,
+                c.map_width, c.map_height
          FROM campaign_memberships AS m
          JOIN campaigns AS c ON c.id = m.campaign_id
          LEFT JOIN random_seeds AS seed
@@ -169,6 +195,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         countryId: row.country_id,
         firstTurnCommitment: row.first_turn_commitment,
         createdAt: row.created_at,
+        mapWidth: row.map_width,
+        mapHeight: row.map_height,
       }));
     },
   };
