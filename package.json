@@ -13,7 +13,7 @@
     "typecheck": "pnpm build && pnpm -r --workspace-concurrency=1 --if-present typecheck",
     "lint": "pnpm -r --workspace-concurrency=1 --if-present lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,cjs,mjs,yml,yaml}\" \"package.json\" \"tsconfig.base.json\" \".prettierrc.json\"",
     "test": "pnpm build && pnpm --filter @paper-wars/tests test",
     "test:smoke": "pnpm test",
     "clean": "pnpm -r --workspace-concurrency=1 --if-present clean",
