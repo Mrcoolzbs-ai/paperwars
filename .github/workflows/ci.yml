@@ -54,6 +54,10 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Format preview (temporary diagnostic)
+        run: |
+          pnpm exec prettier --write .github/workflows/ci.yml apps/api/src/app.ts apps/api/src/server.ts packages/auth/src/access-tokens.ts packages/auth/src/service.ts tests/auth/access-tokens.test.ts tests/smoke/api-auth.test.ts tests/smoke/auth-campaign.test.ts
+          git --no-pager diff -- .github/workflows/ci.yml apps/api/src/app.ts apps/api/src/server.ts packages/auth/src/access-tokens.ts packages/auth/src/service.ts tests/auth/access-tokens.test.ts tests/smoke/api-auth.test.ts tests/smoke/auth-campaign.test.ts
       - name: Format check
         run: pnpm format:check
       - name: Tests
