@@ -185,12 +185,12 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] Единый порядок row locks: campaigns → world_snapshots → turn_jobs → остальные таблицы.
 - [x] В одной транзакции сохранять следующий snapshot, events, random log, economic/battle reports, next seed и результат TurnJob.
 - [x] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
-- [ ] Реализовать постоянно работающий Worker process: polling, вызов claim/reap, обработка ошибок и остановка по сигналу.
-- [ ] Загружать и проверять для job snapshot, finalized orders, ruleset и committed turn seed; seed расшифровывать через versioned key provider.
-- [ ] Связать phase runner/TurnResolver с RNG context и `finalizeTurnJob`; поддерживать heartbeat lease на всё время исполнения.
-- [ ] Добавить graceful shutdown и интеграционные тесты полного пути «claim → load → resolve → finalize», включая recovery после перезапуска.
+- [x] Реализовать постоянно работающий Worker process: polling, claim/reap, обработка ошибок и остановка по SIGINT/SIGTERM с drain текущей задачи.
+- [x] Загружать и проверять для job snapshot, finalized orders, ruleset и committed turn seed; seed расшифровывать через versioned key provider и проверять commitment в согласованном read-only DB snapshot.
+- [x] Предоставить runtime adapter для передачи verified RNG context в TurnResolver и атомарного вызова `finalizeTurnJob`; поддерживать heartbeat lease во время асинхронного исполнения.
+- [x] Реализовать graceful shutdown и покрыть интеграционными тестами `claim → load → resolve → finalize`, проверку RNG audit и retry recovery через Reaper.
 
-**Результат Stage 1.8:** persistence/job primitives реализованы в PR #10; GitHub Actions CI — 12 файлов, 69/69 тестов, build/typecheck/lint/format успешно. PR #10 основан на ветке Stage 1.7 и должен быть влит после PR #9. Runtime process и подключение helpers к реальным API routes пока не реализованы.
+**Результат Stage 1.8:** persistence/job primitives реализованы в PR #10; GitHub Actions CI — 12 файлов, 69/69 тестов, build/typecheck/lint/format успешно. PR #10 основан на ветке Stage 1.7 и должен быть влит после PR #9. Runtime process, loader и адаптер resolver реализованы в дополнительном stacked PR #11; PR #11 ожидает merge. Подключение order/membership helpers к реальным API routes остаётся отдельной задачей, так как эти маршруты ещё не созданы.
 
 ### 1.9. API и Web-каркас
 
@@ -561,16 +561,16 @@ Q18–Q20 — причина катастрофы, природа золота �
 
 - **Stage 1.7 — Simulation phase runner:** PR #9; все 14 фаз исполняются по нормативному порядку, handlers обязательны, RNG draws валидируются и журналируются. CI: build/typecheck/lint/format и **63/63 теста** в 11 файлах. Это orchestration skeleton, не реализация игровых механик; PR ожидает merge.
 - **Stage 1.8 — Order closing and persistence job lifecycle:** PR #10; транзакционный closeOrders, lock helpers, claim/lease renewal/reaper, fencing и atomic finalization включая snapshots/events/RNG/reports/next seed. CI: build/typecheck/lint/format и **69/69 тестов** в 12 файлах. PR stacked на Stage 1.7; влить после PR #9.
+- **Stage 1.8 — Worker runtime:** PR #11; непрерывный polling, reaper, verified loader snapshot/orders/ruleset/seed, deterministic RNG context, heartbeat, atomic finalize, retry recovery и graceful shutdown. GitHub Actions: build/typecheck/lint/format; **73/73 теста** в 13 файлах. PR stacked на PR #10; ждёт merge.
 
 ### Реализация — ещё не завершена
 
 - Проверка восстановления состояния PostgreSQL после перезапуска с постоянным volume.
 - Приглашения участников, полноценное управление membership/roles, аудит критичных действий и меры против brute force.
 - Реальные gameplay handlers и отдельные повторные детерминизм-тесты для всего resolve pipeline.
-- Постоянно работающий Worker process, загрузка/проверка входов (snapshot, finalized orders, ruleset, committed seed), heartbeat и graceful shutdown.
 - Подключение order/membership lock helpers к реальным API routes; сами order и membership routes ещё не реализованы.
 - Регистрация государств, генерация карты, обязательный выбор Q24 и начальная конфигурация 7 зданий / 18 жителей — Stage 2.
 - Полные DTO-проекции игрового мира, Web-клиент и публичный post-campaign reveal endpoint.
 - Definition of Done Этапа 1 в целом ещё не достигнут: отсутствует рабочий end-to-end цикл «пользователь → приказ → worker → симуляция → сохранение → API».
 
-**Следующий инкремент:** закончить оставшуюся runtime-интеграцию Stage 1.8; затем перейти к Stage 1.9 — API и Web-каркас.
+**Следующий инкремент:** интегрировать order/membership lock helpers в новые API routes (после появления маршрутов); затем перейти к Stage 1.9 — API и Web-каркас.

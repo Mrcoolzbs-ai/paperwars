@@ -146,13 +146,19 @@ export async function lockCampaignForMembershipWrite(
   tx: PoolClient,
   campaignId: string,
 ): Promise<number> {
-  const result = await tx.query<{ status: string; current_turn: number }>(
-    'SELECT status, current_turn FROM campaigns WHERE id = $1 FOR UPDATE',
-    [campaignId],
-  );
+  const result = await tx.query<{
+    status: string;
+    current_turn: number;
+    orders_locked: boolean;
+  }>('SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
+    campaignId,
+  ]);
   const row = result.rows[0];
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
+  if (row.orders_locked) {
+    throw new OrdersAlreadyLockedError('Membership changes are locked for the current turn');
+  }
   return row.current_turn;
 }
 
@@ -239,16 +245,27 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
 }
 
 /** Claims one pending job atomically; the first generation acquired is one. */
-export async function claimNextTurnJob(pool: Pool, workerId: string): Promise<TurnJobClaim | null> {
+export async function claimNextTurnJob(
+  pool: Pool,
+  workerId: string,
+  campaignId?: string,
+): Promise<TurnJobClaim | null> {
   assertWorkerId(workerId);
+  if (
+    campaignId !== undefined &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(campaignId)
+  ) {
+    throw new RangeError('campaignId must be a UUID');
+  }
   const result = await pool.query<JobRow>(
     "UPDATE turn_jobs AS job SET status = 'processing', generation = job.generation + 1, " +
       "worker_id = $1, lease_until = clock_timestamp() + ($2::integer * INTERVAL '1 second'), " +
       'started_at = clock_timestamp() WHERE job.id = (' +
-      "SELECT id FROM turn_jobs WHERE status = 'pending' ORDER BY created_at, id " +
+      "SELECT id FROM turn_jobs WHERE status = 'pending' " +
+      'AND ($3::uuid IS NULL OR campaign_id = $3) ORDER BY created_at, id ' +
       'FOR UPDATE SKIP LOCKED LIMIT 1) ' +
       'RETURNING id, campaign_id, turn_number, snapshot_version, status, generation, worker_id, lease_until, retry_count',
-    [workerId, LEASE_SECONDS],
+    [workerId, LEASE_SECONDS, campaignId ?? null],
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -531,4 +548,22 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
       campaignEnded: resolution.campaignEnded,
     };
   });
+}
+
+/**
+ * Makes a failed live claim immediately visible to the reaper. The reaper alone
+ * increments retry_count and returns the job to pending.
+ */
+export async function releaseTurnJobLeaseForRetry(
+  pool: Pool,
+  claim: TurnJobClaim,
+): Promise<boolean> {
+  assertWorkerId(claim.workerId);
+  const result = await pool.query(
+    "UPDATE turn_jobs SET lease_until = clock_timestamp() - INTERVAL '1 millisecond' " +
+      "WHERE id = $1 AND worker_id = $2 AND generation = $3 AND status = 'processing' " +
+      'AND lease_until > clock_timestamp() RETURNING id',
+    [claim.id, claim.workerId, claim.generation],
+  );
+  return result.rowCount === 1;
 }

@@ -10,13 +10,16 @@
 - **Stage 1.3** — deterministic RNG, commit-reveal seed service, AES-256-GCM, versioned keys и random draw audit log: merged (PR #5).
 - **Stage 1.4** — scrypt auth, HS256 access JWT, rotating refresh sessions/replay detection и атомарное campaign + first seed create: merged (PR #6).
 - **Stage 1.5** — branded domain entities, snapshot/order/event/turn contracts, ruleset compatibility и schema-version migrations: merged (PR #7).
-- Последний чистый CI: build, typecheck, lint, format-check и 55/55 тестов прошли на PostgreSQL 18.7.
+- **Stage 1.7** — deterministic phase runner, 14 фаз и RNG audit: PR #9, CI 63/63 теста, ожидает merge. Это orchestration layer, не готовые игровые механики.
+- **Stage 1.8** — closeOrders, PostgreSQL jobs, leases, reaper и atomic finalize: PR #10, CI 69/69 тестов, ожидает merge после PR #9.
+- **Worker runtime** — PostgreSQL worker process, verified snapshot/orders/ruleset/seed loader, RNG context, heartbeat, retry recovery и graceful shutdown: PR #11, CI 73/73 теста, ожидает merge после PR #10. Для исполнения игровых ходов требуется deployment adapter с реальными phase handlers; такие механики ещё не реализованы.
 
 Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
 ## Структура
 
 - `apps/api` — HTTP API.
+- `apps/worker` — долгоживущий PostgreSQL Worker и точка подключения версионируемой симуляции.
 - `packages/shared` — общие типы и утилиты.
 - `packages/domain` — доменные контракты.
 - `packages/simulation` — оболочка детерминированного Simulation Engine.
@@ -65,12 +68,24 @@ corepack pnpm dev:api
 
 Health-check: `GET http://127.0.0.1:3000/health`.
 
+## Запуск Worker
+
+Worker является отдельным процессом и запускается командой:
+
+```bash
+corepack pnpm dev:worker
+```
+
+Перед запуском необходимо задать `WORKER_ADAPTER_MODULE` — абсолютный путь к собранному JavaScript-модулю, который экспортирует `createWorkerAdapter(context)`. Адаптер предоставляет версионируемый ruleset, resolver с реальными phase handlers и функцию вычисления следующего дедлайна. В репозитории пока нет утверждённых игровых обработчиков; Worker намеренно не запускается с фиктивной no-op симуляцией.
+
+Параметры polling/heartbeat задаются через `WORKER_IDLE_POLL_MS`, `WORKER_HEARTBEAT_MS` и `WORKER_REAPER_BATCH_SIZE`. Worker использует те же PostgreSQL и seed-encryption ключи, что API.
+
 ## Текущие ограничения
 
 - Participant invitations/roles, audit trail и rate limiting для публичных auth endpoints пока не реализованы.
 - Полный country setup (official system, стартовые здания/население, world snapshot) ещё не реализован; это Stage 2.
-- Domain contracts и pure TurnResolver interface уже есть, но Simulation Engine пока не исполняет игровые ходы.
-- PostgreSQL Worker, закрытие приказов, lease/fencing и atomic turn finalization ещё не реализованы.
+- Отдельные игровые phase handlers ещё не реализованы; Worker не подставляет no-op автоматически и требует явный adapter module.
+- Order/membership API routes ещё не подключены к существующим campaign lock helpers.
 - Публичный API seed reveal и Web-клиент ещё не реализованы.
 - Stage 1 DoD не достигнут: полного end-to-end цикла «приказ → worker → симуляция → snapshot → API» пока нет.
 
