@@ -102,7 +102,15 @@ export const campaigns = pgTable(
     check('campaigns_status_check', sql`${table.status} in ('active', 'completed')`),
     check(
       'campaigns_map_dimensions_check',
-      sql`(${table.mapWidth} is null and ${table.mapHeight} is null) or (${table.mapWidth} is not null and ${table.mapHeight} is not null and ${table.mapWidth} >= 5 and ${table.mapHeight} >= 5)`,
+      sql`
+        (${table.mapWidth} is null and ${table.mapHeight} is null)
+        or (
+          ${table.mapWidth} is not null
+          and ${table.mapHeight} is not null
+          and ${table.mapWidth} >= 5
+          and ${table.mapHeight} >= 5
+        )
+      `,
     ),
   ],
 );
@@ -123,10 +131,17 @@ export const socialSystems = pgTable(
   },
   (table) => [
     uniqueIndex('social_systems_campaign_id_id_unique').on(table.campaignId, table.id),
-    uniqueIndex('social_systems_campaign_type_id_unique').on(table.campaignId, table.systemType, table.id),
+    uniqueIndex('social_systems_campaign_type_id_unique').on(
+      table.campaignId,
+      table.systemType,
+      table.id,
+    ),
     index('social_systems_campaign_type_idx').on(table.campaignId, table.systemType),
     check('social_systems_type_check', sql`${table.systemType} in ('religion', 'ideology')`),
-    check('social_systems_name_length_check', sql`char_length(btrim(${table.name})) between 2 and 60`),
+    check(
+      'social_systems_name_length_check',
+      sql`char_length(btrim(${table.name})) between 2 and 60`,
+    ),
     check('social_systems_origin_check', sql`${table.originX} >= 0 and ${table.originY} >= 0`),
     check('social_systems_traits_array_check', sql`jsonb_typeof(${table.traits}) = 'array'`),
   ],
@@ -160,11 +175,21 @@ export const countries = pgTable(
     check('countries_status_check', sql`${table.status} in ('active', 'eliminated')`),
     check(
       'countries_official_system_pair_check',
-      sql`(${table.officialSystemType} is null and ${table.officialSystemId} is null) or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null and ${table.officialSystemType} in ('religion', 'ideology'))`,
+      sql`
+        (${table.officialSystemType} is null and ${table.officialSystemId} is null)
+        or (
+          ${table.officialSystemType} is not null
+          and ${table.officialSystemId} is not null
+          and ${table.officialSystemType} in ('religion', 'ideology')
+        )
+      `,
     ),
     check(
       'countries_setup_official_system_check',
-      sql`not ${table.setupCompleted} or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null)`,
+      sql`
+        not ${table.setupCompleted}
+        or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null)
+      `,
     ),
   ],
 );
@@ -185,7 +210,15 @@ export const cells = pgTable(
     uniqueIndex('cells_campaign_coordinates_unique').on(table.campaignId, table.x, table.y),
     check(
       'cells_coordinate_pair_check',
-      sql`(${table.x} is null and ${table.y} is null) or (${table.x} is not null and ${table.y} is not null and ${table.x} >= 0 and ${table.y} >= 0)`,
+      sql`
+        (${table.x} is null and ${table.y} is null)
+        or (
+          ${table.x} is not null
+          and ${table.y} is not null
+          and ${table.x} >= 0
+          and ${table.y} >= 0
+        )
+      `,
     ),
   ],
 );
@@ -234,7 +267,11 @@ export const countryBuildings = pgTable(
     }).onDelete('cascade'),
     check(
       'country_buildings_type_check',
-      sql`${table.buildingType} in ('factory', 'field', 'gold_mine', 'capital', 'religious_building', 'science', 'barracks', 'tower')`,
+      sql`
+        ${table.buildingType} in (
+          'factory', 'field', 'gold_mine', 'capital', 'religious_building', 'science', 'barracks', 'tower'
+        )
+      `,
     ),
   ],
 );
@@ -375,7 +412,10 @@ export const randomSeeds = pgTable(
     check('random_seeds_commitment_hex', sql`${table.commitment} ~ '^[a-f0-9]{64}$'`),
     check(
       'random_seeds_revealed_at_check',
-      sql`(${table.status} = 'committed' and ${table.revealedAt} is null) or (${table.status} = 'revealed' and ${table.revealedAt} is not null)`,
+      sql`
+        (${table.status} = 'committed' and ${table.revealedAt} is null)
+        or (${table.status} = 'revealed' and ${table.revealedAt} is not null)
+      `,
     ),
     check('random_seeds_nonce_length', sql`octet_length(${table.nonce}) = 12`),
     check('random_seeds_auth_tag_length', sql`octet_length(${table.authTag}) = 16`),
@@ -532,7 +572,11 @@ export const discoveryHistory = pgTable(
     check('discovery_history_turn_positive', sql`${table.turnNumber} >= 1`),
     check(
       'discovery_history_event_type_check',
-      sql`${table.eventType} in ('discovered', 'investigated', 'transferred', 'captured', 'access_granted', 'access_revoked')`,
+      sql`
+        ${table.eventType} in (
+          'discovered', 'investigated', 'transferred', 'captured', 'access_granted', 'access_revoked'
+        )
+      `,
     ),
   ],
 );
@@ -561,7 +605,18 @@ export const discoveryAccess = pgTable(
     check('discovery_access_granted_turn_positive', sql`${table.grantedAtTurn} >= 1`),
     check(
       'discovery_access_status_consistency_check',
-      sql`(${table.status} = 'active' and ${table.revokedAtTurn} is null and ${table.revokedByEventId} is null) or (${table.status} = 'revoked' and ${table.revokedAtTurn} is not null and ${table.revokedByEventId} is not null)`,
+      sql`
+        (
+          ${table.status} = 'active'
+          and ${table.revokedAtTurn} is null
+          and ${table.revokedByEventId} is null
+        )
+        or (
+          ${table.status} = 'revoked'
+          and ${table.revokedAtTurn} is not null
+          and ${table.revokedByEventId} is not null
+        )
+      `,
     ),
     check(
       'discovery_access_revoked_turn_check',
