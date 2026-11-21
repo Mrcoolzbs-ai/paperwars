@@ -12,12 +12,7 @@ function validateContext(ctx: RNGContext): void {
   }
 }
 
-function readHmacUint32(
-  ctx: RNGContext,
-  domain: string,
-  drawId: string,
-  attempt: bigint,
-): number {
+function readHmacUint32(ctx: RNGContext, domain: string, drawId: string, attempt: bigint): number {
   const message = encodeDrawMessage(
     ctx.campaignId,
     ctx.turnNumber,
@@ -34,10 +29,7 @@ function readHmacUint32(
  * Uniformly maps uint32 values to [0, range - 1] using rejection sampling.
  * The callback receives the monotonically increasing uint64 attempt counter.
  */
-export function sampleUniform32(
-  range: number,
-  readValue: (attempt: bigint) => number,
-): number {
+export function sampleUniform32(range: number, readValue: (attempt: bigint) => number): number {
   if (!Number.isSafeInteger(range) || range < 1 || range > UINT32_SPACE) {
     throw new RangeError('range must be an integer in [1, 2^32]');
   }
@@ -78,9 +70,7 @@ export function drawUniform(
   }
 
   validateContext(ctx);
-  const offset = sampleUniform32(range, (attempt) =>
-    readHmacUint32(ctx, domain, drawId, attempt),
-  );
+  const offset = sampleUniform32(range, (attempt) => readHmacUint32(ctx, domain, drawId, attempt));
   return min + offset;
 }
 
