@@ -243,7 +243,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           buildings: '14',
         });
       },
-    ););
+    );
 
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
       const current = getPersistence();
