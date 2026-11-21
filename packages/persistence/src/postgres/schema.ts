@@ -32,6 +32,9 @@ export const users = pgTable(
     email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(),
     status: text('status').notNull().default('active'),
+    officialSystemType: text('official_system_type'),
+    officialSystemId: uuid('official_system_id'),
+    setupCompleted: boolean('setup_completed').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
@@ -92,12 +95,43 @@ export const campaigns = pgTable(
     deadlineAt: timestamp('deadline_at', { withTimezone: true, mode: 'date' }),
     rulesetVersion: text('ruleset_version').notNull(),
     rngVersion: text('rng_version').notNull(),
+    mapWidth: integer('map_width'),
+    mapHeight: integer('map_height'),
     createdAt: createdAt(),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     check('campaigns_current_turn_positive', sql`${table.currentTurn} >= 1`),
     check('campaigns_status_check', sql`${table.status} in ('active', 'completed')`),
+    check(
+      'campaigns_map_dimensions_check',
+      sql`(${table.mapWidth} is null and ${table.mapHeight} is null) or (${table.mapWidth} is not null and ${table.mapHeight} is not null and ${table.mapWidth} >= 5 and ${table.mapHeight} >= 5)`,
+    ),
+  ],
+);
+
+export const socialSystems = pgTable(
+  'social_systems',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    systemType: text('system_type').notNull(),
+    name: text('name').notNull(),
+    originX: integer('origin_x').notNull(),
+    originY: integer('origin_y').notNull(),
+    traits: jsonb('traits').$type<readonly string[]>().notNull().default([]),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('social_systems_campaign_id_id_unique').on(table.campaignId, table.id),
+    uniqueIndex('social_systems_campaign_type_id_unique').on(table.campaignId, table.systemType, table.id),
+    index('social_systems_campaign_type_idx').on(table.campaignId, table.systemType),
+    check('social_systems_type_check', sql`${table.systemType} in ('religion', 'ideology')`),
+    check('social_systems_name_length_check', sql`char_length(btrim(${table.name})) between 2 and 60`),
+    check('social_systems_origin_check', sql`${table.originX} >= 0 and ${table.originY} >= 0`),
+    check('social_systems_traits_array_check', sql`jsonb_typeof(${table.traits}) = 'array'`),
   ],
 );
 
@@ -118,7 +152,20 @@ export const countries = pgTable(
   (table) => [
     uniqueIndex('countries_campaign_id_id_unique').on(table.campaignId, table.id),
     uniqueIndex('countries_campaign_owner_unique').on(table.campaignId, table.ownerUserId),
+    foreignKey({
+      name: 'countries_official_system_fk',
+      columns: [table.campaignId, table.officialSystemType, table.officialSystemId],
+      foreignColumns: [socialSystems.campaignId, socialSystems.systemType, socialSystems.id],
+    }),
     check('countries_status_check', sql`${table.status} in ('active', 'eliminated')`),
+    check(
+      'countries_official_system_pair_check',
+      sql`(${table.officialSystemType} is null and ${table.officialSystemId} is null) or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null and ${table.officialSystemType} in ('religion', 'ideology'))`,
+    ),
+    check(
+      'countries_setup_official_system_check',
+      sql`not ${table.setupCompleted} or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null)`,
+    ),
   ],
 );
 
@@ -129,9 +176,67 @@ export const cells = pgTable(
     campaignId: uuid('campaign_id')
       .notNull()
       .references(() => campaigns.id, { onDelete: 'cascade' }),
+    x: integer('x'),
+    y: integer('y'),
     createdAt: createdAt(),
   },
-  (table) => [uniqueIndex('cells_campaign_id_id_unique').on(table.campaignId, table.id)],
+  (table) => [
+    uniqueIndex('cells_campaign_id_id_unique').on(table.campaignId, table.id),
+    uniqueIndex('cells_campaign_coordinates_unique').on(table.campaignId, table.x, table.y),
+    check(
+      'cells_coordinate_pair_check',
+      sql`(${table.x} is null and ${table.y} is null) or (${table.x} is not null and ${table.y} is not null and ${table.x} >= 0 and ${table.y} >= 0)`,
+    ),
+  ],
+);
+
+export const countryCells = pgTable(
+  'country_cells',
+  {
+    campaignId: uuid('campaign_id').notNull(),
+    countryId: uuid('country_id').notNull(),
+    cellId: uuid('cell_id').notNull(),
+    population: integer('population').notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.campaignId, table.countryId, table.cellId] }),
+    uniqueIndex('country_cells_campaign_cell_unique').on(table.campaignId, table.cellId),
+    foreignKey({
+      name: 'country_cells_country_fk',
+      columns: [table.campaignId, table.countryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'country_cells_cell_fk',
+      columns: [table.campaignId, table.cellId],
+      foreignColumns: [cells.campaignId, cells.id],
+    }).onDelete('cascade'),
+    check('country_cells_population_nonnegative', sql`${table.population} >= 0`),
+  ],
+);
+
+export const countryBuildings = pgTable(
+  'country_buildings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id').notNull(),
+    countryId: uuid('country_id').notNull(),
+    cellId: uuid('cell_id').notNull(),
+    buildingType: text('building_type').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('country_buildings_campaign_cell_unique').on(table.campaignId, table.cellId),
+    foreignKey({
+      name: 'country_buildings_country_cell_fk',
+      columns: [table.campaignId, table.countryId, table.cellId],
+      foreignColumns: [countryCells.campaignId, countryCells.countryId, countryCells.cellId],
+    }).onDelete('cascade'),
+    check(
+      'country_buildings_type_check',
+      sql`${table.buildingType} in ('factory', 'field', 'gold_mine', 'capital', 'religious_building', 'science', 'barracks', 'tower')`,
+    ),
+  ],
 );
 
 export const campaignMemberships = pgTable(
