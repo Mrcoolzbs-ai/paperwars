@@ -130,7 +130,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       try {
         const orderId = await data.addConfirmedOrder();
         await closeOrders(pool(), data.campaignId);
-        const claim = await claimNextTurnJob(pool(), 'worker-loader-test');
+        const claim = await claimNextTurnJob(pool(), 'worker-loader-test', data.campaignId);
         if (!claim) throw new Error('Expected a claimed turn job');
 
         const loaded = await loadTurnJobInput({
@@ -174,6 +174,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const runtime = createWorkerRuntime({
           pool: pool(),
           workerId: 'worker-runtime-test',
+          campaignId: data.campaignId,
           keyProvider,
           loadRuleset: () => ruleset,
           resolveTurn: (input) => {
@@ -251,6 +252,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const runtime = createWorkerRuntime({
           pool: pool(),
           workerId: 'worker-failure-test',
+          campaignId: data.campaignId,
           keyProvider,
           loadRuleset: () => ruleset,
           resolveTurn: () => {

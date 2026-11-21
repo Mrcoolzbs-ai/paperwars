@@ -28,6 +28,7 @@ function integerEnv(name: string, fallback: number, maximum: number): number {
 const databaseUrl = requiredEnv('DATABASE_URL');
 const adapterPath = requiredEnv('WORKER_ADAPTER_MODULE');
 const workerId = process.env['WORKER_ID'] ?? hostname() + '-' + process.pid;
+const campaignId = process.env['WORKER_CAMPAIGN_ID'];
 const idlePollIntervalMs = integerEnv('WORKER_IDLE_POLL_MS', 1_000, 60_000);
 const heartbeatIntervalMs = integerEnv('WORKER_HEARTBEAT_MS', 60_000, 240_000);
 const reaperBatchSize = integerEnv('WORKER_REAPER_BATCH_SIZE', 100, 1_000);
@@ -54,6 +55,7 @@ try {
   const worker = createWorkerRuntime({
     pool: persistence.pool,
     workerId,
+    ...(campaignId === undefined ? {} : { campaignId }),
     keyProvider,
     loadRuleset: adapter.loadRuleset,
     resolveTurn: adapter.resolveTurn,

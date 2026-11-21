@@ -37,6 +37,7 @@ export interface WorkerRuntimeOptions<
 > {
   readonly pool: PostgresPersistence['pool'];
   readonly workerId: string;
+  readonly campaignId?: string;
   readonly keyProvider: SeedKeyProvider;
   readonly loadRuleset: (version: string) => Promise<TRuleset> | TRuleset;
   readonly resolveTurn: WorkerTurnExecutor<TState, TPayload, TRuleset, TEvent>;
@@ -194,7 +195,7 @@ export function createWorkerRuntime<
   }
 
   async function runOnce(): Promise<WorkerOnceResult> {
-    const claim = await claimNextTurnJob(options.pool, options.workerId);
+    const claim = await claimNextTurnJob(options.pool, options.workerId, options.campaignId);
     if (claim === null) return { status: 'idle' };
 
     try {

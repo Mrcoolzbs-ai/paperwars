@@ -245,16 +245,29 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
 }
 
 /** Claims one pending job atomically; the first generation acquired is one. */
-export async function claimNextTurnJob(pool: Pool, workerId: string): Promise<TurnJobClaim | null> {
+export async function claimNextTurnJob(
+  pool: Pool,
+  workerId: string,
+  campaignId?: string,
+): Promise<TurnJobClaim | null> {
   assertWorkerId(workerId);
+  if (
+    campaignId !== undefined &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      campaignId,
+    )
+  ) {
+    throw new RangeError('campaignId must be a UUID');
+  }
   const result = await pool.query<JobRow>(
     "UPDATE turn_jobs AS job SET status = 'processing', generation = job.generation + 1, " +
       "worker_id = $1, lease_until = clock_timestamp() + ($2::integer * INTERVAL '1 second'), " +
       'started_at = clock_timestamp() WHERE job.id = (' +
-      "SELECT id FROM turn_jobs WHERE status = 'pending' ORDER BY created_at, id " +
+      "SELECT id FROM turn_jobs WHERE status = 'pending' " +
+      'AND ($3::uuid IS NULL OR campaign_id = $3) ORDER BY created_at, id ' +
       'FOR UPDATE SKIP LOCKED LIMIT 1) ' +
       'RETURNING id, campaign_id, turn_number, snapshot_version, status, generation, worker_id, lease_until, retry_count',
-    [workerId, LEASE_SECONDS],
+    [workerId, LEASE_SECONDS, campaignId ?? null],
   );
   const row = result.rows[0];
   if (!row) return null;
