@@ -49,7 +49,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('registers, normalizes email, logs in and rotates refresh tokens with reuse detection', async () => {
+    it(
+      'registers, normalizes email, logs in and rotates refresh tokens with reuse detection',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -129,7 +131,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
     });
 
-    it('creates a campaign, membership and the first committed seed in one transaction', async () => {
+    it(
+      'creates a campaign, membership and the first committed seed in one transaction',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -154,14 +158,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       const campaignName = `integration-${randomUUID()}`;
 
-      const created = await campaigns.createCampaign(user.user.id, campaignName, { mapWidth: 40, mapHeight: 30 });
+      const created = await campaigns.createCampaign(user.user.id, campaignName, {
+        mapWidth: 40,
+        mapHeight: 30,
+      });
       expect(created.status).toBe('active');
       expect(created.currentTurn).toBe(1);
       expect(created.ordersLocked).toBe(true);
       expect(created.firstTurnCommitment).toMatch(/^[a-f0-9]{64}$/);
 
       const membership = await current.pool.query<{ status: string; country_id: string | null }>(
-        'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+        `SELECT status, country_id FROM campaign_memberships
+         WHERE campaign_id = $1 AND user_id = $2`, 
         [created.id, user.user.id],
       );
       expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
@@ -172,7 +180,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         encrypted_seed: Buffer;
         nonce: Buffer;
       }>(
-        'SELECT status, commitment, encrypted_seed, nonce FROM random_seeds WHERE campaign_id = $1 AND turn_number = 1',
+        `SELECT status, commitment, encrypted_seed, nonce FROM random_seeds
+         WHERE campaign_id = $1 AND turn_number = 1`, 
         [created.id],
       );
       expect(seedRow.rows).toHaveLength(1);
@@ -186,7 +195,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(summaries[0]?.firstTurnCommitment).toBe(created.firstTurnCommitment);
     });
 
-    it('rolls back a campaign and owner membership when initial seed insertion fails', async () => {
+    it(
+      'rolls back a campaign and owner membership when initial seed insertion fails',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -210,9 +221,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         seedOptions: stableOptions,
       });
 
-      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`, { mapWidth: 40, mapHeight: 30 });
+      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`, {
+        mapWidth: 40,
+        mapHeight: 30,
+      });
       const failedName = `should-rollback-${randomUUID()}`;
-      await expect(campaigns.createCampaign(user.user.id, failedName, { mapWidth: 40, mapHeight: 30 })).rejects.toThrow(
+      await expect(
+        campaigns.createCampaign(user.user.id, failedName, { mapWidth: 40, mapHeight: 30 }),
+      ).rejects.toThrow(
         /Failed to generate unique AES-GCM nonce/,
       );
 
