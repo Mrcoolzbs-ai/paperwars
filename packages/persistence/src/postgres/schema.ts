@@ -36,8 +36,42 @@ export const users = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('users_email_unique').on(table.email),
+    uniqueIndex('users_email_ci_unique').on(sql`lower(${table.email})`),
+    check('users_email_normalized_check', sql`${table.email} = lower(btrim(${table.email}))`),
     check('users_status_check', sql`${table.status} in ('active', 'disabled')`),
+  ],
+);
+
+export const refreshTokens = pgTable(
+  'refresh_tokens',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    familyId: uuid('family_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+    replacedByTokenId: uuid('replaced_by_token_id'),
+  },
+  (table) => [
+    uniqueIndex('refresh_tokens_token_hash_unique').on(table.tokenHash),
+    index('refresh_tokens_user_created_idx').on(table.userId, table.createdAt),
+    index('refresh_tokens_family_idx').on(table.familyId),
+    index('refresh_tokens_expiry_idx').on(table.expiresAt),
+    check('refresh_tokens_token_hash_hex', sql`${table.tokenHash} ~ '^[a-f0-9]{64}$'`),
+    check('refresh_tokens_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'refresh_tokens_used_at_check',
+      sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`,
+    ),
+    check(
+      'refresh_tokens_revoked_at_check',
+      sql`${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}`,
+    ),
   ],
 );
 
