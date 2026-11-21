@@ -188,7 +188,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const data = await fixture();
       try {
         await closeOrders(db().pool, data.campaignId);
-        const first = await claimNextTurnJob(db().pool, 'worker-a');
+        const first = await claimNextTurnJob(db().pool, 'worker-a', data.campaignId);
         expect(first?.generation).toBe(1);
         if (!first) throw new Error('Expected a claimed job');
 
@@ -200,7 +200,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const reaped = await reapExpiredTurnJobs(db().pool);
         expect(reaped).toEqual([{ id: first.id, status: 'pending', generation: 1, retryCount: 5 }]);
 
-        const second = await claimNextTurnJob(db().pool, 'worker-b');
+        const second = await claimNextTurnJob(db().pool, 'worker-b', data.campaignId);
         expect(second?.generation).toBe(2);
         if (!second) throw new Error('Expected the reaped job to be claimable');
         await expect(renewTurnJobLease(db().pool, first)).rejects.toBeInstanceOf(StaleWorkerError);
@@ -221,7 +221,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       try {
         const orderId = await createOrder(data.campaignId, data.countryId, 'confirmed');
         await closeOrders(db().pool, data.campaignId);
-        const claim = await claimNextTurnJob(db().pool, 'worker-finalize');
+        const claim = await claimNextTurnJob(db().pool, 'worker-finalize', data.campaignId);
         if (!claim) throw new Error('Expected a claimed turn job');
 
         const turnSeed = Buffer.alloc(32, 0x37);
@@ -310,7 +310,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const data = await fixture();
       try {
         await closeOrders(db().pool, data.campaignId);
-        const claim = await claimNextTurnJob(db().pool, 'worker-stale');
+        const claim = await claimNextTurnJob(db().pool, 'worker-stale', data.campaignId);
         if (!claim) throw new Error('Expected a claimed turn job');
         await db().pool.query(
           "UPDATE turn_jobs SET lease_until = clock_timestamp() - INTERVAL '1 second' WHERE id = $1",
@@ -362,7 +362,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const data = await fixture();
       try {
         await closeOrders(db().pool, data.campaignId);
-        const claim = await claimNextTurnJob(db().pool, 'worker-terminal');
+        const claim = await claimNextTurnJob(db().pool, 'worker-terminal', data.campaignId);
         if (!claim) throw new Error('Expected a claimed turn job');
         const resolution = {
           campaignId: toId<'CampaignId'>(data.campaignId),

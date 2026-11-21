@@ -253,9 +253,7 @@ export async function claimNextTurnJob(
   assertWorkerId(workerId);
   if (
     campaignId !== undefined &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      campaignId,
-    )
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(campaignId)
   ) {
     throw new RangeError('campaignId must be a UUID');
   }

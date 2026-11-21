@@ -58,6 +58,7 @@ renewing the lease. The final persistence fence remains mandatory regardless.
 - `WORKER_ADAPTER_MODULE`: absolute path to an adapter module exporting
   `createWorkerAdapter(context)`.
 - `WORKER_ID`: optional stable process identifier; defaults to hostname + PID.
+- `WORKER_CAMPAIGN_ID`: optional UUID scope for a worker process; omit it to consume the global queue.
 - `WORKER_IDLE_POLL_MS`: idle/error backoff (default 1000 ms).
 - `WORKER_HEARTBEAT_MS`: lease renewal interval (default 60000 ms; maximum 240000 ms).
 - `WORKER_REAPER_BATCH_SIZE`: expired jobs processed per poll (default 100).
