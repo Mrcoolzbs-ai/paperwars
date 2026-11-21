@@ -3,7 +3,7 @@ ALTER TABLE campaigns
   ADD COLUMN map_height INTEGER,
   ADD CONSTRAINT campaigns_map_dimensions_check CHECK (
     (map_width IS NULL AND map_height IS NULL)
-    OR (map_width >= 5 AND map_height >= 5)
+    OR (map_width IS NOT NULL AND map_height IS NOT NULL AND map_width >= 5 AND map_height >= 5)
   );
 
 ALTER TABLE cells
@@ -11,7 +11,7 @@ ALTER TABLE cells
   ADD COLUMN y INTEGER,
   ADD CONSTRAINT cells_coordinate_pair_check CHECK (
     (x IS NULL AND y IS NULL)
-    OR (x >= 0 AND y >= 0)
+    OR (x IS NOT NULL AND y IS NOT NULL AND x >= 0 AND y >= 0)
   );
 
 CREATE UNIQUE INDEX cells_campaign_coordinates_unique
@@ -27,6 +27,7 @@ CREATE TABLE social_systems (
   traits JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT social_systems_campaign_id_id_unique UNIQUE (campaign_id, id),
+  CONSTRAINT social_systems_campaign_type_id_unique UNIQUE (campaign_id, system_type, id),
   CONSTRAINT social_systems_type_check CHECK (system_type IN ('religion', 'ideology')),
   CONSTRAINT social_systems_name_length_check CHECK (char_length(btrim(name)) BETWEEN 2 AND 60),
   CONSTRAINT social_systems_origin_check CHECK (origin_x >= 0 AND origin_y >= 0),
@@ -40,8 +41,9 @@ ALTER TABLE countries
   ADD CONSTRAINT countries_official_system_pair_check CHECK (
     (official_system_type IS NULL AND official_system_id IS NULL)
     OR (
-      official_system_type IN ('religion', 'ideology')
+      official_system_type IS NOT NULL
       AND official_system_id IS NOT NULL
+      AND official_system_type IN ('religion', 'ideology')
     )
   ),
   ADD CONSTRAINT countries_setup_official_system_check CHECK (
@@ -49,8 +51,8 @@ ALTER TABLE countries
     OR (official_system_type IS NOT NULL AND official_system_id IS NOT NULL)
   ),
   ADD CONSTRAINT countries_official_system_fk
-    FOREIGN KEY (campaign_id, official_system_id)
-    REFERENCES social_systems (campaign_id, id);
+    FOREIGN KEY (campaign_id, official_system_type, official_system_id)
+    REFERENCES social_systems (campaign_id, system_type, id);
 
 CREATE TABLE country_cells (
   campaign_id UUID NOT NULL,
