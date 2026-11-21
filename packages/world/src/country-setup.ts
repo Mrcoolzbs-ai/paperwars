@@ -110,7 +110,11 @@ function validateCountryName(value: unknown): string {
 
 function validateOfficialSystemChoice(
   choice: CreateCountryInput['officialSystem'],
-): { readonly type: OfficialSystemType; readonly existingSystemId?: string; readonly newSystemName?: string } {
+): {
+  readonly type: OfficialSystemType;
+  readonly existingSystemId?: string;
+  readonly newSystemName?: string;
+} {
   if (choice === null || typeof choice !== 'object') {
     throw new CountrySetupValidationError('An official religion or ideology is required');
   }
@@ -118,7 +122,8 @@ function validateOfficialSystemChoice(
     throw new CountrySetupValidationError('Official system type must be religion or ideology');
   }
 
-  const hasExisting = typeof choice.existingSystemId === 'string' && choice.existingSystemId.trim().length > 0;
+  const hasExisting =
+    typeof choice.existingSystemId === 'string' && choice.existingSystemId.trim().length > 0;
   const hasNew = typeof choice.newSystemName === 'string' && choice.newSystemName.trim().length > 0;
   if (hasExisting === hasNew) {
     throw new CountrySetupValidationError(
@@ -132,7 +137,9 @@ function validateOfficialSystemChoice(
 
   const newSystemName = choice.newSystemName?.trim();
   if (newSystemName === undefined || newSystemName.length < 2 || newSystemName.length > 60) {
-    throw new CountrySetupValidationError('New official system name must contain 2 to 60 characters');
+    throw new CountrySetupValidationError(
+      'New official system name must contain 2 to 60 characters',
+    );
   }
   return { type: choice.type, newSystemName };
 }
@@ -149,7 +156,11 @@ function validateBuildingPlacements(
   const occupiedCells = new Set<string>();
 
   for (const placement of placements) {
-    if (placement === null || typeof placement !== 'object' || !BUILDING_TYPES.has(placement.type)) {
+    if (
+      placement === null ||
+      typeof placement !== 'object' ||
+      !BUILDING_TYPES.has(placement.type)
+    ) {
       throw new CountrySetupValidationError('A start building type is invalid');
     }
     validateInteger(placement.x, 'building.x');
@@ -160,7 +171,9 @@ function validateBuildingPlacements(
       placement.y < 0 ||
       placement.y >= TERRITORY_SIDE
     ) {
-      throw new CountrySetupValidationError('Start buildings must be placed inside the 5x5 territory');
+      throw new CountrySetupValidationError(
+        'Start buildings must be placed inside the 5x5 territory',
+      );
     }
 
     const key = `${placement.x},${placement.y}`;
@@ -179,7 +192,9 @@ function validateBuildingPlacements(
   ];
   for (const [type, count] of required) {
     if (counts.get(type) !== count) {
-      throw new CountrySetupValidationError(`Start configuration requires exactly ${count} ${type} building(s)`);
+      throw new CountrySetupValidationError(
+        `Start configuration requires exactly ${count} ${type} building(s)`,
+      );
     }
   }
 
@@ -390,7 +405,10 @@ export function createCountrySetupService(options: {
           throw new SystemAvailabilityNotConfiguredError();
         }
 
-        const campaign = await result.query<{ map_width: number | null; map_height: number | null }>(
+        const campaign = await result.query<{
+          map_width: number | null;
+          map_height: number | null;
+        }>(
           'SELECT map_width, map_height FROM campaigns WHERE id = $1',
           [campaignId],
         );
@@ -404,7 +422,9 @@ export function createCountrySetupService(options: {
           spawnX + TERRITORY_HALF >= row.map_width ||
           spawnY + TERRITORY_HALF >= row.map_height
         ) {
-          throw new CountrySetupValidationError('The selected 5x5 starting area is outside the campaign map');
+          throw new CountrySetupValidationError(
+            'The selected 5x5 starting area is outside the campaign map',
+          );
         }
 
         return options.systemAvailabilityPolicy.listAvailable(result, {
@@ -607,7 +627,8 @@ export function createCountrySetupService(options: {
           campaign.map_height,
         );
         const previousSnapshotVersion = snapshotLock.rows[0]?.version;
-        const snapshotVersion = previousSnapshotVersion === undefined ? 1 : previousSnapshotVersion + 1;
+        const snapshotVersion =
+          previousSnapshotVersion === undefined ? 1 : previousSnapshotVersion + 1;
         if (previousSnapshotVersion === undefined) {
           await client.query(
             `INSERT INTO world_snapshots (
