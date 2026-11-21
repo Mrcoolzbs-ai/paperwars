@@ -134,7 +134,7 @@ export function createWorkerRuntime<
   };
 
   async function processClaim(claim: TurnJobClaim): Promise<FinalizeTurnJobResult> {
-    const loaded = await loadTurnJobInput({
+    const loaded = await loadTurnJobInput<TState, TPayload, TRuleset>({
       pool: options.pool,
       claim,
       keyProvider: options.keyProvider,

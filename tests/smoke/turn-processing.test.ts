@@ -5,7 +5,9 @@ import {
   closeOrders,
   createPostgresPersistence,
   finalizeTurnJob,
+  OrdersAlreadyLockedError,
   OrdersNotConfirmedError,
+  lockCampaignForMembershipWrite,
   reapExpiredTurnJobs,
   renewTurnJobLease,
   runMigrations,
@@ -158,6 +160,26 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
         expect(jobs.rows[0]?.count).toBe('0');
       } finally {
+        await data.cleanup();
+      }
+    });
+
+    it('serializes membership writes with order closing and rejects changes after lock', async () => {
+      const data = await fixture();
+      const tx = await db().pool.connect();
+      try {
+        await tx.query('BEGIN');
+        await expect(lockCampaignForMembershipWrite(tx, data.campaignId)).resolves.toBe(1);
+        await tx.query('ROLLBACK');
+
+        await closeOrders(db().pool, data.campaignId);
+        await tx.query('BEGIN');
+        await expect(lockCampaignForMembershipWrite(tx, data.campaignId)).rejects.toBeInstanceOf(
+          OrdersAlreadyLockedError,
+        );
+        await tx.query('ROLLBACK');
+      } finally {
+        tx.release();
         await data.cleanup();
       }
     });

@@ -146,13 +146,20 @@ export async function lockCampaignForMembershipWrite(
   tx: PoolClient,
   campaignId: string,
 ): Promise<number> {
-  const result = await tx.query<{ status: string; current_turn: number }>(
-    'SELECT status, current_turn FROM campaigns WHERE id = $1 FOR UPDATE',
+  const result = await tx.query<{
+    status: string;
+    current_turn: number;
+    orders_locked: boolean;
+  }>(
+    'SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
     [campaignId],
   );
   const row = result.rows[0];
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
+  if (row.orders_locked) {
+    throw new OrdersAlreadyLockedError('Membership changes are locked for the current turn');
+  }
   return row.current_turn;
 }
 
