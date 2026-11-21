@@ -125,6 +125,23 @@ async function createSession(
   };
 }
 
+async function lockRefreshFamily(
+  client: PoolClient,
+  tokenHash: string,
+): Promise<string | undefined> {
+  const result = await client.query<{ family_id: string }>(
+    'SELECT family_id FROM refresh_tokens WHERE token_hash = $1',
+    [tokenHash],
+  );
+  const familyId = result.rows[0]?.family_id;
+  if (familyId === undefined) return undefined;
+
+  // Serialize refresh/replay/logout operations for every token in one family
+  // before any refresh-token row lock is acquired.
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [familyId]);
+  return familyId;
+}
+
 async function revokeFamily(client: PoolClient, familyId: string, at: Date): Promise<void> {
   await client.query(
     `UPDATE refresh_tokens
@@ -260,14 +277,19 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       try {
         await client.query('BEGIN');
         transactionOpen = true;
+        const familyId = await lockRefreshFamily(client, tokenHash);
+        if (familyId === undefined) {
+          throw new InvalidRefreshTokenError();
+        }
+
         const selected = await client.query<RefreshTokenRow>(
           `SELECT rt.id, rt.user_id, u.email, u.status AS user_status,
                   rt.family_id, rt.expires_at, rt.used_at, rt.revoked_at
            FROM refresh_tokens AS rt
            JOIN users AS u ON u.id = rt.user_id
-           WHERE rt.token_hash = $1
-           FOR UPDATE OF rt`,
-          [tokenHash],
+           WHERE rt.token_hash = $1 AND rt.family_id = $2
+           FOR UPDATE OF rt, u`,
+          [tokenHash, familyId],
         );
         const row = selected.rows[0];
         if (row === undefined) {
@@ -336,11 +358,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       try {
         await client.query('BEGIN');
         transactionOpen = true;
-        const token = await client.query<{ family_id: string }>(
-          'SELECT family_id FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE',
-          [hashRefreshToken(rawRefreshToken)],
-        );
-        const familyId = token.rows[0]?.family_id;
+        const familyId = await lockRefreshFamily(client, hashRefreshToken(rawRefreshToken));
         if (familyId !== undefined) {
           await revokeFamily(client, familyId, clock());
         }
