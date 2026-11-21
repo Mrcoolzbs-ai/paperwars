@@ -32,8 +32,16 @@ export interface AcceptedCampaignInvitation {
   readonly countryId: null;
 }
 export interface CampaignInvitationService {
-  createInvitation(userId: string, campaignId: string, inviteeEmail: unknown): Promise<CreatedCampaignInvitation>;
-  acceptInvitation(userId: string, userEmail: string, token: unknown): Promise<AcceptedCampaignInvitation>;
+  createInvitation(
+    userId: string,
+    campaignId: string,
+    inviteeEmail: unknown,
+  ): Promise<CreatedCampaignInvitation>;
+  acceptInvitation(
+    userId: string,
+    userEmail: string,
+    token: unknown,
+  ): Promise<AcceptedCampaignInvitation>;
   revokeInvitation(userId: string, campaignId: string, invitationId: string): Promise<void>;
 }
 export interface CampaignInvitationServiceOptions {
@@ -129,26 +137,28 @@ export function createCampaignInvitationService(
       return inTransaction(options.pool, async (tx) => {
         await lockCampaignForInvitationWrite(tx, campaignId);
         const inviter = await tx.query<{ user_id: string }>(
-          "SELECT user_id FROM campaign_memberships " +
+          'SELECT user_id FROM campaign_memberships ' +
             "WHERE campaign_id = $1 AND user_id = $2 AND status = 'active' FOR SHARE",
           [campaignId, userId],
         );
         if (inviter.rows[0] === undefined) throw new CampaignAccessDeniedError();
 
         const activeMember = await tx.query<{ user_id: string }>(
-          "SELECT member.user_id FROM campaign_memberships AS member " +
-            "JOIN users AS invited_user ON invited_user.id = member.user_id " +
+          'SELECT member.user_id FROM campaign_memberships AS member ' +
+            'JOIN users AS invited_user ON invited_user.id = member.user_id ' +
             "WHERE member.campaign_id = $1 AND member.status = 'active' " +
             'AND lower(invited_user.email) = $2 LIMIT 1',
           [campaignId, inviteeEmail],
         );
         if (activeMember.rows[0] !== undefined) {
-          throw new CampaignInvitationConflictError('This user is already an active campaign member');
+          throw new CampaignInvitationConflictError(
+            'This user is already an active campaign member',
+          );
         }
 
         await tx.query(
           "UPDATE campaign_invitations SET status = 'revoked', revoked_at = clock_timestamp() " +
-            "WHERE campaign_id = $1 AND lower(invitee_email) = $2 " +
+            'WHERE campaign_id = $1 AND lower(invitee_email) = $2 ' +
             "AND status = 'pending' AND expires_at <= clock_timestamp()",
           [campaignId, inviteeEmail],
         );
@@ -165,7 +175,9 @@ export function createCampaignInvitationService(
           return { id: row.id, campaignId, inviteeEmail, expiresAt: row.expires_at, token };
         } catch (error) {
           if (isUniqueViolation(error)) {
-            throw new CampaignInvitationConflictError('A pending invitation already exists for this email');
+            throw new CampaignInvitationConflictError(
+              'A pending invitation already exists for this email',
+            );
           }
           throw error;
         }
@@ -211,7 +223,7 @@ export function createCampaignInvitationService(
         }
 
         await tx.query(
-          "INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed) " +
+          'INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed) ' +
             "VALUES ($1, $2, 'active', FALSE)",
           [campaignId, userId],
         );
@@ -231,7 +243,7 @@ export function createCampaignInvitationService(
       await inTransaction(options.pool, async (tx) => {
         await lockCampaignForInvitationWrite(tx, campaignId);
         const inviter = await tx.query<{ user_id: string }>(
-          "SELECT user_id FROM campaign_memberships " +
+          'SELECT user_id FROM campaign_memberships ' +
             "WHERE campaign_id = $1 AND user_id = $2 AND status = 'active' FOR SHARE",
           [campaignId, userId],
         );

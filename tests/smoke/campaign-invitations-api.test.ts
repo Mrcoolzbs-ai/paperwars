@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createAccessTokenSigner, createAuthService, createCampaignService } from '@paper-wars/auth';
+import {
+  createAccessTokenSigner,
+  createAuthService,
+  createCampaignService,
+} from '@paper-wars/auth';
 import { createApp } from '@paper-wars/api';
 import { createCampaignInvitationService } from '@paper-wars/gameplay';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
@@ -11,7 +15,10 @@ const databaseUrl = process.env['DATABASE_URL'];
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'campaign invitations in initial setup',
   () => {
-    const persistence = databaseUrl === undefined ? undefined : createPostgresPersistence({ connectionString: databaseUrl });
+    const persistence =
+      databaseUrl === undefined
+        ? undefined
+        : createPostgresPersistence({ connectionString: databaseUrl });
     const seedKey = Buffer.alloc(32, 0x51);
     const keyProvider: SeedKeyProvider = {
       getActiveKey: async () => ({ version: 'campaign-invite-test-v1', key: seedKey }),
@@ -27,10 +34,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       ttlSeconds: 900,
     });
     const auth = persistence
-      ? createAuthService({ pool: persistence.pool, accessTokens: signer, refreshTokenTtlSeconds: 3600 })
+      ? createAuthService({
+          pool: persistence.pool,
+          accessTokens: signer,
+          refreshTokenTtlSeconds: 3600,
+        })
       : undefined;
     const campaigns = persistence
-      ? createCampaignService({ pool: persistence.pool, keyProvider, rulesetVersion: 'baseline-v1', rngVersion: 'hmac-v1' })
+      ? createCampaignService({
+          pool: persistence.pool,
+          keyProvider,
+          rulesetVersion: 'baseline-v1',
+          rngVersion: 'hmac-v1',
+        })
       : undefined;
     const invitations = persistence
       ? createCampaignInvitationService({ pool: persistence.pool, invitationTtlSeconds: 3600 })
@@ -54,12 +70,22 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     let otherToken = '';
 
     beforeAll(async () => {
-      if (!persistence || !auth || !campaigns) throw new Error('PostgreSQL services are unavailable');
+      if (!persistence || !auth || !campaigns)
+        throw new Error('PostgreSQL services are unavailable');
       await runMigrations(persistence.pool);
       const suffix = randomUUID();
-      const owner = await auth.register('owner-' + suffix + '@example.test', 'invitation test owner password');
-      const invitee = await auth.register('invitee-' + suffix + '@example.test', 'invitation test invitee password');
-      const other = await auth.register('other-' + suffix + '@example.test', 'invitation test other password');
+      const owner = await auth.register(
+        'owner-' + suffix + '@example.test',
+        'invitation test owner password',
+      );
+      const invitee = await auth.register(
+        'invitee-' + suffix + '@example.test',
+        'invitation test invitee password',
+      );
+      const other = await auth.register(
+        'other-' + suffix + '@example.test',
+        'invitation test other password',
+      );
       ownerId = owner.user.id;
       inviteeId = invitee.user.id;
       otherId = other.user.id;
@@ -70,7 +96,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       otherToken = other.accessToken;
       const campaign = await campaigns.createCampaign(ownerId, 'Invitation setup ' + suffix);
       campaignId = campaign.id;
-      const state = await persistence.pool.query<{ orders_locked: boolean; snapshot_count: number }>(
+      const state = await persistence.pool.query<{
+        orders_locked: boolean;
+        snapshot_count: number;
+      }>(
         'SELECT c.orders_locked, (SELECT count(*)::integer FROM world_snapshots AS s WHERE s.campaign_id = c.id) AS snapshot_count ' +
           'FROM campaigns AS c WHERE c.id = $1',
         [campaignId],
@@ -79,16 +108,23 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     }, 30_000);
 
     afterAll(async () => {
-      if (persistence && campaignId) await persistence.pool.query('DELETE FROM campaigns WHERE id = $1', [campaignId]);
+      if (persistence && campaignId)
+        await persistence.pool.query('DELETE FROM campaigns WHERE id = $1', [campaignId]);
       if (persistence && ownerId) {
-        await persistence.pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[ownerId, inviteeId, otherId]]);
+        await persistence.pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [
+          [ownerId, inviteeId, otherId],
+        ]);
       }
       await app.close();
       await persistence?.close();
     });
 
     it('creates a hashed one-time invitation and accepts it only for the matching email', async () => {
-      const unauthenticated = await app.inject({ method: 'POST', url: '/campaigns/' + campaignId + '/invitations', payload: { email: inviteeEmail } });
+      const unauthenticated = await app.inject({
+        method: 'POST',
+        url: '/campaigns/' + campaignId + '/invitations',
+        payload: { email: inviteeEmail },
+      });
       expect(unauthenticated.statusCode).toBe(401);
       const created = await app.inject({
         method: 'POST',
@@ -97,14 +133,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { email: '  ' + inviteeEmail.toUpperCase() + '  ' },
       });
       expect(created.statusCode).toBe(201);
-      const invitation = created.json<{ invitation: { id: string; token: string; inviteeEmail: string } }>().invitation;
+      const invitation = created.json<{
+        invitation: { id: string; token: string; inviteeEmail: string };
+      }>().invitation;
       expect(invitation.inviteeEmail).toBe(inviteeEmail);
       expect(invitation.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
       const stored = await persistence!.pool.query<{ token_hash: string; status: string }>(
         'SELECT token_hash, status FROM campaign_invitations WHERE id = $1',
         [invitation.id],
       );
-      expect(stored.rows[0]).toEqual({ token_hash: createHash('sha256').update(invitation.token).digest('hex'), status: 'pending' });
+      expect(stored.rows[0]).toEqual({
+        token_hash: createHash('sha256').update(invitation.token).digest('hex'),
+        status: 'pending',
+      });
       expect(stored.rows[0]?.token_hash).not.toBe(invitation.token);
 
       const wrongEmail = await app.inject({
@@ -123,11 +164,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { token: invitation.token },
       });
       expect(accepted.statusCode).toBe(200);
-      expect(accepted.json<{ membership: { campaignId: string; userId: string; status: string; countryId: null } }>().membership).toEqual({ campaignId, userId: inviteeId, status: 'active', countryId: null });
-      const acceptedRow = await persistence!.pool.query<{ status: string; accepted_by_user_id: string }>(
-        'SELECT status, accepted_by_user_id FROM campaign_invitations WHERE id = $1',
-        [invitation.id],
-      );
+      expect(
+        accepted.json<{
+          membership: { campaignId: string; userId: string; status: string; countryId: null };
+        }>().membership,
+      ).toEqual({ campaignId, userId: inviteeId, status: 'active', countryId: null });
+      const acceptedRow = await persistence!.pool.query<{
+        status: string;
+        accepted_by_user_id: string;
+      }>('SELECT status, accepted_by_user_id FROM campaign_invitations WHERE id = $1', [
+        invitation.id,
+      ]);
       expect(acceptedRow.rows[0]).toEqual({ status: 'accepted', accepted_by_user_id: inviteeId });
 
       const replay = await app.inject({
@@ -137,7 +184,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { token: invitation.token },
       });
       expect(replay.statusCode).toBe(409);
-      const membership = await persistence!.pool.query<{ status: string; country_id: string | null }>(
+      const membership = await persistence!.pool.query<{
+        status: string;
+        country_id: string | null;
+      }>(
         'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
         [campaignId, inviteeId],
       );

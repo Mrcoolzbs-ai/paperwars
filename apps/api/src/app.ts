@@ -413,7 +413,6 @@ function registerCampaignGameRoutes(
   );
 }
 
-
 function registerCampaignInvitationRoutes(
   app: FastifyInstance,
   authService: AuthService,
