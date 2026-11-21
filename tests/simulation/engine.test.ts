@@ -127,7 +127,7 @@ function createHandlers(
       },
     ]),
   );
-  return handlers as TurnPhaseHandlerMap<
+  return handlers as unknown as TurnPhaseHandlerMap<
     TestState,
     TestOrderPayload,
     RulesetManifest,
@@ -231,36 +231,45 @@ describe('Simulation Engine phase runner', () => {
   });
 
   it('requires an explicit handler for every normative phase', () => {
-    const incomplete = { ...createHandlers() } as Partial<
-      TurnPhaseHandlerMap<TestState, TestOrderPayload, RulesetManifest, TestEvent>
+    const fullMap = createHandlers();
+    const incomplete = Object.fromEntries(
+      Object.entries(fullMap).filter(([phase]) => phase !== 'BATTLE'),
+    ) as unknown as TurnPhaseHandlerMap<
+      TestState,
+      TestOrderPayload,
+      RulesetManifest,
+      TestEvent
     >;
-    delete incomplete.BATTLE;
 
     expect(() =>
       createTurnResolver({
         engine,
-        phaseHandlers: incomplete as TurnPhaseHandlerMap<
-          TestState,
-          TestOrderPayload,
-          RulesetManifest,
-          TestEvent
-        >,
+        phaseHandlers: incomplete,
       }),
     ).toThrow(SimulationPhaseConfigurationError);
   });
 
   it('provides an explicit no-op handler for phases whose mechanics are not ready', () => {
-    const context = {
-      phase: 'WEATHER' as never,
-      state: snapshot.state,
-    };
     const handler = createNoOpTurnPhaseHandler<
       TestState,
       TestOrderPayload,
       RulesetManifest,
       TestEvent
     >();
-    expect(handler(context as never)).toEqual({ state: snapshot.state });
+    const context = {
+      phase: 'PREPARE_TURN',
+      snapshot,
+      state: snapshot.state,
+      orders,
+      ruleset: manifest,
+      random,
+      orderResults: [],
+      events: [],
+      randomDraws: [],
+      campaignEnded: false,
+    } as const;
+
+    expect(handler(context)).toEqual({ state: snapshot.state });
   });
 
   it('retains strict ruleset selection in the engine descriptor', () => {
