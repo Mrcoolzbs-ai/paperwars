@@ -130,7 +130,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           InvalidRefreshTokenError,
         );
       },
-    ););
+    );
 
     it(
       'creates a campaign, membership and the first committed seed in one transaction',
@@ -195,7 +195,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(summaries[0]?.id).toBe(created.id);
         expect(summaries[0]?.firstTurnCommitment).toBe(created.firstTurnCommitment);
       },
-    ););
+    );
 
     it(
       'rolls back a campaign and owner membership when initial seed insertion fails',
@@ -240,6 +240,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
         expect(rows.rows[0]?.count).toBe('0');
       },
-    ););
+    );
   },
 );
