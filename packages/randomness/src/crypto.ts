@@ -1,8 +1,4 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-} from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import {
   assertAes256Key,
   assertEncryptionContext,
@@ -10,10 +6,7 @@ import {
   encodeAAD,
   verifyCommitment,
 } from './encoding.js';
-import type {
-  EncryptedSeed,
-  SeedEncryptionContext,
-} from './types.js';
+import type { EncryptedSeed, SeedEncryptionContext } from './types.js';
 
 export type NonceSource = (size: number) => Buffer;
 
