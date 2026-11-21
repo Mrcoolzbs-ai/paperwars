@@ -11,3 +11,8 @@ export {
   revealCampaignSeeds,
 } from './postgres/seeds.js';
 export type { CreateCommittedSeedOptions, CreatedSeedReference } from './postgres/seeds.js';
+export {
+  drawUniformAndRecord,
+  drawWeightedAndRecord,
+  RandomDrawConflictError,
+} from './postgres/random-draws.js';
