@@ -8,7 +8,6 @@ import {
   verifyPassword,
 } from './password.js';
 import {
-  AuthValidationError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
