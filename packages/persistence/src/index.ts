@@ -29,6 +29,7 @@ export {
   ActiveCampaignMembershipRequiredError,
   finalizeTurnJob,
   lockCampaignForMembershipWrite,
+  lockCampaignForInvitationWrite,
   lockCampaignForOrderWrite,
   reapExpiredTurnJobs,
   renewTurnJobLease,

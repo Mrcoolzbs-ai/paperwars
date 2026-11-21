@@ -56,3 +56,28 @@ export class WorldSnapshotUnavailableError extends CampaignGameError {
     this.name = 'WorldSnapshotUnavailableError';
   }
 }
+
+export class CampaignInvitationNotFoundError extends CampaignGameError {
+  constructor() {
+    super('INVITATION_NOT_FOUND', 404, 'Campaign invitation was not found');
+    this.name = 'CampaignInvitationNotFoundError';
+  }
+}
+export class CampaignInvitationConflictError extends CampaignGameError {
+  constructor(message = 'The invitation is no longer available or the user is already a member') {
+    super('INVITATION_CONFLICT', 409, message);
+    this.name = 'CampaignInvitationConflictError';
+  }
+}
+export class CampaignInvitationEmailMismatchError extends CampaignGameError {
+  constructor() {
+    super('INVITATION_EMAIL_MISMATCH', 403, 'The invitation belongs to a different email address');
+    this.name = 'CampaignInvitationEmailMismatchError';
+  }
+}
+export class CampaignInvitationForbiddenError extends CampaignGameError {
+  constructor() {
+    super('INVITATION_FORBIDDEN', 403, 'Only the member who created this invitation can revoke it');
+    this.name = 'CampaignInvitationForbiddenError';
+  }
+}

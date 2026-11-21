@@ -13,6 +13,7 @@ import { createSimulationEngine } from '@paper-wars/simulation';
 import {
   CampaignGameError,
   type CampaignGameService,
+  type CampaignInvitationService,
   type CampaignWorldSnapshot,
   type CampaignMembershipView,
 } from '@paper-wars/gameplay';
@@ -26,6 +27,7 @@ export interface CreateAppOptions {
   readonly campaignService?: CampaignService;
   readonly secureCookies?: boolean;
   readonly campaignGameService?: CampaignGameService;
+  readonly campaignInvitationService?: CampaignInvitationService;
   readonly worldViewProjector?: WorldViewProjector;
 }
 
@@ -411,6 +413,63 @@ function registerCampaignGameRoutes(
   );
 }
 
+
+function registerCampaignInvitationRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  invitationService: CampaignInvitationService,
+): void {
+  app.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/invitations',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const invitation = await invitationService.createInvitation(
+          user.id,
+          request.params.campaignId,
+          body['email'],
+        );
+        return reply.code(201).send({ invitation });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.post<{ Params: { campaignId: string; invitationId: string } }>(
+    '/campaigns/:campaignId/invitations/:invitationId/revoke',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await invitationService.revokeInvitation(
+          user.id,
+          request.params.campaignId,
+          request.params.invitationId,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.post('/invitations/accept', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const membership = await invitationService.acceptInvitation(
+        user.id,
+        user.email,
+        body['token'],
+      );
+      return reply.send({ membership });
+    } catch (error) {
+      return sendCampaignGameError(error, reply);
+    }
+  });
+}
+
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
@@ -441,6 +500,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
       options.campaignGameService,
       options.worldViewProjector,
     );
+  }
+
+  if (options.authService !== undefined && options.campaignInvitationService !== undefined) {
+    registerCampaignInvitationRoutes(app, options.authService, options.campaignInvitationService);
   }
 
   return app;
