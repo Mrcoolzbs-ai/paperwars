@@ -35,14 +35,7 @@ describe('AES-256-GCM seed encryption', () => {
     modifiedTag[0] = (modifiedTag[0] ?? 0) ^ 0xff;
 
     expect(() =>
-      decryptSeed(
-        encrypted.encryptedSeed,
-        encrypted.nonce,
-        modifiedTag,
-        'key-v1',
-        key,
-        context,
-      ),
+      decryptSeed(encrypted.encryptedSeed, encrypted.nonce, modifiedTag, 'key-v1', key, context),
     ).toThrow();
   });
 
@@ -67,9 +60,7 @@ describe('AES-256-GCM seed encryption', () => {
         rngVersion: 'hmac-v2',
       }),
     ).toThrow();
-    expect(() =>
-      decryptAndVerifySeed(encrypted, 'key-v2', key, context),
-    ).toThrow();
+    expect(() => decryptAndVerifySeed(encrypted, 'key-v2', key, context)).toThrow();
   });
 
   it('detects a ruleset-version mismatch through commitment verification', () => {
