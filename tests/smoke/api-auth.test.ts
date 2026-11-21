@@ -47,11 +47,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           rngVersion: 'rng-v1',
         });
     const app = createApp({
-      authService: auth,
-      campaignService: campaigns,
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
       secureCookies: false,
+      ...(auth === undefined ? {} : { authService: auth }),
+      ...(campaigns === undefined ? {} : { campaignService: campaigns }),
     });
 
     beforeAll(async () => {
