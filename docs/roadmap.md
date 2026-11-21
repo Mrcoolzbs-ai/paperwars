@@ -161,28 +161,36 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] Определить структуру TurnResolution: новое состояние, результаты приказов, события и журнал использованных случайных значений.
 - [x] Входные данные и результат представлены readonly-контрактами; проверяются campaign/turn/snapshot version и точное соответствие order results.
 - [x] RNG передаётся как явный `RandomSource`, а не как глобальный генератор.
-- [ ] Реализовать orchestration/исполнение разрешения хода без доступа к БД из pure core.
-- [ ] Обеспечить детерминизм unit-тестами уже исполняемой симуляции.
-- [ ] Реализовать только нормативно подтверждённые механики; неподтверждённые параметры не добавлять.
+- [x] Реализовать pure synchronous phase runner без БД/HTTP; он вызывает все 14 нормативных фаз в точном порядке.
+- [x] Требовать явный handler для каждой фазы; незавершённые игровые фазы можно подключить как явно заданные no-op, а не пропускать молча.
+- [x] Покрыть runner тестами порядка фаз, передачи контекста/состояния, совместимости ruleset/snapshot, обязательности handlers и аудита RNG draws.
+- [ ] Реализовать сами подтверждённые gameplay-механики в phase handlers; заменить no-op по мере готовности правил.
+- [ ] Добавить отдельный тест повторного исполнения одинакового input с побайтно/структурно одинаковым TurnResolution.
 
-**Текущий статус:** контрактная часть реализована в PR #7; реальная функция resolveTurn и игровой цикл ещё не реализованы.
+**Результат Stage 1.7:** generic phase runner реализован в PR #9; GitHub Actions CI — 11 файлов, 63/63 теста, build/typecheck/lint/format успешно. PR #9 ожидает merge; игровые правила по фазам в этот инкремент не входят.
 
-### 1.8. Закрытие приказов, очередь и Worker
+### 1.8. Закрытие приказов, очередь и persistence-контур Worker
 
-- [ ] `closeOrders`: первым делом блокировать кампанию `FOR UPDATE`; проверить статус, orders_locked, snapshot и актуальный список активных участников.
-- [ ] Проверять подтверждения либо deadline по времени БД `clock_timestamp()`.
-- [ ] В одной транзакции финализировать confirmed orders, discard draft/unconfirmed, включить orders_locked и создать TurnJob.
-- [ ] Операции приказов используют `FOR SHARE` на campaign; проверка orders_locked и изменение приказа — одна транзакция.
-- [ ] Изменения состава участников используют `FOR UPDATE` на campaign, чтобы сериализоваться с closeOrders.
-- [ ] Уникальный TurnJob на (campaign_id, turn_number); начальная generation=0, первый успешный claim увеличивает её до 1.
-- [ ] Захват через PostgreSQL `FOR UPDATE SKIP LOCKED`, lease 5 минут.
-- [ ] Продлевать lease только при совпадении worker_id/generation/status и если старый lease ещё действует: `lease_until > clock_timestamp()`.
-- [ ] Reaper использует `clock_timestamp()`; 5 переназначений разрешены, после истечения lease шестой попытки job становится failed, retry_count остаётся 5.
-- [ ] Fencing token generation не сбрасывается.
-- [ ] Финальный UPDATE обязан проверять generation, worker_id, status и `lease_until > clock_timestamp()`, возвращать ровно одну строку; иначе вся транзакция откатывается.
-- [ ] Единый порядок row locks: campaigns → world_snapshots → turn_jobs → остальные таблицы.
-- [ ] В одной транзакции сохранять следующий snapshot, events, random log, economic/battle reports, next seed и результат TurnJob.
-- [ ] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
+- [x] `closeOrders`: первым делом блокировать кампанию `FOR UPDATE`; проверить статус, orders_locked, snapshot и актуальный список активных участников.
+- [x] Проверять подтверждения либо deadline по времени БД `clock_timestamp()`.
+- [x] В одной транзакции финализировать confirmed orders, discard draft/unconfirmed, включить orders_locked и создать TurnJob.
+- [x] Предоставить транзакционный helper order writes с `FOR SHARE` и проверкой orders_locked; подключение helper к HTTP order routes остаётся отдельной задачей.
+- [x] Предоставить транзакционный helper membership writes с `FOR UPDATE`, сериализующий изменения состава с closeOrders; сами membership routes ещё не реализованы.
+- [x] Уникальный TurnJob на (campaign_id, turn_number); начальная generation=0, первый успешный claim увеличивает её до 1.
+- [x] Захват через PostgreSQL `FOR UPDATE SKIP LOCKED`, lease 5 минут.
+- [x] Продлевать lease только при совпадении worker_id/generation/status и если старый lease ещё действует: `lease_until > clock_timestamp()`.
+- [x] Reaper использует `clock_timestamp()`; 5 переназначений разрешены, после истечения lease шестая попытка job становится failed, retry_count остаётся 5.
+- [x] Fencing token generation не сбрасывается.
+- [x] Финальный UPDATE обязан проверять generation, worker_id, status и `lease_until > clock_timestamp()`, возвращать ровно одну строку; иначе вся транзакция откатывается.
+- [x] Единый порядок row locks: campaigns → world_snapshots → turn_jobs → остальные таблицы.
+- [x] В одной транзакции сохранять следующий snapshot, events, random log, economic/battle reports, next seed и результат TurnJob.
+- [x] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
+- [ ] Реализовать постоянно работающий Worker process: polling, вызов claim/reap, обработка ошибок и остановка по сигналу.
+- [ ] Загружать и проверять для job snapshot, finalized orders, ruleset и committed turn seed; seed расшифровывать через versioned key provider.
+- [ ] Связать phase runner/TurnResolver с RNG context и `finalizeTurnJob`; поддерживать heartbeat lease на всё время исполнения.
+- [ ] Добавить graceful shutdown и интеграционные тесты полного пути «claim → load → resolve → finalize», включая recovery после перезапуска.
+
+**Результат Stage 1.8:** persistence/job primitives реализованы в PR #10; GitHub Actions CI — 12 файлов, 69/69 тестов, build/typecheck/lint/format успешно. PR #10 основан на ветке Stage 1.7 и должен быть влит после PR #9. Runtime process и подключение helpers к реальным API routes пока не реализованы.
 
 ### 1.9. API и Web-каркас
 
@@ -539,7 +547,7 @@ Q18–Q20 — причина катастрофы, природа золота �
 - Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 - Полная дословная транскрипция архивных DOCX с постраничными ссылками остаётся отдельной задачей архивации и не блокирует текущую реализацию.
 
-### Реализация — выполненные инкременты
+### Реализация — выполненные и влитые инкременты
 
 - **Stage 1.1 — Monorepo bootstrap:** merged в `main` через PR #3.
 - **Stage 1.2 — PostgreSQL foundation:** Drizzle schema, initial migration, advisory-lock migrator, checksum и PostgreSQL integration tests; merged через PR #4.
@@ -549,14 +557,20 @@ Q18–Q20 — причина катастрофы, природа золота �
 - Persistence migration `0003_versioned_domain_payloads.sql` добавляет версии схемы для world snapshots, orders и game events.
 - Последний чистый PR CI Stage 1.5 на PostgreSQL 18.7: build, typecheck, lint, format-check и **55/55 тестов** зелёные в 10 файлах.
 
+### Реализация — реализовано в коде, CI зелёный, ожидает merge
+
+- **Stage 1.7 — Simulation phase runner:** PR #9; все 14 фаз исполняются по нормативному порядку, handlers обязательны, RNG draws валидируются и журналируются. CI: build/typecheck/lint/format и **63/63 теста** в 11 файлах. Это orchestration skeleton, не реализация игровых механик; PR ожидает merge.
+- **Stage 1.8 — Order closing and persistence job lifecycle:** PR #10; транзакционный closeOrders, lock helpers, claim/lease renewal/reaper, fencing и atomic finalization включая snapshots/events/RNG/reports/next seed. CI: build/typecheck/lint/format и **69/69 тестов** в 12 файлах. PR stacked на Stage 1.7; влить после PR #9.
+
 ### Реализация — ещё не завершена
 
 - Проверка восстановления состояния PostgreSQL после перезапуска с постоянным volume.
 - Приглашения участников, полноценное управление membership/roles, аудит критичных действий и меры против brute force.
-- Полный исполняемый Simulation Engine и обработка игровых приказов.
-- `closeOrders`, блокировки приказов, PostgreSQL Worker, lease/fencing, reaper и атомарная финализация хода.
+- Реальные gameplay handlers и отдельные повторные детерминизм-тесты для всего resolve pipeline.
+- Постоянно работающий Worker process, загрузка/проверка входов (snapshot, finalized orders, ruleset, committed seed), heartbeat и graceful shutdown.
+- Подключение order/membership lock helpers к реальным API routes; сами order и membership routes ещё не реализованы.
 - Регистрация государств, генерация карты, обязательный выбор Q24 и начальная конфигурация 7 зданий / 18 жителей — Stage 2.
 - Полные DTO-проекции игрового мира, Web-клиент и публичный post-campaign reveal endpoint.
 - Definition of Done Этапа 1 в целом ещё не достигнут: отсутствует рабочий end-to-end цикл «пользователь → приказ → worker → симуляция → сохранение → API».
 
-**Следующий инкремент:** Stage 1.7 — минимальный исполняемый pure Simulation Engine поверх созданных контрактов; далее Stage 1.8 — closeOrders и PostgreSQL Worker.
+**Следующий инкремент:** закончить оставшуюся runtime-интеграцию Stage 1.8; затем перейти к Stage 1.9 — API и Web-каркас.
