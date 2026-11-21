@@ -45,7 +45,11 @@ export interface CampaignSummary {
 }
 
 export interface CampaignService {
-  createCampaign(ownerUserId: string, nameInput: unknown, mapSize: CampaignMapSize): Promise<CreatedCampaign>;
+  createCampaign(
+    ownerUserId: string,
+    nameInput: unknown,
+    mapSize: CampaignMapSize,
+  ): Promise<CreatedCampaign>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
 
@@ -108,7 +112,14 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
              ruleset_version, rng_version, map_width, map_height
            ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6)
            RETURNING id, name, status, current_turn, orders_locked, map_width, map_height`,
-          [name, clock(), options.rulesetVersion, options.rngVersion, mapSize.mapWidth, mapSize.mapHeight],
+          [
+            name,
+            clock(),
+            options.rulesetVersion,
+            options.rngVersion,
+            mapSize.mapWidth,
+            mapSize.mapHeight,
+          ],
         );
         const campaign = created.rows[0];
         if (campaign === undefined) {
