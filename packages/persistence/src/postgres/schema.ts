@@ -102,7 +102,7 @@ export const campaigns = pgTable(
     check('campaigns_status_check', sql`${table.status} in ('active', 'completed')`),
     check(
       'campaigns_map_dimensions_check',
-      sql`(${table.mapWidth} is null and ${table.mapHeight} is null) or (${table.mapWidth} >= 5 and ${table.mapHeight} >= 5)`,
+      sql`(${table.mapWidth} is null and ${table.mapHeight} is null) or (${table.mapWidth} is not null and ${table.mapHeight} is not null and ${table.mapWidth} >= 5 and ${table.mapHeight} >= 5)`,
     ),
   ],
 );
