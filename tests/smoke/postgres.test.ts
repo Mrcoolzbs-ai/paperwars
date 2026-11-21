@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createCommittedSeed,
@@ -55,6 +56,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         },
         {
           migration_name: '0002_auth_sessions.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0003_versioned_domain_payloads.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
       ]);
@@ -374,6 +379,81 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           min_value: '0',
           max_value: '99',
         });
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+    it('persists explicit ruleset and schema versions on snapshots, orders and events', async () => {
+      const current = getPersistence();
+      const client = await current.pool.connect();
+      try {
+        await client.query('BEGIN');
+        const user = await client.query<{ id: string }>(
+          `INSERT INTO users (email, password_hash)
+           VALUES ($1, $2) RETURNING id`,
+          [`schema-version-${randomUUID()}@example.test`, 'test-hash'],
+        );
+        const userId = user.rows[0]?.id;
+        if (userId === undefined) throw new Error('User insert did not return id');
+
+        const campaign = await client.query<{ id: string }>(
+          `INSERT INTO campaigns (name, ruleset_version, rng_version)
+           VALUES ($1, $2, $3) RETURNING id`,
+          ['schema-version-test', 'baseline-v1', 'rng-v1'],
+        );
+        const campaignId = campaign.rows[0]?.id;
+        if (campaignId === undefined) throw new Error('Campaign insert did not return id');
+
+        const country = await client.query<{ id: string }>(
+          `INSERT INTO countries (campaign_id, owner_user_id, name)
+           VALUES ($1, $2, $3) RETURNING id`,
+          [campaignId, userId, 'Version Test'],
+        );
+        const countryId = country.rows[0]?.id;
+        if (countryId === undefined) throw new Error('Country insert did not return id');
+
+        const snapshot = await client.query<{
+          state_schema_version: number;
+          ruleset_version: string;
+        }>(
+          `INSERT INTO world_snapshots (
+             campaign_id, turn_number, version, state, state_schema_version, ruleset_version
+           ) VALUES ($1, 1, 1, '{}'::jsonb, 2, 'baseline-v1')
+           RETURNING state_schema_version, ruleset_version`,
+          [campaignId],
+        );
+        expect(snapshot.rows[0]).toEqual({
+          state_schema_version: 2,
+          ruleset_version: 'baseline-v1',
+        });
+
+        const order = await client.query<{ schema_version: number }>(
+          `INSERT INTO orders (
+             campaign_id, country_id, turn_number, schema_version, order_type, payload
+           ) VALUES ($1, $2, 1, 3, 'test.order', '{}'::jsonb)
+           RETURNING schema_version`,
+          [campaignId, countryId],
+        );
+        expect(order.rows[0]?.schema_version).toBe(3);
+
+        const event = await client.query<{ schema_version: number }>(
+          `INSERT INTO game_events (
+             campaign_id, turn_number, schema_version, event_type, payload
+           ) VALUES ($1, 1, 4, 'test.event', '{}'::jsonb)
+           RETURNING schema_version`,
+          [campaignId],
+        );
+        expect(event.rows[0]?.schema_version).toBe(4);
+
+        await expect(
+          client.query(
+            `INSERT INTO orders (
+               campaign_id, country_id, turn_number, schema_version, order_type, payload
+             ) VALUES ($1, $2, 1, 0, 'bad.version', '{}'::jsonb)`,
+            [campaignId, countryId],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
       } finally {
         await client.query('ROLLBACK');
         client.release();
