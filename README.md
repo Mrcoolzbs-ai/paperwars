@@ -8,7 +8,8 @@
 - **Stage 1.1** — monorepo bootstrap, API health-check и базовый CI: merged (PR #3).
 - **Stage 1.2** — PostgreSQL 18, Drizzle schema, миграции и integration tests: merged (PR #4).
 - **Stage 1.3** — deterministic RNG, commit-reveal seed service, AES-256-GCM, versioned keys и random draw audit log: merged (PR #5).
-- Последний чистый CI: build, typecheck, lint, format-check и 21/21 тестов прошли на PostgreSQL 18.7.
+- **Stage 1.4** — scrypt auth, HS256 access JWT, rotating refresh sessions/replay detection и атомарное campaign + first seed create: merged (PR #6).
+- Последний чистый CI: build, typecheck, lint, format-check и 26/26 тестов прошли на PostgreSQL 18.7.
 
 Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
@@ -65,12 +66,12 @@ Health-check: `GET http://127.0.0.1:3000/health`.
 
 ## Текущие ограничения
 
-- Authentication flow и refresh-token storage пока не реализованы.
-- Создание кампании ещё не связывает транзакционно campaign и первый committed seed.
+- Participant invitations/roles, audit trail и rate limiting для публичных auth endpoints пока не реализованы.
+- Полный country setup (official system, стартовые здания/население, world snapshot) ещё не реализован.
 - Simulation Engine пока не исполняет игровые ходы.
 - PostgreSQL Worker, закрытие приказов, lease/fencing и atomic turn finalization ещё не реализованы.
 - Публичный API seed reveal и Web-клиент ещё не реализованы.
-- Игровые механики не следует считать готовыми только потому, что RNG/seed primitives уже существуют.
+- Stage 1 DoD не достигнут: полного end-to-end цикла «приказ → worker → симуляция → snapshot → API» пока нет.
 
 ## Seed encryption configuration
 
