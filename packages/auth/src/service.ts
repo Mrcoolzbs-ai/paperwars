@@ -66,8 +66,7 @@ function hashRefreshToken(rawToken: string): string {
 }
 
 function isValidRefreshToken(rawToken: string): boolean {
-  return /^[A-Za-z0-9_-]{43}$/.test(rawToken) &&
-    Buffer.from(rawToken, 'base64url').length === 32;
+  return /^[A-Za-z0-9_-]{43}$/.test(rawToken) && Buffer.from(rawToken, 'base64url').length === 32;
 }
 
 function makeRefreshToken(): string {
@@ -107,14 +106,7 @@ async function createSession(
   const refreshToken = makeRefreshToken();
   const refreshTokenExpiresAt = addSeconds(now, refreshTtlSeconds);
   const access: AccessTokenPairPart = accessTokens.issue(user.id);
-  await insertRefreshToken(
-    client,
-    user.id,
-    familyId,
-    refreshToken,
-    now,
-    refreshTokenExpiresAt,
-  );
+  await insertRefreshToken(client, user.id, familyId, refreshToken, now, refreshTokenExpiresAt);
 
   return {
     user,
@@ -202,7 +194,10 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           transactionOpen = false;
         }
         const databaseError = error as { code?: string; constraint?: string };
-        if (databaseError.code === '23505' && databaseError.constraint === 'users_email_ci_unique') {
+        if (
+          databaseError.code === '23505' &&
+          databaseError.constraint === 'users_email_ci_unique'
+        ) {
           throw new EmailAlreadyRegisteredError();
         }
         throw error;
