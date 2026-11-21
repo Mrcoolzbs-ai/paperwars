@@ -39,13 +39,15 @@ CREATE TABLE countries (
 CREATE TABLE campaign_memberships (
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  country_id UUID REFERENCES countries(id),
+  country_id UUID,
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'inactive', 'left')),
   orders_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (campaign_id, user_id),
-  CONSTRAINT campaign_memberships_country_unique UNIQUE (country_id)
+  CONSTRAINT campaign_memberships_country_unique UNIQUE (country_id),
+  CONSTRAINT campaign_memberships_campaign_country_fk
+    FOREIGN KEY (campaign_id, country_id) REFERENCES countries (campaign_id, id)
 );
 
 CREATE TABLE world_snapshots (
@@ -61,7 +63,7 @@ CREATE TABLE world_snapshots (
 CREATE TABLE orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-  country_id UUID NOT NULL REFERENCES countries(id),
+  country_id UUID NOT NULL,
   turn_number INTEGER NOT NULL CHECK (turn_number >= 1),
   order_type TEXT NOT NULL,
   payload JSONB NOT NULL,
@@ -69,7 +71,9 @@ CREATE TABLE orders (
     CHECK (status IN ('draft', 'unconfirmed', 'confirmed', 'finalized', 'discarded')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  finalized_at TIMESTAMPTZ
+  finalized_at TIMESTAMPTZ,
+  CONSTRAINT orders_campaign_country_fk
+    FOREIGN KEY (campaign_id, country_id) REFERENCES countries (campaign_id, id)
 );
 
 CREATE INDEX orders_campaign_turn_status_idx
@@ -127,7 +131,7 @@ CREATE TABLE random_draws (
 
 CREATE TABLE turn_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_key TEXT NOT NULL UNIQUE,
+  job_key TEXT NOT NULL,
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   turn_number INTEGER NOT NULL CHECK (turn_number >= 1),
   snapshot_version INTEGER NOT NULL CHECK (snapshot_version >= 1),
@@ -140,6 +144,7 @@ CREATE TABLE turn_jobs (
   completed_at TIMESTAMPTZ,
   retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count BETWEEN 0 AND 5),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT turn_jobs_job_key_unique UNIQUE (job_key),
   CONSTRAINT turn_jobs_campaign_turn_unique UNIQUE (campaign_id, turn_number)
 );
 
@@ -166,3 +171,46 @@ CREATE TABLE battle_reports (
 
 CREATE INDEX battle_reports_campaign_turn_idx
   ON battle_reports (campaign_id, turn_number);
+
+CREATE TABLE discovery_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  cell_id TEXT NOT NULL,
+  discovered_by_country_id UUID NOT NULL REFERENCES countries(id),
+  discovered_at_turn INTEGER NOT NULL CHECK (discovered_at_turn >= 1),
+  discovery_type TEXT NOT NULL CHECK (discovery_type IN ('ruins', 'gold', 'empty')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT discovery_records_campaign_cell_unique UNIQUE (campaign_id, cell_id)
+);
+
+CREATE TABLE discovery_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  discovery_id UUID NOT NULL REFERENCES discovery_records(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL CHECK (
+    event_type IN (
+      'discovered', 'investigated', 'transferred', 'captured',
+      'access_granted', 'access_revoked'
+    )
+  ),
+  actor_country_id UUID NOT NULL REFERENCES countries(id),
+  target_country_id UUID REFERENCES countries(id),
+  turn_number INTEGER NOT NULL CHECK (turn_number >= 1),
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX discovery_history_discovery_turn_idx
+  ON discovery_history (discovery_id, turn_number);
+
+CREATE TABLE discovery_access (
+  discovery_id UUID NOT NULL REFERENCES discovery_records(id) ON DELETE CASCADE,
+  country_id UUID NOT NULL REFERENCES countries(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+  granted_at_turn INTEGER NOT NULL CHECK (granted_at_turn >= 1),
+  granted_by_event_id UUID NOT NULL REFERENCES discovery_history(id),
+  revoked_at_turn INTEGER,
+  revoked_by_event_id UUID REFERENCES discovery_history(id),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT discovery_access_unique UNIQUE (discovery_id, country_id),
+  CHECK (revoked_at_turn IS NULL OR revoked_at_turn >= granted_at_turn)
+);
