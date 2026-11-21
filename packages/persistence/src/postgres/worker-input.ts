@@ -11,7 +11,11 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { loadSeedForWorker } from './seeds.js';
 import { StaleWorkerError, TurnProcessingError, type TurnJobClaim } from './turn-processing.js';
 
-export interface LoadedTurnJobInput<TState extends Record<string, unknown>, TPayload extends Record<string, unknown>, TRuleset extends RulesetManifest> {
+export interface LoadedTurnJobInput<
+  TState extends Record<string, unknown>,
+  TPayload extends Record<string, unknown>,
+  TRuleset extends RulesetManifest,
+> {
   readonly snapshot: WorldSnapshot<TState>;
   readonly orders: readonly OrderEnvelope<TPayload>[];
   readonly ruleset: Readonly<TRuleset>;
@@ -59,7 +63,11 @@ function asJsonRecord(value: unknown, label: string): Record<string, unknown> {
 }
 
 /** Loads campaign, snapshot, finalized orders and verified committed seed from one DB view. */
-export async function loadTurnJobInput<TState extends Record<string, unknown>, TPayload extends Record<string, unknown>, TRuleset extends RulesetManifest>(
+export async function loadTurnJobInput<
+  TState extends Record<string, unknown>,
+  TPayload extends Record<string, unknown>,
+  TRuleset extends RulesetManifest,
+>(
   options: LoadTurnJobInputOptions<TRuleset>,
 ): Promise<LoadedTurnJobInput<TState, TPayload, TRuleset>> {
   const { pool, claim, keyProvider, loadRuleset } = options;
@@ -83,19 +91,31 @@ export async function loadTurnJobInput<TState extends Record<string, unknown>, T
     );
     const row = sourceResult.rows[0];
     if (
-      !row || row.campaign_id !== claim.campaignId || row.turn_number !== claim.turnNumber ||
-      row.job_snapshot_version !== claim.snapshotVersion || row.job_status !== 'processing' ||
-      row.worker_id !== claim.workerId || row.generation !== claim.generation || row.lease_live !== true
+      !row ||
+      row.campaign_id !== claim.campaignId ||
+      row.turn_number !== claim.turnNumber ||
+      row.job_snapshot_version !== claim.snapshotVersion ||
+      row.job_status !== 'processing' ||
+      row.worker_id !== claim.workerId ||
+      row.generation !== claim.generation ||
+      row.lease_live !== true
     ) {
       throw new StaleWorkerError(claim.id);
     }
-    if (row.campaign_status !== 'active' || row.current_turn !== claim.turnNumber || !row.orders_locked) {
+    if (
+      row.campaign_status !== 'active' ||
+      row.current_turn !== claim.turnNumber ||
+      !row.orders_locked
+    ) {
       throw new TurnProcessingError('Claimed turn is not the active locked campaign turn');
     }
     if (
-      row.snapshot_version !== claim.snapshotVersion || row.snapshot_state === null ||
-      row.snapshot_state === undefined || row.snapshot_ruleset_version === null ||
-      row.state_schema_version === null || row.snapshot_ruleset_version !== row.ruleset_version
+      row.snapshot_version !== claim.snapshotVersion ||
+      row.snapshot_state === null ||
+      row.snapshot_state === undefined ||
+      row.snapshot_ruleset_version === null ||
+      row.state_schema_version === null ||
+      row.snapshot_ruleset_version !== row.ruleset_version
     ) {
       throw new TurnProcessingError('Claimed source snapshot is missing or inconsistent');
     }
@@ -116,7 +136,7 @@ export async function loadTurnJobInput<TState extends Record<string, unknown>, T
     assertSnapshotCompatible(snapshot, ruleset);
 
     const ordersResult = await tx.query<FinalizedOrderRow>(
-      "SELECT id, country_id, turn_number, order_type, schema_version, status, payload " +
+      'SELECT id, country_id, turn_number, order_type, schema_version, status, payload ' +
         "FROM orders WHERE campaign_id = $1 AND turn_number = $2 AND status = 'finalized' " +
         'ORDER BY created_at, id',
       [claim.campaignId, claim.turnNumber],
@@ -124,7 +144,9 @@ export async function loadTurnJobInput<TState extends Record<string, unknown>, T
     const orders: readonly OrderEnvelope<TPayload>[] = Object.freeze(
       ordersResult.rows.map((order) => {
         if (order.status !== 'finalized' || order.turn_number !== claim.turnNumber) {
-          throw new TurnProcessingError('Worker input contains a non-finalized or wrong-turn order');
+          throw new TurnProcessingError(
+            'Worker input contains a non-finalized or wrong-turn order',
+          );
         }
         return Object.freeze({
           id: toId<'OrderId'>(order.id),

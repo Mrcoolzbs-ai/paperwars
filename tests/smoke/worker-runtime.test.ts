@@ -189,13 +189,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
                 resultCode: 'WORKER_ACCEPTED',
               })),
               events: [{ type: 'worker.turn.resolved', schemaVersion: 1, payload: { roll } }],
-              randomDraws: [{
-                domain: 'worker-test',
-                drawId: 'turn:1:roll',
-                minValue: 1,
-                maxValue: 6,
-                value: roll,
-              }],
+              randomDraws: [
+                {
+                  domain: 'worker-test',
+                  drawId: 'turn:1:roll',
+                  minValue: 1,
+                  maxValue: 6,
+                  value: roll,
+                },
+              ],
               campaignEnded: false,
             };
           },

@@ -150,10 +150,9 @@ export async function lockCampaignForMembershipWrite(
     status: string;
     current_turn: number;
     orders_locked: boolean;
-  }>(
-    'SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
-    [campaignId],
-  );
+  }>('SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
+    campaignId,
+  ]);
   const row = result.rows[0];
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');

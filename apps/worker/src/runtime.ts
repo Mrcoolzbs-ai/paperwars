@@ -1,8 +1,4 @@
-import type {
-  RulesetManifest,
-  TurnResolution,
-  TurnSimulationInput,
-} from '@paper-wars/domain';
+import type { RulesetManifest, TurnResolution, TurnSimulationInput } from '@paper-wars/domain';
 import {
   claimNextTurnJob,
   finalizeTurnJob,
