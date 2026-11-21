@@ -1,9 +1,33 @@
-import type { CampaignId, CountryId, EventId, OrderId, TurnNumber } from '@paper-wars/shared';
+import type { CampaignId, CellId, Coordinates, CountryId, EventId, OrderId, TurnNumber, UserId } from '@paper-wars/shared';
 
 export type CampaignStatus = 'active' | 'completed';
 export type CountryStatus = 'active' | 'eliminated';
 export type OrderStatus = 'draft' | 'unconfirmed' | 'confirmed' | 'finalized' | 'discarded';
 export type OrderResolutionStatus = 'accepted' | 'rejected' | 'superseded';
+
+export type MembershipStatus = 'active' | 'inactive' | 'left';
+
+export interface CountryDescriptor {
+  readonly id: CountryId;
+  readonly campaignId: CampaignId;
+  readonly ownerUserId: UserId;
+  readonly name: string;
+  readonly status: CountryStatus;
+}
+
+export interface CampaignMembershipDescriptor {
+  readonly campaignId: CampaignId;
+  readonly userId: UserId;
+  readonly countryId: CountryId | null;
+  readonly status: MembershipStatus;
+  readonly ordersConfirmed: boolean;
+}
+
+export interface CellDescriptor {
+  readonly id: CellId;
+  readonly campaignId: CampaignId;
+  readonly coordinates: Coordinates;
+}
 
 export interface CampaignDescriptor {
   readonly id: CampaignId;
@@ -109,8 +133,9 @@ export class TurnResolutionInvariantError extends Error {
 }
 
 /** Checks envelope invariants before a resolution is persisted. */
-export function assertTurnResolutionMatchesInput<TState, TEvent>(
+export function assertTurnResolutionMatchesInput<TState, TPayload, TEvent>(
   snapshot: WorldSnapshot<TState>,
+  inputOrders: readonly Pick<OrderEnvelope<TPayload>, 'id' | 'campaignId' | 'turnNumber'>[],
   resolution: TurnResolution<TState, TEvent>,
 ): void {
   if (resolution.campaignId !== snapshot.campaignId) {
@@ -125,14 +150,34 @@ export function assertTurnResolutionMatchesInput<TState, TEvent>(
     );
   }
 
-  const orderIds = new Set<string>();
+  const expectedOrderIds = new Set<string>();
+  for (const order of inputOrders) {
+    if (order.campaignId !== snapshot.campaignId || order.turnNumber !== snapshot.turnNumber) {
+      throw new TurnResolutionInvariantError('Input order does not belong to the snapshot campaign and turn');
+    }
+    if (expectedOrderIds.has(order.id)) {
+      throw new TurnResolutionInvariantError(`Input order ${order.id} is duplicated`);
+    }
+    expectedOrderIds.add(order.id);
+  }
+
+  const resolvedOrderIds = new Set<string>();
   for (const result of resolution.orderResults) {
-    if (orderIds.has(result.orderId)) {
+    if (!expectedOrderIds.has(result.orderId)) {
+      throw new TurnResolutionInvariantError(`Order ${result.orderId} was not supplied to the resolver`);
+    }
+    if (resolvedOrderIds.has(result.orderId)) {
       throw new TurnResolutionInvariantError(
         `Order ${result.orderId} has more than one resolution`,
       );
     }
-    orderIds.add(result.orderId);
+    resolvedOrderIds.add(result.orderId);
+  }
+
+  for (const orderId of expectedOrderIds) {
+    if (!resolvedOrderIds.has(orderId)) {
+      throw new TurnResolutionInvariantError(`Order ${orderId} has no resolution result`);
+    }
   }
 
   const drawIds = new Set<string>();
