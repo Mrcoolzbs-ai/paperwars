@@ -1,5 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
+import {
+  createCommittedSeed,
+  createPostgresPersistence,
+  loadRevealedSeed,
+  loadSeedForWorker,
+  revealCampaignSeeds,
+  runMigrations,
+} from '@paper-wars/persistence';
+import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
@@ -141,5 +149,152 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         ]);
       }
     });
+    it('stores encrypted seeds, withholds them before completion, then reveals and verifies them', async () => {
+      const current = getPersistence();
+      const client = await current.pool.connect();
+      const seed = Buffer.from(Array.from({ length: 32 }, (_, index) => index));
+      const key = Buffer.alloc(32, 0x5a);
+      const keyProvider: SeedKeyProvider = {
+        getActiveKey: async () => ({ version: 'test-key-v1', key }),
+        getKey: async (version) => {
+          if (version !== 'test-key-v1') {
+            throw new Error(`Unexpected key version: ${version}`);
+          }
+          return key;
+        },
+      };
+
+      try {
+        await client.query('BEGIN');
+        const campaign = await client.query<{ id: string }>(
+          `INSERT INTO campaigns (name, ruleset_version, rng_version)
+           VALUES ($1, $2, $3) RETURNING id`,
+          ['seed-roundtrip-test', 'baseline-v1', 'hmac-v1'],
+        );
+        const campaignId = campaign.rows[0]?.id;
+        if (campaignId === undefined) {
+          throw new Error('Campaign insert did not return an id');
+        }
+
+        const context = {
+          campaignId,
+          turnNumber: 1,
+          rulesetVersion: 'baseline-v1',
+          rngVersion: 'hmac-v1',
+        };
+        const stored = await createCommittedSeed(client, keyProvider, context, {
+          seedSource: () => Buffer.from(seed),
+          nonceSource: () => Buffer.alloc(12, 0x31),
+        });
+
+        expect(stored.commitment).toMatch(/^[a-f0-9]{64}$/);
+        expect(await loadSeedForWorker(client, keyProvider, context)).toEqual(seed);
+        await expect(loadRevealedSeed(client, keyProvider, context)).rejects.toThrow(
+          /is not revealed/,
+        );
+
+        const raw = await client.query<{ encrypted_seed: Buffer; status: string }>(
+          'SELECT encrypted_seed, status FROM random_seeds WHERE id = $1',
+          [stored.id],
+        );
+        expect(raw.rows[0]?.status).toBe('committed');
+        expect(raw.rows[0]?.encrypted_seed).not.toEqual(seed);
+
+        await expect(revealCampaignSeeds(client, campaignId)).rejects.toThrow(
+          /only be revealed after the campaign is completed/,
+        );
+
+        await client.query("UPDATE campaigns SET status = 'completed' WHERE id = $1", [
+          campaignId,
+        ]);
+        await expect(revealCampaignSeeds(client, campaignId)).resolves.toBe(1);
+        await expect(revealCampaignSeeds(client, campaignId)).resolves.toBe(0);
+        expect(await loadRevealedSeed(client, keyProvider, context)).toEqual(seed);
+
+        const revealed = await client.query<{ status: string; revealed_at: Date | null }>(
+          'SELECT status, revealed_at FROM random_seeds WHERE id = $1',
+          [stored.id],
+        );
+        expect(revealed.rows[0]).toMatchObject({ status: 'revealed' });
+        expect(revealed.rows[0]?.revealed_at).toBeInstanceOf(Date);
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+
+    it('retries only nonce conflicts and propagates campaign-turn uniqueness violations', async () => {
+      const current = getPersistence();
+      const client = await current.pool.connect();
+      const key = Buffer.alloc(32, 0x6b);
+      const keyProvider: SeedKeyProvider = {
+        getActiveKey: async () => ({ version: 'test-key-v1', key }),
+        getKey: async () => key,
+      };
+
+      try {
+        await client.query('BEGIN');
+        const first = await client.query<{ id: string }>(
+          `INSERT INTO campaigns (name, ruleset_version, rng_version)
+           VALUES ($1, $2, $3) RETURNING id`,
+          ['nonce-conflict-source', 'baseline-v1', 'hmac-v1'],
+        );
+        const second = await client.query<{ id: string }>(
+          `INSERT INTO campaigns (name, ruleset_version, rng_version)
+           VALUES ($1, $2, $3) RETURNING id`,
+          ['nonce-conflict-retry', 'baseline-v1', 'hmac-v1'],
+        );
+        const firstCampaignId = first.rows[0]?.id;
+        const secondCampaignId = second.rows[0]?.id;
+        if (firstCampaignId === undefined || secondCampaignId === undefined) {
+          throw new Error('Campaign inserts did not return ids');
+        }
+
+        const contextA = {
+          campaignId: firstCampaignId,
+          turnNumber: 1,
+          rulesetVersion: 'baseline-v1',
+          rngVersion: 'hmac-v1',
+        };
+        const contextB = { ...contextA, campaignId: secondCampaignId };
+        const duplicateNonce = Buffer.alloc(12, 0x41);
+        const replacementNonce = Buffer.alloc(12, 0x42);
+
+        await createCommittedSeed(client, keyProvider, contextA, {
+          seedSource: () => Buffer.alloc(32, 0x11),
+          nonceSource: () => duplicateNonce,
+        });
+
+        let nonceCalls = 0;
+        const retried = await createCommittedSeed(client, keyProvider, contextB, {
+          seedSource: () => Buffer.alloc(32, 0x22),
+          nonceSource: () => {
+            nonceCalls += 1;
+            return nonceCalls === 1 ? duplicateNonce : replacementNonce;
+          },
+          maxNonceAttempts: 2,
+        });
+        expect(nonceCalls).toBe(2);
+
+        const inserted = await client.query<{ nonce: Buffer }>(
+          'SELECT nonce FROM random_seeds WHERE id = $1',
+          [retried.id],
+        );
+        expect(inserted.rows[0]?.nonce).toEqual(replacementNonce);
+
+        await client.query('SAVEPOINT duplicate_campaign_turn');
+        await expect(
+          createCommittedSeed(client, keyProvider, contextA, {
+            seedSource: () => Buffer.alloc(32, 0x33),
+            nonceSource: () => Buffer.alloc(12, 0x43),
+          }),
+        ).rejects.toMatchObject({ code: '23505' });
+        await client.query('ROLLBACK TO SAVEPOINT duplicate_campaign_turn');
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+
   },
 );
