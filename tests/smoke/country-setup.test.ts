@@ -240,64 +240,64 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
       const current = getPersistence();
- DATABASE_URL: ***127.0.0.1:5432/paperwars_test
- PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
-The files belonging to this database system will be owned by user "postgres".
-initdb: warning: enabling "trust" authentication for local connections
-This user must also own the server process.
-initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
-2026-11-21 21:10:02.742 UTC [1] LOG:  starting PostgreSQL 18.7 (Debian 18.7-1.pgdg13+5) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
-2026-11-21 21:10:02.743 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
-2026-11-21 21:10:02.743 UTC [1] LOG:  listening on IPv6 address "::", port 5432
-2026-11-21 21:10:02.744 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
-2026-11-21 21:10:02.747 UTC [75] LOG:  database system was shut down at 2026-11-21 21:10:02 UTC
-2026-11-21 21:10:02.750 UTC [1] LOG:  database system is ready to accept connections
+      const { auth, campaigns, countrySetup } = createServices();
+      const firstUser = await auth.register(
+        `country-collision-one-${randomUUID()}@example.test`,
+        'country collision test password',
+      );
+      const secondUser = await auth.register(
+        `country-collision-two-${randomUUID()}@example.test`,
+        'country collision test password',
+      );
+      const campaign = await campaigns.createCampaign(
+        firstUser.user.id,
+        `country-collision-${randomUUID()}`,
+        { mapWidth: 20, mapHeight: 20 },
+      );
+      await current.pool.query(
+        `INSERT INTO campaign_memberships (
+           campaign_id, user_id, status, orders_confirmed
+         ) VALUES ($1, $2, 'active', FALSE)`,
+        [campaign.id, secondUser.user.id],
+      );
 
-The database cluster will be initialized with locale "en_US.utf8".
-The default database encoding has accordingly been set to "UTF8".
-The default text search configuration will be set to "english".
+      await expect(
+        countrySetup.createCountry(firstUser.user.id, campaign.id, {
+          name: 'Missing Extra Slot',
+          spawnX: 5,
+          spawnY: 5,
+          officialSystem: { type: 'religion', newSystemName: 'Only Six' },
+          buildings: RELIGION_BUILDINGS.slice(0, 6),
+        }),
+      ).rejects.toBeInstanceOf(CountrySetupValidationError);
 
-Data page checksums are enabled.
+      await expect(
+        countrySetup.createCountry(firstUser.user.id, campaign.id, {
+          name: 'No Official System',
+          spawnX: 5,
+          spawnY: 5,
+          officialSystem: undefined as never,
+          buildings: RELIGION_BUILDINGS,
+        }),
+      ).rejects.toBeInstanceOf(CountrySetupValidationError);
 
-fixing permissions on existing directory /var/lib/postgresql/18/docker ... ok
-creating subdirectories ... ok
-selecting dynamic shared memory implementation ... posix
-selecting default "max_connections" ... 100
-selecting default "shared_buffers" ... 128MB
-selecting default time zone ... Etc/UTC
-creating configuration files ... ok
-running bootstrap script ... ok
-performing post-bootstrap initialization ... ok
-syncing data to disk ... ok
+      const first = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
+        name: 'First Territory',
+        spawnX: 5,
+        spawnY: 5,
+        officialSystem: { type: 'religion', newSystemName: 'First Belief' },
+        buildings: RELIGION_BUILDINGS,
+      });
 
-
-Success. You can now start the database server using:
-
-    pg_ctl -D /var/lib/postgresql/18/docker -l logfile start
-
-waiting for server to start....2026-11-21 21:10:02.332 UTC [53] LOG:  starting PostgreSQL 18.7 (Debian 18.7-1.pgdg13+5) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
-2026-11-21 21:10:02.333 UTC [53] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
-2026-11-21 21:10:02.336 UTC [59] LOG:  database system was shut down at 2026-11-21 21:10:01 UTC
-2026-11-21 21:10:02.339 UTC [53] LOG:  database system is ready to accept connections
- done
-server started
-CREATE DATABASE
-
-
-/usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
-
-waiting for server to shut down...2026-11-21 21:10:02.523 UTC [53] LOG:  received fast shutdown request
-.2026-11-21 21:10:02.523 UTC [53] LOG:  aborting any active transactions
-2026-11-21 21:10:02.525 UTC [53] LOG:  background worker "logical replication launcher" (PID 62) exited with exit code 1
-2026-11-21 21:10:02.526 UTC [57] LOG:  shutting down
-2026-11-21 21:10:02.526 UTC [57] LOG:  checkpoint starting: shutdown immediate
-2026-11-21 21:10:02.638 UTC [57] LOG:  checkpoint complete: wrote 952 buffers (5.8%), wrote 3 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; write=0.103 s, sync=0.009 s, total=0.113 s; sync files=303, longest=0.007 s, average=0.001 s; distance=4428 kB, estimate=4428 kB; lsn=0/1BC6EB0, redo lsn=0/1BC6EB0
-2026-11-21 21:10:02.649 UTC [53] LOG:  database system is shut down
- done
-server stopped
-
-PostgreSQL init process complete; ready for start up.
-
+      await expect(
+        countrySetup.createCountry(secondUser.user.id, campaign.id, {
+          name: 'Overlapping Territory',
+          spawnX: 7,
+          spawnY: 5,
+          officialSystem: { type: 'ideology', newSystemName: 'Second Belief' },
+          buildings: IDEOLOGY_BUILDINGS,
+        }),
+      ).rejects.toBeInstanceOf(SpawnAreaUnavailableError);
 
       const afterFailure = await current.pool.query<{
         country_count: string;
