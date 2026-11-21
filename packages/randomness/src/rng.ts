@@ -43,13 +43,8 @@ export function sampleUniform32(
   }
 
   const limit = UINT32_SPACE - (UINT32_SPACE % range);
-  let attempt = 0n;
 
-  while (true) {
-    if (attempt > UINT64_MAX) {
-      throw new RangeError('RNG attempt counter overflow: uint64 exhausted');
-    }
-
+  for (let attempt = 0n; attempt <= UINT64_MAX; attempt++) {
     const value = readValue(attempt);
     if (!Number.isInteger(value) || value < 0 || value > UINT32_MAX) {
       throw new RangeError('RNG source must return a uint32 value');
@@ -58,8 +53,9 @@ export function sampleUniform32(
     if (value < limit) {
       return value % range;
     }
-    attempt++;
   }
+
+  throw new RangeError('RNG attempt counter overflow: uint64 exhausted');
 }
 
 export function drawUniform(
