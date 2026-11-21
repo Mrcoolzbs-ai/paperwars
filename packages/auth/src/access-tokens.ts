@@ -99,7 +99,11 @@ export function createAccessTokenSigner(options: AccessTokenSignerOptions): Acce
         throw new UnauthenticatedError();
       }
 
-      const [encodedHeader, encodedPayload, encodedSignature] = segments as [string, string, string];
+      const [encodedHeader, encodedPayload, encodedSignature] = segments as [
+        string,
+        string,
+        string,
+      ];
       const header = decodeJson(encodedHeader);
       const payload = decodeJson(encodedPayload);
       if (!isRecord(header) || header['alg'] !== 'HS256' || header['typ'] !== 'JWT') {
