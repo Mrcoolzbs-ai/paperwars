@@ -4,6 +4,7 @@ import {
   boolean,
   bytea,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -87,7 +88,7 @@ export const campaignMemberships = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    countryId: uuid('country_id').references(() => countries.id),
+    countryId: uuid('country_id'),
     status: text('status').notNull().default('active'),
     ordersConfirmed: boolean('orders_confirmed').notNull().default(false),
     joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'date' })
@@ -97,6 +98,11 @@ export const campaignMemberships = pgTable(
   (table) => [
     primaryKey({ columns: [table.campaignId, table.userId] }),
     uniqueIndex('campaign_memberships_country_unique').on(table.countryId),
+    foreignKey({
+      name: 'campaign_memberships_campaign_country_fk',
+      columns: [table.campaignId, table.countryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }),
     check(
       'campaign_memberships_status_check',
       sql`${table.status} in ('active', 'inactive', 'left')`,
@@ -130,9 +136,7 @@ export const orders = pgTable(
     campaignId: uuid('campaign_id')
       .notNull()
       .references(() => campaigns.id, { onDelete: 'cascade' }),
-    countryId: uuid('country_id')
-      .notNull()
-      .references(() => countries.id),
+    countryId: uuid('country_id').notNull(),
     turnNumber: integer('turn_number').notNull(),
     orderType: text('order_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
@@ -150,6 +154,11 @@ export const orders = pgTable(
       table.status,
     ),
     index('orders_country_turn_idx').on(table.countryId, table.turnNumber),
+    foreignKey({
+      name: 'orders_campaign_country_fk',
+      columns: [table.campaignId, table.countryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }),
     check('orders_turn_positive', sql`${table.turnNumber} >= 1`),
     check(
       'orders_status_check',
@@ -297,5 +306,90 @@ export const battleReports = pgTable(
   (table) => [
     index('battle_reports_campaign_turn_idx').on(table.campaignId, table.turnNumber),
     check('battle_reports_turn_positive', sql`${table.turnNumber} >= 1`),
+  ],
+);
+
+export const discoveryRecords = pgTable(
+  'discovery_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    cellId: text('cell_id').notNull(),
+    discoveredByCountryId: uuid('discovered_by_country_id').notNull(),
+    discoveredAtTurn: integer('discovered_at_turn').notNull(),
+    discoveryType: text('discovery_type').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('discovery_records_campaign_cell_unique').on(table.campaignId, table.cellId),
+    foreignKey({
+      name: 'discovery_records_campaign_country_fk',
+      columns: [table.campaignId, table.discoveredByCountryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }),
+    check('discovery_records_turn_positive', sql`${table.discoveredAtTurn} >= 1`),
+    check(
+      'discovery_records_type_check',
+      sql`${table.discoveryType} in ('ruins', 'gold', 'empty')`,
+    ),
+  ],
+);
+
+export const discoveryHistory = pgTable(
+  'discovery_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    discoveryId: uuid('discovery_id')
+      .notNull()
+      .references(() => discoveryRecords.id, { onDelete: 'cascade' }),
+    eventType: text('event_type').notNull(),
+    actorCountryId: uuid('actor_country_id')
+      .notNull()
+      .references(() => countries.id),
+    targetCountryId: uuid('target_country_id').references(() => countries.id),
+    turnNumber: integer('turn_number').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('discovery_history_discovery_turn_idx').on(table.discoveryId, table.turnNumber),
+    check('discovery_history_turn_positive', sql`${table.turnNumber} >= 1`),
+    check(
+      'discovery_history_event_type_check',
+      sql`${table.eventType} in ('discovered', 'investigated', 'transferred', 'captured', 'access_granted', 'access_revoked')`,
+    ),
+  ],
+);
+
+export const discoveryAccess = pgTable(
+  'discovery_access',
+  {
+    discoveryId: uuid('discovery_id')
+      .notNull()
+      .references(() => discoveryRecords.id, { onDelete: 'cascade' }),
+    countryId: uuid('country_id')
+      .notNull()
+      .references(() => countries.id, { onDelete: 'cascade' }),
+    status: text('status').notNull(),
+    grantedAtTurn: integer('granted_at_turn').notNull(),
+    grantedByEventId: uuid('granted_by_event_id')
+      .notNull()
+      .references(() => discoveryHistory.id),
+    revokedAtTurn: integer('revoked_at_turn'),
+    revokedByEventId: uuid('revoked_by_event_id').references(() => discoveryHistory.id),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('discovery_access_unique').on(table.discoveryId, table.countryId),
+    check('discovery_access_status_check', sql`${table.status} in ('active', 'revoked')`),
+    check('discovery_access_granted_turn_positive', sql`${table.grantedAtTurn} >= 1`),
+    check(
+      'discovery_access_revoked_turn_check',
+      sql`${table.revokedAtTurn} is null or ${table.revokedAtTurn} >= ${table.grantedAtTurn}`,
+    ),
   ],
 );
