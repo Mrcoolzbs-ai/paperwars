@@ -30,6 +30,7 @@ export {
   lockCampaignForOrderWrite,
   reapExpiredTurnJobs,
   renewTurnJobLease,
+  releaseTurnJobLeaseForRetry,
 } from './postgres/turn-processing.js';
 export type {
   CloseOrdersResult,
@@ -39,3 +40,5 @@ export type {
   TurnEventInput,
   TurnJobClaim,
 } from './postgres/turn-processing.js';
+export { loadTurnJobInput } from './postgres/worker-input.js';
+export type { LoadedTurnJobInput, LoadTurnJobInputOptions } from './postgres/worker-input.js';

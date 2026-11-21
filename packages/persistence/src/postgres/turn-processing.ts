@@ -532,3 +532,21 @@ export async function finalizeTurnJob<TState, TEvent extends TurnEventInput>(
     };
   });
 }
+
+/**
+ * Makes a failed live claim immediately visible to the reaper. The reaper alone
+ * increments retry_count and returns the job to pending.
+ */
+export async function releaseTurnJobLeaseForRetry(
+  pool: Pool,
+  claim: TurnJobClaim,
+): Promise<boolean> {
+  assertWorkerId(claim.workerId);
+  const result = await pool.query(
+    "UPDATE turn_jobs SET lease_until = clock_timestamp() - INTERVAL '1 millisecond' " +
+      "WHERE id = $1 AND worker_id = $2 AND generation = $3 AND status = 'processing' " +
+      'AND lease_until > clock_timestamp() RETURNING id',
+    [claim.id, claim.workerId, claim.generation],
+  );
+  return result.rowCount === 1;
+}

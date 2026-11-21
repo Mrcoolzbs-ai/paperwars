@@ -15,7 +15,8 @@
     "@paper-wars/domain": "workspace:*",
     "@paper-wars/persistence": "workspace:*",
     "@paper-wars/shared": "workspace:*",
-    "@paper-wars/simulation": "workspace:*"
+    "@paper-wars/simulation": "workspace:*",
+    "@paper-wars/worker": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^2.1.9"
