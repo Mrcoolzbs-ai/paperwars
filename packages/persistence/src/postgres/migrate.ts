@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,11 @@ const DEFAULT_MIGRATIONS_DIRECTORY = fileURLToPath(
 
 export interface RunMigrationsOptions {
   readonly migrationsDirectory?: string;
+}
+
+interface AppliedMigrationRow {
+  readonly migration_name: string;
+  readonly checksum: string;
 }
 
 export async function runMigrations(
@@ -33,28 +39,38 @@ export async function runMigrations(
     await client.query(`
       CREATE TABLE IF NOT EXISTS app_schema_migrations (
         migration_name TEXT PRIMARY KEY,
+        checksum TEXT NOT NULL,
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
 
-    const appliedResult = await client.query<{ migration_name: string }>(
-      'SELECT migration_name FROM app_schema_migrations',
+    const appliedResult = await client.query<AppliedMigrationRow>(
+      'SELECT migration_name, checksum FROM app_schema_migrations',
     );
-    const alreadyApplied = new Set(appliedResult.rows.map((row) => row.migration_name));
+    const alreadyApplied = new Map(
+      appliedResult.rows.map((row) => [row.migration_name, row.checksum]),
+    );
 
     for (const migrationFile of migrationFiles) {
-      if (alreadyApplied.has(migrationFile)) {
+      const migrationSql = await readFile(join(migrationsDirectory, migrationFile), 'utf8');
+      const checksum = createHash('sha256').update(migrationSql, 'utf8').digest('hex');
+      const previousChecksum = alreadyApplied.get(migrationFile);
+
+      if (previousChecksum !== undefined) {
+        if (previousChecksum !== checksum) {
+          throw new Error(
+            `Applied migration ${migrationFile} was modified; create a new migration instead`,
+          );
+        }
         continue;
       }
 
-      const migrationSql = await readFile(join(migrationsDirectory, migrationFile), 'utf8');
       await client.query('BEGIN');
-
       try {
         await client.query(migrationSql);
         await client.query(
-          'INSERT INTO app_schema_migrations (migration_name) VALUES ($1)',
-          [migrationFile],
+          'INSERT INTO app_schema_migrations (migration_name, checksum) VALUES ($1, $2)',
+          [migrationFile, checksum],
         );
         await client.query('COMMIT');
         appliedNow.push(migrationFile);
