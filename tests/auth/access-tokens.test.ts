@@ -56,24 +56,22 @@ describe('HS256 access tokens', () => {
   });
 
   it('rejects weak secrets and invalid token lifetimes', () => {
-    expect(
-      () =>
-        createAccessTokenSigner({
-          secret: Buffer.alloc(16),
-          issuer: 'issuer',
-          audience: 'audience',
-          ttlSeconds: 900,
-        }),
+    expect(() =>
+      createAccessTokenSigner({
+        secret: Buffer.alloc(16),
+        issuer: 'issuer',
+        audience: 'audience',
+        ttlSeconds: 900,
+      }),
     ).toThrow(/at least 32 random bytes/);
 
-    expect(
-      () =>
-        createAccessTokenSigner({
-          secret: Buffer.alloc(32),
-          issuer: 'issuer',
-          audience: 'audience',
-          ttlSeconds: 30,
-        }),
+    expect(() =>
+      createAccessTokenSigner({
+        secret: Buffer.alloc(32),
+        issuer: 'issuer',
+        audience: 'audience',
+        ttlSeconds: 30,
+      }),
     ).toThrow(/between 60 and 3600/);
   });
 });
