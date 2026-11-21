@@ -172,6 +172,8 @@ export const worldSnapshots = pgTable(
       .references(() => campaigns.id, { onDelete: 'cascade' }),
     turnNumber: integer('turn_number').notNull(),
     version: integer('version').notNull(),
+    stateSchemaVersion: integer('state_schema_version').notNull().default(1),
+    rulesetVersion: text('ruleset_version').notNull(),
     state: jsonb('state').$type<Record<string, unknown>>().notNull(),
     createdAt: createdAt(),
   },
@@ -179,6 +181,7 @@ export const worldSnapshots = pgTable(
     uniqueIndex('world_snapshots_campaign_turn_unique').on(table.campaignId, table.turnNumber),
     check('world_snapshots_turn_positive', sql`${table.turnNumber} >= 1`),
     check('world_snapshots_version_positive', sql`${table.version} >= 1`),
+    check('world_snapshots_state_schema_positive', sql`${table.stateSchemaVersion} >= 1`),
   ],
 );
 
@@ -191,6 +194,7 @@ export const orders = pgTable(
       .references(() => campaigns.id, { onDelete: 'cascade' }),
     countryId: uuid('country_id').notNull(),
     turnNumber: integer('turn_number').notNull(),
+    schemaVersion: integer('schema_version').notNull().default(1),
     orderType: text('order_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     status: text('status').notNull().default('draft'),
@@ -207,6 +211,7 @@ export const orders = pgTable(
       foreignColumns: [countries.campaignId, countries.id],
     }),
     check('orders_turn_positive', sql`${table.turnNumber} >= 1`),
+    check('orders_schema_version_positive', sql`${table.schemaVersion} >= 1`),
     check(
       'orders_status_check',
       sql`${table.status} in ('draft', 'unconfirmed', 'confirmed', 'finalized', 'discarded')`,
@@ -222,6 +227,7 @@ export const gameEvents = pgTable(
       .notNull()
       .references(() => campaigns.id, { onDelete: 'cascade' }),
     turnNumber: integer('turn_number').notNull(),
+    schemaVersion: integer('schema_version').notNull().default(1),
     eventType: text('event_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     visibility: text('visibility').notNull().default('public'),
@@ -230,6 +236,7 @@ export const gameEvents = pgTable(
   (table) => [
     index('game_events_campaign_turn_idx').on(table.campaignId, table.turnNumber),
     check('game_events_turn_positive', sql`${table.turnNumber} >= 1`),
+    check('game_events_schema_version_positive', sql`${table.schemaVersion} >= 1`),
     check('game_events_visibility_check', sql`${table.visibility} in ('public', 'private')`),
   ],
 );
