@@ -3,10 +3,12 @@ import type { Pool, PoolClient } from 'pg';
 import {
   DUMMY_PASSWORD_HASH,
   hashPassword,
+  validatePassword,
   normalizeEmail,
   verifyPassword,
 } from './password.js';
 import {
+  AuthValidationError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
@@ -147,9 +149,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
   return {
     async register(emailInput, passwordInput) {
       const email = normalizeEmail(emailInput);
-      if (typeof passwordInput !== 'string') {
-        throw new Error('Password is invalid');
-      }
+      validatePassword(passwordInput);
       const passwordHash = await hashPassword(passwordInput);
       const client = await options.pool.connect();
       let transactionOpen = false;
