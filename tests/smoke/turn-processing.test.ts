@@ -12,6 +12,7 @@ import {
   StaleWorkerError,
 } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
+import { toId, toTurnNumber } from '@paper-wars/shared';
 import { drawUniform } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
@@ -111,8 +112,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const result = await closeOrders(db().pool, data.campaignId);
 
         expect(result).toMatchObject({
-          campaignId: data.campaignId,
-          turnNumber: 1,
+          campaignId: toId<'CampaignId'>(data.campaignId),
+          turnNumber: toTurnNumber(1),
           snapshotVersion: 1,
           finalizedOrderCount: 1,
           discardedOrderCount: 1,
@@ -220,11 +221,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           6,
         );
         const resolution = {
-          campaignId: data.campaignId,
-          turnNumber: 1,
+          campaignId: toId<'CampaignId'>(data.campaignId),
+          turnNumber: toTurnNumber(1),
           sourceSnapshotVersion: 1,
           nextState: { turn: 2 },
-          orderResults: [{ orderId, status: 'accepted' as const, resultCode: 'TEST_ACCEPTED' }],
+          orderResults: [{ orderId: toId<'OrderId'>(orderId), status: 'accepted' as const, resultCode: 'TEST_ACCEPTED' }],
           events: [{ type: 'turn.resolved', schemaVersion: 1, payload: { turn: 1 } }],
           randomDraws: [{ domain: 'battle', drawId, minValue: 1, maxValue: 6, value: drawValue }],
           campaignEnded: false,
@@ -293,8 +294,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
 
         const resolution = {
-          campaignId: data.campaignId,
-          turnNumber: 1,
+          campaignId: toId<'CampaignId'>(data.campaignId),
+          turnNumber: toTurnNumber(1),
           sourceSnapshotVersion: 1,
           nextState: { turn: 2 },
           orderResults: [],
@@ -340,8 +341,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const claim = await claimNextTurnJob(db().pool, 'worker-terminal');
         if (!claim) throw new Error('Expected a claimed turn job');
         const resolution = {
-          campaignId: data.campaignId,
-          turnNumber: 1,
+          campaignId: toId<'CampaignId'>(data.campaignId),
+          turnNumber: toTurnNumber(1),
           sourceSnapshotVersion: 1,
           nextState: { turn: 2, finished: true },
           orderResults: [],
