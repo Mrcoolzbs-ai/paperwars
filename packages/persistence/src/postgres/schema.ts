@@ -33,9 +33,7 @@ export const users = pgTable(
     passwordHash: text('password_hash').notNull(),
     status: text('status').notNull().default('active'),
     createdAt: createdAt(),
-    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('users_email_unique').on(table.email),
@@ -97,9 +95,7 @@ export const campaignMemberships = pgTable(
     countryId: uuid('country_id'),
     status: text('status').notNull().default('active'),
     ordersConfirmed: boolean('orders_confirmed').notNull().default(false),
-    joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
+    joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
     primaryKey({ columns: [table.campaignId, table.userId] }),
@@ -154,11 +150,7 @@ export const orders = pgTable(
     finalizedAt: timestamp('finalized_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
-    index('orders_campaign_turn_status_idx').on(
-      table.campaignId,
-      table.turnNumber,
-      table.status,
-    ),
+    index('orders_campaign_turn_status_idx').on(table.campaignId, table.turnNumber, table.status),
     index('orders_country_turn_idx').on(table.countryId, table.turnNumber),
     foreignKey({
       name: 'orders_campaign_country_fk',
