@@ -109,9 +109,9 @@ export function computeCommitment(
   rngVersion: string,
   seed: Buffer,
 ): string {
-  return createHash('sha256').update(
-    encodeCommitment(campaignId, turnNumber, rulesetVersion, rngVersion, seed),
-  ).digest('hex');
+  return createHash('sha256')
+    .update(encodeCommitment(campaignId, turnNumber, rulesetVersion, rngVersion, seed))
+    .digest('hex');
 }
 
 export function verifyCommitment(expectedHex: string, actualHex: string): boolean {
