@@ -225,7 +225,7 @@ export const randomSeeds = pgTable(
     check(
       'random_seeds_revealed_at_check',
       sql`(${table.status} = 'committed' and ${table.revealedAt} is null) or (${table.status} = 'revealed' and ${table.revealedAt} is not null)`,
-    ),, sql`${table.turnNumber} >= 1`),
+    ),
     check('random_seeds_nonce_length', sql`octet_length(${table.nonce}) = 12`),
     check('random_seeds_auth_tag_length', sql`octet_length(${table.authTag}) = 16`),
     check('random_seeds_status_check', sql`${table.status} in ('committed', 'revealed')`),
@@ -255,7 +255,7 @@ export const randomDraws = pgTable(
     check(
       'random_draws_value_in_range',
       sql`${table.value} >= ${table.minValue} and ${table.value} <= ${table.maxValue}`,
-    ),, sql`${table.maxValue} >= ${table.minValue}`),
+    ),
   ],
 );
 
