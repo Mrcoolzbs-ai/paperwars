@@ -15,5 +15,7 @@
     "@paper-wars/shared": "workspace:*",
     "@paper-wars/simulation": "workspace:*"
   },
-  "devDependencies": { "vitest": "^2.1.9" }
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
 }
