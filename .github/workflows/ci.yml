@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, stage-1.1-monorepo]
+    branches: [main, stage-1.1-monorepo, stage-1.2-postgres-foundation]
   pull_request:
     branches: [main]
 
@@ -16,7 +16,23 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.7
+        env:
+          POSTGRES_USER: paperwars
+          POSTGRES_PASSWORD: paperwars
+          POSTGRES_DB: paperwars_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paperwars -d paperwars_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://paperwars:paperwars@127.0.0.1:5432/paperwars_test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
