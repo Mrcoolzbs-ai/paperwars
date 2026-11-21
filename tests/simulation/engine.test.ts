@@ -86,12 +86,7 @@ function createHandlers(
   const handlers = Object.fromEntries(
     TURN_PHASE_ORDER.map((phase) => [
       phase,
-      (context: TurnPhaseContext<
-        TestState,
-        TestOrderPayload,
-        RulesetManifest,
-        TestEvent
-      >) => {
+      (context: TurnPhaseContext<TestState, TestOrderPayload, RulesetManifest, TestEvent>) => {
         onPhase?.(context.phase);
         const nextCount = context.state.count + 1;
         const nextState: TestState = {
@@ -120,7 +115,8 @@ function createHandlers(
             ? (context.random.weighted('test', 'research:choice', [
                 { id: 'common', weight: 2, value: 'common' },
                 { id: 'rare', weight: 1, value: 'rare' },
-              ]), {})
+              ]),
+              {})
             : {}),
           ...(context.phase === 'SEASONAL_EVENTS' ? { campaignEnded: true } : {}),
         };
@@ -241,12 +237,7 @@ describe('Simulation Engine phase runner', () => {
     const fullMap = createHandlers();
     const incomplete = Object.fromEntries(
       Object.entries(fullMap).filter(([phase]) => phase !== 'BATTLE'),
-    ) as unknown as TurnPhaseHandlerMap<
-      TestState,
-      TestOrderPayload,
-      RulesetManifest,
-      TestEvent
-    >;
+    ) as unknown as TurnPhaseHandlerMap<TestState, TestOrderPayload, RulesetManifest, TestEvent>;
 
     expect(() =>
       createTurnResolver({
@@ -291,9 +282,9 @@ describe('Simulation Engine phase runner', () => {
       },
     });
 
-    expect(() =>
-      conflicting({ snapshot, orders: [], ruleset: manifest, random }),
-    ).toThrow(/reused with different bounds or value/);
+    expect(() => conflicting({ snapshot, orders: [], ruleset: manifest, random })).toThrow(
+      /reused with different bounds or value/,
+    );
   });
 
   it('rejects invalid values returned by the supplied random source', () => {
