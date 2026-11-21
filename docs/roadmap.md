@@ -125,12 +125,15 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.5. Domain, контракты и ruleset
 
-- [ ] Определить базовые доменные сущности и идентификаторы.
-- [ ] Отделить доменные типы от HTTP и ORM-моделей.
-- [ ] Зафиксировать контракты приказов, событий, результата хода и ошибок.
-- [ ] Ввести версионируемый ruleset.
-- [ ] Проверять совместимость ruleset и версии состояния.
-- [ ] Не переносить в код параметры, которые ещё не утверждены.
+- [x] Определить базовые доменные сущности и branded identifiers: campaign, country, membership и cell.
+- [x] Отделить доменные типы от HTTP и ORM-моделей в `@paper-wars/domain`.
+- [x] Зафиксировать контракты приказов, domain events, WorldSnapshot, TurnResolution и ошибок инвариантов.
+- [x] Определить pure `TurnResolver(snapshot, orders, ruleset, rng)` и `RandomSource` без DB/HTTP зависимостей в контракте.
+- [x] Ввести версионируемый `RulesetManifest`/`RulesetDefinition`.
+- [x] Проверять совместимость ruleset version, RNG version, supported engine version и state-schema version.
+- [x] Не переносить в код неутверждённые игровые параметры.
+
+**Результат Stage 1.5:** domain contracts и migration `0003_versioned_domain_payloads.sql` merged в `main` через PR #7. Snapshot хранит `ruleset_version` и `state_schema_version`; orders и game events — собственный `schema_version`. CI: build/typecheck/lint/format и 55 тестов в 10 файлах успешно.
 
 ### 1.6. RNG и commit-reveal
 
@@ -154,12 +157,15 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.7. Simulation Engine
 
-- [ ] Определить чистый контракт `resolveTurn(snapshot, orders, ruleset, rng)`.
-- [ ] Определить структуру TurnResolution: новое состояние, результаты приказов, события, изменения ресурсов, карты и отчёты.
-- [ ] Сделать состояние и входные данные неизменяемыми на время расчёта.
-- [ ] Убрать из ядра обращения к БД, HTTP, системному времени и глобальному RNG.
-- [ ] Обеспечить детерминизм unit-тестами.
-- [ ] Реализовать только каркас до появления нормативных правил конкретной механики.
+- [x] Определить чистый типизированный контракт `TurnResolver(snapshot, orders, ruleset, rng)` без IO.
+- [x] Определить структуру TurnResolution: новое состояние, результаты приказов, события и журнал использованных случайных значений.
+- [x] Входные данные и результат представлены readonly-контрактами; проверяются campaign/turn/snapshot version и точное соответствие order results.
+- [x] RNG передаётся как явный `RandomSource`, а не как глобальный генератор.
+- [ ] Реализовать orchestration/исполнение разрешения хода без доступа к БД из pure core.
+- [ ] Обеспечить детерминизм unit-тестами уже исполняемой симуляции.
+- [ ] Реализовать только нормативно подтверждённые механики; неподтверждённые параметры не добавлять.
+
+**Текущий статус:** контрактная часть реализована в PR #7; реальная функция resolveTurn и игровой цикл ещё не реализованы.
 
 ### 1.8. Закрытие приказов, очередь и Worker
 
@@ -538,17 +544,19 @@ Q18–Q20 — причина катастрофы, природа золота �
 - **Stage 1.1 — Monorepo bootstrap:** merged в `main` через PR #3.
 - **Stage 1.2 — PostgreSQL foundation:** Drizzle schema, initial migration, advisory-lock migrator, checksum и PostgreSQL integration tests; merged через PR #4.
 - **Stage 1.3 — RNG/seed lifecycle:** `commit-v1`, `enc-v1`, AAD, HMAC-SHA-256, rejection sampling, AES-256-GCM, versioned key provider, seed reveal gating и audit log random draws; merged через PR #5.
-- **Stage 1.4 — Auth/campaign core:** scrypt passwords, HS256 access JWT, hashed/rotating refresh tokens с replay revocation, HTTP auth/campaign routes и атомарное создание campaign + membership + first seed; merged в `main` через PR #6.
-- Чистый CI Stage 1.4 на PostgreSQL 18.7: build, typecheck, lint, format-check и **26/26 тестов** зелёные в 5 suites.
+- **Stage 1.4 — Auth/campaign core:** scrypt passwords, HS256 access JWT, hashed/rotating refresh tokens с replay revocation, HTTP auth/campaign routes и атомарное создание campaign + membership + first seed; merged через PR #6.
+- **Stage 1.5 — Domain/ruleset contracts:** branded entities, order/event/snapshot/turn-resolution contracts, pure RandomSource/TurnResolver interface, RulesetManifest и compatibility checks; merged через PR #7.
+- Persistence migration `0003_versioned_domain_payloads.sql` добавляет версии схемы для world snapshots, orders и game events.
+- Последний чистый PR CI Stage 1.5 на PostgreSQL 18.7: build, typecheck, lint, format-check и **55/55 тестов** зелёные в 10 файлах.
 
 ### Реализация — ещё не завершена
 
+- Проверка восстановления состояния PostgreSQL после перезапуска с постоянным volume.
 - Приглашения участников, полноценное управление membership/roles, аудит критичных действий и меры против brute force.
-- Полная модель ruleset и совместимость версий состояния.
-- Регистрация государства: выбор official system, размещение стартовых зданий/населения, генерация карты и начальный world snapshot.
-- Реальный Simulation Engine и разрешение игровых приказов.
+- Полный исполняемый Simulation Engine и обработка игровых приказов.
 - `closeOrders`, блокировки приказов, PostgreSQL Worker, lease/fencing, reaper и атомарная финализация хода.
+- Регистрация государств, генерация карты, обязательный выбор Q24 и начальная конфигурация 7 зданий / 18 жителей — Stage 2.
 - Полные DTO-проекции игрового мира, Web-клиент и публичный post-campaign reveal endpoint.
 - Definition of Done Этапа 1 в целом ещё не достигнут: отсутствует рабочий end-to-end цикл «пользователь → приказ → worker → симуляция → сохранение → API».
 
-**Следующий инкремент:** Stage 1.5 — country setup и начальное состояние мира; после него — closeOrders и Worker.
+**Следующий инкремент:** Stage 1.7 — минимальный исполняемый pure Simulation Engine поверх созданных контрактов; далее Stage 1.8 — closeOrders и PostgreSQL Worker.
