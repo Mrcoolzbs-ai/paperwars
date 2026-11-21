@@ -35,9 +35,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const result = await current.pool.query<{
         migration_name: string;
         checksum: string;
-      }>(
-        'SELECT migration_name, checksum FROM app_schema_migrations ORDER BY migration_name',
-      );
+      }>('SELECT migration_name, checksum FROM app_schema_migrations ORDER BY migration_name');
 
       expect(result.rows).toEqual([
         {
