@@ -196,11 +196,11 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 - [x] Минимальный Fastify API skeleton с `GET /health`.
 - [x] API endpoints: register/login/refresh/logout/me и базовые campaigns create/list.
-- [ ] API endpoints: управление membership, orders, turn status и world view.
+- [x] API endpoints: просмотр/выход из membership, собственные orders CRUD/confirm, turn status/close и world route через явный DTO projector. Приглашения и назначение стран остаются Stage 2.
 - [ ] Next.js/React Web-клиент: вход, список кампаний, базовая карта и экран приказов.
-- [ ] Валидация входящих payload и DTO-проекции по уровню видимости.
-- [ ] Не сериализовать внутренний WorldState напрямую.
-- [ ] Не раскрывать скрытые находки, награды, seed или чужие приказы.
+- [x] Валидация order payload/type/schemaVersion и явная DTO-проекция мира через инъецируемый WorldViewProjector.
+- [x] Не сериализовать внутренний WorldState напрямую: world endpoint возвращает 503, если безопасный projector не настроен.
+- [x] Не выдавать чужие приказы и не раскрывать внутренний snapshot без явной проекции; скрытые находки/награды остаются обязанностью конкретного projector/ruleset.
 
 ### Definition of Done Этапа 1
 
@@ -562,6 +562,7 @@ Q18–Q20 — причина катастрофы, природа золота �
 - **Stage 1.7 — Simulation phase runner:** PR #9; все 14 фаз исполняются по нормативному порядку, handlers обязательны, RNG draws валидируются и журналируются. CI: build/typecheck/lint/format и **63/63 теста** в 11 файлах. Это orchestration skeleton, не реализация игровых механик; PR ожидает merge.
 - **Stage 1.8 — Order closing and persistence job lifecycle:** PR #10; транзакционный closeOrders, lock helpers, claim/lease renewal/reaper, fencing и atomic finalization включая snapshots/events/RNG/reports/next seed. CI: build/typecheck/lint/format и **69/69 тестов** в 12 файлах. PR stacked на Stage 1.7; влить после PR #9.
 - **Stage 1.8 — Worker runtime:** PR #11; непрерывный polling, reaper, verified loader snapshot/orders/ruleset/seed, deterministic RNG context, heartbeat, atomic finalize, retry recovery и graceful shutdown. GitHub Actions: build/typecheck/lint/format; **73/73 теста** в 13 файлах. PR stacked на PR #10; ждёт merge.
+- **Stage 1.9 — Campaign/Orders API:** ветка `stage-1.9-campaign-api`; участники (просмотр/выход), собственные приказы (create/update/delete/confirm), turn status/close и world DTO projector. Авторизация и транзакционные campaign locks включены; CI выполняется.
 
 ### Реализация — ещё не завершена
 

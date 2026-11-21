@@ -10,6 +10,13 @@ import {
   type CampaignService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
+import {
+  CampaignGameError,
+  type CampaignGameService,
+  type CampaignWorldSnapshot,
+  type CampaignMembershipView,
+} from '@paper-wars/gameplay';
+import { OrdersAlreadyLockedError, TurnProcessingError } from '@paper-wars/persistence';
 
 export interface CreateAppOptions {
   readonly logger?: boolean;
@@ -18,7 +25,14 @@ export interface CreateAppOptions {
   readonly authService?: AuthService;
   readonly campaignService?: CampaignService;
   readonly secureCookies?: boolean;
+  readonly campaignGameService?: CampaignGameService;
+  readonly worldViewProjector?: WorldViewProjector;
 }
+
+export type WorldViewProjector = (input: {
+  readonly snapshot: CampaignWorldSnapshot;
+  readonly membership: CampaignMembershipView;
+}) => Readonly<Record<string, unknown>> | Promise<Readonly<Record<string, unknown>>>;
 
 interface RecordBody {
   readonly [key: string]: unknown;
@@ -213,6 +227,194 @@ function registerCampaignRoutes(
   });
 }
 
+
+function sendCampaignGameError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof CampaignGameError) {
+    return reply.code(error.statusCode).send({ error: error.code, message: error.message });
+  }
+  if (error instanceof OrdersAlreadyLockedError) {
+    return reply.code(409).send({ error: 'ORDERS_LOCKED' });
+  }
+  if (error instanceof TurnProcessingError) {
+    return reply.code(409).send({ error: 'TURN_NOT_WRITABLE' });
+  }
+  return sendAuthError(error, reply);
+}
+
+function registerCampaignGameRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  gameService: CampaignGameService,
+  worldViewProjector?: WorldViewProjector,
+): void {
+  app.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/membership',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const membership = await gameService.getMembership(user.id, request.params.campaignId);
+        return reply.send({ membership });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/members',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const members = await gameService.listMembers(user.id, request.params.campaignId);
+        return reply.send({ members });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/membership/leave',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const result = await gameService.leaveCampaign(user.id, request.params.campaignId);
+        return reply.send({ membership: result });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/orders',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const orders = await gameService.listMyOrders(user.id, request.params.campaignId);
+        return reply.send({ orders });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/orders',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const order = await gameService.createOrder(user.id, request.params.campaignId, {
+          orderType: body['orderType'],
+          schemaVersion: body['schemaVersion'],
+          payload: body['payload'],
+        });
+        return reply.code(201).send({ order });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.patch<{ Params: { campaignId: string; orderId: string } }>(
+    '/campaigns/:campaignId/orders/:orderId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const order = await gameService.updateOrder(
+          user.id,
+          request.params.campaignId,
+          request.params.orderId,
+          {
+            ...(body['orderType'] === undefined ? {} : { orderType: body['orderType'] }),
+            ...(body['schemaVersion'] === undefined
+              ? {}
+              : { schemaVersion: body['schemaVersion'] }),
+            ...(body['payload'] === undefined ? {} : { payload: body['payload'] }),
+          },
+        );
+        return reply.send({ order });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.delete<{ Params: { campaignId: string; orderId: string } }>(
+    '/campaigns/:campaignId/orders/:orderId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await gameService.deleteOrder(user.id, request.params.campaignId, request.params.orderId);
+        return reply.code(204).send();
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/orders/confirm',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const result = await gameService.confirmOrders(user.id, request.params.campaignId);
+        return reply.send(result);
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/turn',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const turn = await gameService.getTurnStatus(user.id, request.params.campaignId);
+        return reply.send({ turn });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/turn/close',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const result = await gameService.closeTurn(user.id, request.params.campaignId);
+        return reply.code(202).send({ job: result });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+
+  app.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/world',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const input = await gameService.getCurrentWorldSnapshot(
+          user.id,
+          request.params.campaignId,
+        );
+        if (worldViewProjector === undefined) {
+          return reply.code(503).send({ error: 'WORLD_VIEW_NOT_CONFIGURED' });
+        }
+        const world = await worldViewProjector(input);
+        return reply.send({ world });
+      } catch (error) {
+        return sendCampaignGameError(error, reply);
+      }
+    },
+  );
+}
+
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
@@ -234,6 +436,15 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.campaignService !== undefined) {
     registerCampaignRoutes(app, options.authService, options.campaignService);
+  }
+
+  if (options.authService !== undefined && options.campaignGameService !== undefined) {
+    registerCampaignGameRoutes(
+      app,
+      options.authService,
+      options.campaignGameService,
+      options.worldViewProjector,
+    );
   }
 
   return app;
