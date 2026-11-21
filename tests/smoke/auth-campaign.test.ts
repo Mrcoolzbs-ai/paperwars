@@ -17,9 +17,10 @@ const databaseUrl = process.env['DATABASE_URL'];
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'authentication and campaign lifecycle integration',
   () => {
-    const persistence = databaseUrl === undefined
-      ? undefined
-      : createPostgresPersistence({ connectionString: databaseUrl });
+    const persistence =
+      databaseUrl === undefined
+        ? undefined
+        : createPostgresPersistence({ connectionString: databaseUrl });
     const key = Buffer.alloc(32, 0x65);
     const keyProvider: SeedKeyProvider = {
       getActiveKey: async () => ({ version: 'integration-key-v1', key }),
@@ -60,9 +61,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       const registered = await auth.register(`  ${email}  `, password);
       expect(registered.user.email).toBe(email.trim().toLowerCase());
-      expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(
-        registered.user,
-      );
+      expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
 
       await expect(auth.register(email.toUpperCase(), password)).rejects.toBeInstanceOf(
         EmailAlreadyRegisteredError,
@@ -105,10 +104,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrent = await auth.register(
-        `concurrent-${randomUUID()}@example.test`,
-        password,
-      );
+      const concurrent = await auth.register(`concurrent-${randomUUID()}@example.test`, password);
       const attempts = await Promise.allSettled([
         auth.refresh(concurrent.refreshToken),
         auth.refresh(concurrent.refreshToken),
