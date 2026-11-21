@@ -101,7 +101,8 @@ function createHandlers(
         return {
           state: nextState,
           events: [{ phase: context.phase, count: nextCount }],
-          ...(context.phase === 'VALIDATE'
+          ...(context.phase === 'VALIDATE' &&
+          context.orders.some((order) => order.id === orderId)
             ? {
                 orderResults: [
                   {
@@ -163,17 +164,17 @@ describe('Simulation Engine phase runner', () => {
     expect(resolution.randomDraws).toEqual([
       {
         domain: 'test',
-        drawId: 'battle:1',
-        minValue: 1,
-        maxValue: 6,
-        value: 4,
-      },
-      {
-        domain: 'test',
         drawId: 'research:choice',
         minValue: 0,
         maxValue: 2,
         value: 2,
+      },
+      {
+        domain: 'test',
+        drawId: 'battle:1',
+        minValue: 1,
+        maxValue: 6,
+        value: 4,
       },
     ]);
     expect(resolution.campaignEnded).toBe(true);
