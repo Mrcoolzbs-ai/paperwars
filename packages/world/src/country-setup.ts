@@ -207,7 +207,7 @@ function validateBuildingPlacements(
     throw new CountrySetupValidationError(
       officialSystemType === 'religion'
         ? 'An official religion requires exactly one religious building in the extra slot'
-        : 'An official ideology requires exactly one science, barracks or tower building in the extra slot',
+        : 'Ideology requires exactly one science, barracks or tower building in the extra slot',
     );
   }
 
@@ -478,7 +478,9 @@ export function createCountrySetupService(options: {
           input.spawnX + TERRITORY_HALF >= campaign.map_width ||
           input.spawnY + TERRITORY_HALF >= campaign.map_height
         ) {
-          throw new CountrySetupValidationError('The selected 5x5 starting area is outside the campaign map');
+          throw new CountrySetupValidationError(
+            'The selected 5x5 starting area is outside the campaign map',
+          );
         }
 
         const snapshotLock = await client.query<SnapshotLockRow>(
