@@ -6,6 +6,7 @@ import {
 import { createPostgresPersistence } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createApp } from './app.js';
+import { createCountrySetupService } from '@paper-wars/world';
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -79,12 +80,15 @@ try {
     rngVersion,
   });
 
+  const countrySetupService = createCountrySetupService({ pool: persistence.pool });
+
   app = createApp({
     logger: true,
     rulesetVersion,
     rngVersion,
     authService,
     campaignService,
+    countrySetupService,
     secureCookies: process.env['NODE_ENV'] === 'production',
   });
 
