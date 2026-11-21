@@ -53,6 +53,10 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Format preview (temporary diagnostic)
+        run: |
+          pnpm exec prettier --write .github/workflows/ci.yml packages/persistence/src/postgres/random-draws.ts packages/randomness/src/crypto.ts packages/randomness/src/encoding.ts packages/randomness/src/rng.ts tests/randomness/crypto.test.ts tests/randomness/encoding-rng.test.ts tests/smoke/postgres.test.ts tests/smoke/randomness.test.ts
+          git --no-pager diff -- .github/workflows/ci.yml packages/persistence/src/postgres/random-draws.ts packages/randomness/src/crypto.ts packages/randomness/src/encoding.ts packages/randomness/src/rng.ts tests/randomness/crypto.test.ts tests/randomness/encoding-rng.test.ts tests/smoke/postgres.test.ts tests/smoke/randomness.test.ts
       - name: Format check
         run: pnpm format:check
       - name: Tests
