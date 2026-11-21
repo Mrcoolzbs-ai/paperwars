@@ -221,7 +221,11 @@ export const randomSeeds = pgTable(
     ),
     check('random_seeds_turn_positive', sql`${table.turnNumber} >= 1`),
     check('random_seeds_ciphertext_length', sql`octet_length(${table.encryptedSeed}) = 32`),
-    check('random_seeds_commitment_hex', sql`${table.commitment} ~ '^[a-f0-9]{64}
+    check('random_seeds_commitment_hex', sql`${table.commitment} ~ '^[a-f0-9]{64}$'`),
+    check(
+      'random_seeds_revealed_at_check',
+      sql`(${table.status} = 'committed' and ${table.revealedAt} is null) or (${table.status} = 'revealed' and ${table.revealedAt} is not null)`,
+    ),, sql`${table.turnNumber} >= 1`),
     check('random_seeds_nonce_length', sql`octet_length(${table.nonce}) = 12`),
     check('random_seeds_auth_tag_length', sql`octet_length(${table.authTag}) = 16`),
     check('random_seeds_status_check', sql`${table.status} in ('committed', 'revealed')`),
@@ -251,7 +255,7 @@ export const randomDraws = pgTable(
     check(
       'random_draws_value_in_range',
       sql`${table.value} >= ${table.minValue} and ${table.value} <= ${table.maxValue}`,
-    ),
+    ),, sql`${table.maxValue} >= ${table.minValue}`),
   ],
 );
 
@@ -408,190 +412,6 @@ export const discoveryAccess = pgTable(
       'discovery_access_status_consistency_check',
       sql`(${table.status} = 'active' and ${table.revokedAtTurn} is null and ${table.revokedByEventId} is null) or (${table.status} = 'revoked' and ${table.revokedAtTurn} is not null and ${table.revokedByEventId} is not null)`,
     ),
-    check(
-      'discovery_access_revoked_turn_check',
-      sql`${table.revokedAtTurn} is null or ${table.revokedAtTurn} >= ${table.grantedAtTurn}`,
-    ),
-  ],
-);
-`),
-    check(
-      'random_seeds_revealed_at_check',
-      sql`(${table.status} = 'committed' and ${table.revealedAt} is null) or (${table.status} = 'revealed' and ${table.revealedAt} is not null)`,
-    ),
-    check('random_seeds_nonce_length', sql`octet_length(${table.nonce}) = 12`),
-    check('random_seeds_auth_tag_length', sql`octet_length(${table.authTag}) = 16`),
-    check('random_seeds_status_check', sql`${table.status} in ('committed', 'revealed')`),
-  ],
-);
-
-export const randomDraws = pgTable(
-  'random_draws',
-  {
-    campaignId: uuid('campaign_id')
-      .notNull()
-      .references(() => campaigns.id, { onDelete: 'cascade' }),
-    turnNumber: integer('turn_number').notNull(),
-    domain: text('domain').notNull(),
-    drawId: text('draw_id').notNull(),
-    minValue: bigint('min_value', { mode: 'bigint' }).notNull(),
-    maxValue: bigint('max_value', { mode: 'bigint' }).notNull(),
-    value: bigint('value', { mode: 'bigint' }).notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.campaignId, table.turnNumber, table.domain, table.drawId],
-    }),
-    check('random_draws_turn_positive', sql`${table.turnNumber} >= 1`),
-    check('random_draws_range_check', sql`${table.maxValue} >= ${table.minValue}`),
-  ],
-);
-
-export const turnJobs = pgTable(
-  'turn_jobs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    jobKey: text('job_key').notNull(),
-    campaignId: uuid('campaign_id')
-      .notNull()
-      .references(() => campaigns.id, { onDelete: 'cascade' }),
-    turnNumber: integer('turn_number').notNull(),
-    snapshotVersion: integer('snapshot_version').notNull(),
-    status: text('status').notNull().default('pending'),
-    generation: integer('generation').notNull().default(0),
-    workerId: text('worker_id'),
-    leaseUntil: timestamp('lease_until', { withTimezone: true, mode: 'date' }),
-    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
-    completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
-    retryCount: integer('retry_count').notNull().default(0),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    uniqueIndex('turn_jobs_job_key_unique').on(table.jobKey),
-    uniqueIndex('turn_jobs_campaign_turn_unique').on(table.campaignId, table.turnNumber),
-    index('turn_jobs_status_created_idx').on(table.status, table.createdAt),
-    index('turn_jobs_lease_idx').on(table.status, table.leaseUntil),
-    check('turn_jobs_turn_positive', sql`${table.turnNumber} >= 1`),
-    check('turn_jobs_snapshot_version_positive', sql`${table.snapshotVersion} >= 1`),
-    check('turn_jobs_generation_nonnegative', sql`${table.generation} >= 0`),
-    check('turn_jobs_retry_count_check', sql`${table.retryCount} between 0 and 5`),
-    check(
-      'turn_jobs_status_check',
-      sql`${table.status} in ('pending', 'processing', 'completed', 'failed')`,
-    ),
-  ],
-);
-
-export const economicReports = pgTable(
-  'economic_reports',
-  {
-    campaignId: uuid('campaign_id')
-      .notNull()
-      .references(() => campaigns.id, { onDelete: 'cascade' }),
-    turnNumber: integer('turn_number').notNull(),
-    report: jsonb('report').$type<Record<string, unknown>>().notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.campaignId, table.turnNumber] }),
-    check('economic_reports_turn_positive', sql`${table.turnNumber} >= 1`),
-  ],
-);
-
-export const battleReports = pgTable(
-  'battle_reports',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    campaignId: uuid('campaign_id')
-      .notNull()
-      .references(() => campaigns.id, { onDelete: 'cascade' }),
-    turnNumber: integer('turn_number').notNull(),
-    report: jsonb('report').$type<Record<string, unknown>>().notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    index('battle_reports_campaign_turn_idx').on(table.campaignId, table.turnNumber),
-    check('battle_reports_turn_positive', sql`${table.turnNumber} >= 1`),
-  ],
-);
-
-export const discoveryRecords = pgTable(
-  'discovery_records',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    campaignId: uuid('campaign_id')
-      .notNull()
-      .references(() => campaigns.id, { onDelete: 'cascade' }),
-    cellId: text('cell_id').notNull(),
-    discoveredByCountryId: uuid('discovered_by_country_id').notNull(),
-    discoveredAtTurn: integer('discovered_at_turn').notNull(),
-    discoveryType: text('discovery_type').notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    uniqueIndex('discovery_records_campaign_cell_unique').on(table.campaignId, table.cellId),
-    foreignKey({
-      name: 'discovery_records_campaign_country_fk',
-      columns: [table.campaignId, table.discoveredByCountryId],
-      foreignColumns: [countries.campaignId, countries.id],
-    }),
-    check('discovery_records_turn_positive', sql`${table.discoveredAtTurn} >= 1`),
-    check(
-      'discovery_records_type_check',
-      sql`${table.discoveryType} in ('ruins', 'gold', 'empty')`,
-    ),
-  ],
-);
-
-export const discoveryHistory = pgTable(
-  'discovery_history',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    discoveryId: uuid('discovery_id')
-      .notNull()
-      .references(() => discoveryRecords.id, { onDelete: 'cascade' }),
-    eventType: text('event_type').notNull(),
-    actorCountryId: uuid('actor_country_id')
-      .notNull()
-      .references(() => countries.id),
-    targetCountryId: uuid('target_country_id').references(() => countries.id),
-    turnNumber: integer('turn_number').notNull(),
-    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    index('discovery_history_discovery_turn_idx').on(table.discoveryId, table.turnNumber),
-    check('discovery_history_turn_positive', sql`${table.turnNumber} >= 1`),
-    check(
-      'discovery_history_event_type_check',
-      sql`${table.eventType} in ('discovered', 'investigated', 'transferred', 'captured', 'access_granted', 'access_revoked')`,
-    ),
-  ],
-);
-
-export const discoveryAccess = pgTable(
-  'discovery_access',
-  {
-    discoveryId: uuid('discovery_id')
-      .notNull()
-      .references(() => discoveryRecords.id, { onDelete: 'cascade' }),
-    countryId: uuid('country_id')
-      .notNull()
-      .references(() => countries.id, { onDelete: 'cascade' }),
-    status: text('status').notNull(),
-    grantedAtTurn: integer('granted_at_turn').notNull(),
-    grantedByEventId: uuid('granted_by_event_id')
-      .notNull()
-      .references(() => discoveryHistory.id),
-    revokedAtTurn: integer('revoked_at_turn'),
-    revokedByEventId: uuid('revoked_by_event_id').references(() => discoveryHistory.id),
-    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex('discovery_access_unique').on(table.discoveryId, table.countryId),
-    check('discovery_access_status_check', sql`${table.status} in ('active', 'revoked')`),
-    check('discovery_access_granted_turn_positive', sql`${table.grantedAtTurn} >= 1`),
     check(
       'discovery_access_revoked_turn_check',
       sql`${table.revokedAtTurn} is null or ${table.revokedAtTurn} >= ${table.grantedAtTurn}`,
