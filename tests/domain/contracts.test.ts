@@ -43,26 +43,20 @@ describe('versioned ruleset compatibility', () => {
     expect(() =>
       assertRulesetCompatible(manifest, { ...engine, rulesetVersion: 'baseline-v2' }),
     ).toThrow(RulesetCompatibilityError);
-    expect(() =>
-      assertRulesetCompatible(manifest, { ...engine, rngVersion: 'rng-v2' }),
-    ).toThrow(RulesetCompatibilityError);
-    expect(() =>
-      assertRulesetCompatible(manifest, { ...engine, engineVersion: '9.9.9' }),
-    ).toThrow(RulesetCompatibilityError);
+    expect(() => assertRulesetCompatible(manifest, { ...engine, rngVersion: 'rng-v2' })).toThrow(
+      RulesetCompatibilityError,
+    );
+    expect(() => assertRulesetCompatible(manifest, { ...engine, engineVersion: '9.9.9' })).toThrow(
+      RulesetCompatibilityError,
+    );
   });
 
   it('rejects empty/duplicate engine support and non-positive state schema versions', () => {
     expect(() =>
-      assertRulesetCompatible(
-        { ...manifest, supportedEngineVersions: [] },
-        engine,
-      ),
+      assertRulesetCompatible({ ...manifest, supportedEngineVersions: [] }, engine),
     ).toThrow(RulesetCompatibilityError);
     expect(() =>
-      assertRulesetCompatible(
-        { ...manifest, supportedEngineVersions: ['0.1.0', '0.1.0'] },
-        engine,
-      ),
+      assertRulesetCompatible({ ...manifest, supportedEngineVersions: ['0.1.0', '0.1.0'] }, engine),
     ).toThrow(RulesetCompatibilityError);
     expect(() =>
       assertRulesetCompatible({ ...manifest, worldStateSchemaVersion: 0 }, engine),
@@ -114,10 +108,10 @@ describe('turn-resolution contracts', () => {
 
   it('rejects a wrong campaign, turn or stale source snapshot', () => {
     expect(() =>
-      assertTurnResolutionMatchesInput(
-        snapshot,
-        { ...resolution, campaignId: toId<'CampaignId'>('campaign-2') },
-      ),
+      assertTurnResolutionMatchesInput(snapshot, {
+        ...resolution,
+        campaignId: toId<'CampaignId'>('campaign-2'),
+      }),
     ).toThrow(TurnResolutionInvariantError);
     expect(() =>
       assertTurnResolutionMatchesInput(snapshot, {
