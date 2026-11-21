@@ -17,12 +17,7 @@ import {
 import { TURN_PHASE_ORDER, type TurnPhase } from './phases.js';
 import type { SimulationEngineDescriptor } from './engine.js';
 
-export interface TurnPhaseContext<
-  TState,
-  TPayload,
-  TRuleset extends RulesetManifest,
-  TEvent,
-> {
+export interface TurnPhaseContext<TState, TPayload, TRuleset extends RulesetManifest, TEvent> {
   readonly phase: TurnPhase;
   readonly snapshot: WorldSnapshot<TState>;
   readonly state: Readonly<TState>;
@@ -42,12 +37,7 @@ export interface TurnPhaseOutput<TState, TEvent> {
   readonly campaignEnded?: boolean;
 }
 
-export type TurnPhaseHandler<
-  TState,
-  TPayload,
-  TRuleset extends RulesetManifest,
-  TEvent,
-> = (
+export type TurnPhaseHandler<TState, TPayload, TRuleset extends RulesetManifest, TEvent> = (
   context: TurnPhaseContext<TState, TPayload, TRuleset, TEvent>,
 ) => TurnPhaseOutput<TState, TEvent>;
 
@@ -160,9 +150,7 @@ function createRecordedRandomSource(source: RandomSource): {
     const ids = new Set<string>();
     for (const outcome of outcomes) {
       if (outcome.id.trim().length === 0 || ids.has(outcome.id)) {
-        throw new SimulationRandomSourceError(
-          'Weighted outcome IDs must be non-empty and unique',
-        );
+        throw new SimulationRandomSourceError('Weighted outcome IDs must be non-empty and unique');
       }
       if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
         throw new SimulationRandomSourceError(
@@ -209,13 +197,13 @@ export function createTurnResolver<
 }): TurnResolver<TState, TPayload, TRuleset, TEvent> {
   for (const phase of TURN_PHASE_ORDER) {
     if (typeof options.phaseHandlers[phase] !== 'function') {
-      throw new SimulationPhaseConfigurationError(
-        `Turn phase ${phase} does not have a handler`,
-      );
+      throw new SimulationPhaseConfigurationError(`Turn phase ${phase} does not have a handler`);
     }
   }
 
-  const resolver = (input: TurnSimulationInput<TState, TPayload, TRuleset>): TurnResolution<TState, TEvent> => {
+  const resolver = (
+    input: TurnSimulationInput<TState, TPayload, TRuleset>,
+  ): TurnResolution<TState, TEvent> => {
     assertRulesetCompatible(input.ruleset, options.engine);
     assertSnapshotCompatible(input.snapshot, input.ruleset);
 
