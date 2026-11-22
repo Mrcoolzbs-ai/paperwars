@@ -16,11 +16,18 @@ import {
   CountrySetupValidationError,
   NotActiveCampaignMemberError,
   OfficialSystemNotAvailableError,
+  SocialSystemAdminRequiredError,
+  SocialSystemLimitReachedError,
+  SocialSystemNameConflictError,
+  SocialSystemNotFoundError,
+  SocialSystemReviewConflictError,
   SpawnAreaUnavailableError,
   SystemAvailabilityNotConfiguredError,
   type CountrySetupService,
   type CreateCountryInput,
+  type CreateSocialSystemInput,
   type OfficialSystemType,
+  type SocialSystemReviewInput,
 } from '@paper-wars/world';
 
 export interface CreateAppOptions {
@@ -121,13 +128,26 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof CountrySetupValidationError) {
     return reply.code(400).send({ error: 'INVALID_COUNTRY_SETUP', message: error.message });
   }
-  if (error instanceof NotActiveCampaignMemberError) {
-    return reply.code(403).send({ error: 'NOT_ACTIVE_CAMPAIGN_MEMBER' });
+  if (
+    error instanceof NotActiveCampaignMemberError ||
+    error instanceof SocialSystemAdminRequiredError
+  ) {
+    return reply.code(403).send({
+      error: error instanceof SocialSystemAdminRequiredError
+        ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
+        : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
+    });
+  }
+  if (error instanceof SocialSystemNotFoundError) {
+    return reply.code(404).send({ error: 'SOCIAL_SYSTEM_NOT_FOUND' });
   }
   if (
     error instanceof CampaignSetupNotReadyError ||
     error instanceof CountryAlreadyRegisteredError ||
-    error instanceof SpawnAreaUnavailableError
+    error instanceof SpawnAreaUnavailableError ||
+    error instanceof SocialSystemLimitReachedError ||
+    error instanceof SocialSystemNameConflictError ||
+    error instanceof SocialSystemReviewConflictError
   ) {
     return reply.code(409).send({ error: 'COUNTRY_SETUP_CONFLICT', message: error.message });
   }
@@ -271,6 +291,60 @@ function registerCountryRoutes(
   authService: AuthService,
   countrySetupService: CountrySetupService,
 ): void {
+  app.post('/campaigns/:campaignId/social-systems', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const system = await countrySetupService.createSocialSystem(
+        user.id,
+        getCampaignId(request),
+        body as unknown as CreateSocialSystemInput,
+      );
+      return reply.code(201).send({ system });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/social-systems/mine', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const systems = await countrySetupService.listMySocialSystems(user.id, getCampaignId(request));
+      return reply.send({ systems });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/social-systems/pending', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const systems = await countrySetupService.listPendingSocialSystems(user.id, getCampaignId(request));
+      return reply.send({ systems });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post<{ Params: { campaignId: string; systemId: string } }>(
+    '/campaigns/:campaignId/social-systems/:systemId/review',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const system = await countrySetupService.reviewSocialSystem(
+          user.id,
+          request.params.campaignId,
+          request.params.systemId,
+          body as unknown as SocialSystemReviewInput,
+        );
+        return reply.send({ system });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
   app.post('/campaigns/:campaignId/countries', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
