@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { createCommittedSeed, type CreateCommittedSeedOptions } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
@@ -16,6 +17,7 @@ export interface CampaignMapSize {
   readonly mapWidth: number;
   readonly mapHeight: number;
   readonly turnDurationHours?: number;
+  readonly mapSeed?: string;
 }
 
 export interface CreatedCampaign {
@@ -29,6 +31,8 @@ export interface CreatedCampaign {
   readonly mapWidth: number;
   readonly mapHeight: number;
   readonly turnDurationHours: number;
+  readonly mapSeed: string;
+  readonly maxPlayers: number;
   readonly firstTurnCommitment: string;
 }
 
@@ -45,6 +49,9 @@ export interface CampaignSummary {
   readonly mapWidth: number | null;
   readonly mapHeight: number | null;
   readonly turnDurationHours: number;
+  readonly mapSeed: string;
+  readonly playerCount: number;
+  readonly maxPlayers: number;
 }
 
 export interface CampaignService {
@@ -54,6 +61,7 @@ export interface CampaignService {
     mapSize: CampaignMapSize,
   ): Promise<CreatedCampaign>;
   joinCampaign(userId: string, campaignId: string): Promise<void>;
+  leaveCampaign(userId: string, campaignId: string): Promise<void>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
 
@@ -79,15 +87,20 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       if (
         !Number.isSafeInteger(mapSize?.mapWidth) ||
         !Number.isSafeInteger(mapSize?.mapHeight) ||
-        mapSize.mapWidth < 5 ||
-        mapSize.mapHeight < 5 ||
-        mapSize.mapWidth > 0x7fffffff ||
-        mapSize.mapHeight > 0x7fffffff
+        mapSize.mapWidth < 20 ||
+        mapSize.mapHeight < 20 ||
+        mapSize.mapWidth > 200 ||
+        mapSize.mapHeight > 200 ||
+        mapSize.mapWidth * mapSize.mapHeight < 100
       ) {
-        throw new AuthValidationError(
-          'Campaign map dimensions must be safe integers in the PostgreSQL range and at least 5x5',
-        );
+        throw new AuthValidationError('Campaign map dimensions must be between 20x20 and 200x200');
       }
+      const mapSeedInput = mapSize.mapSeed?.trim() ?? '';
+      if (mapSeedInput && !/^[a-zA-Z0-9_-]{1,64}$/.test(mapSeedInput)) {
+        throw new AuthValidationError('World seed must contain 1 to 64 letters, digits, underscores or hyphens');
+      }
+      const mapSeed = mapSeedInput || randomUUID().replaceAll('-', '').slice(0, 16);
+      const maxPlayers = Math.floor((mapSize.mapWidth * mapSize.mapHeight) / 100);
       if (typeof nameInput !== 'string') {
         throw new AuthValidationError('Campaign name must be a string');
       }
@@ -119,9 +132,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         }>(
           `INSERT INTO campaigns (
              name, status, current_turn, orders_locked, orders_locked_at,
-             ruleset_version, rng_version, map_width, map_height, turn_duration_hours
-           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6, $7)
-           RETURNING id, name, status, current_turn, orders_locked, map_width, map_height`,
+             ruleset_version, rng_version, map_width, map_height, turn_duration_hours, map_seed
+           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id, name, status, current_turn, orders_locked, map_width, map_height, map_seed`,
           [
             name,
             clock(),
@@ -130,6 +143,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
             mapSize.mapWidth,
             mapSize.mapHeight,
             turnDurationHours,
+            mapSeed,
           ],
         );
         const campaign = created.rows[0];
@@ -169,6 +183,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           mapWidth: mapSize.mapWidth,
           mapHeight: mapSize.mapHeight,
           turnDurationHours,
+          mapSeed,
+          maxPlayers,
           firstTurnCommitment: seed.commitment,
         };
       } catch (error) {
