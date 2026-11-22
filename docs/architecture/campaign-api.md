@@ -9,9 +9,15 @@ campaign existence.
 
 The membership endpoints expose only user id, country id, active status,
 orders-confirmed flag and join time. They do not expose email addresses or
-authentication/session data. A member may leave an unlocked campaign if at least
-one other active member remains. Their current-turn draft, unconfirmed and
-confirmed orders are discarded in the same transaction.
+authentication/session data. A member may leave if at least one other active
+member remains and either the campaign is unlocked or it is still in initial
+turn-one setup: current_turn is 1, orders_locked is true, and no turn-1 job has
+been created. This exception remains valid after the first country snapshot is
+created, because the campaign intentionally stays locked until every active
+member has registered a country. The campaign row is locked FOR UPDATE before
+the membership mutation, so leaving serializes with country setup and turn
+closure. Their current-turn draft, unconfirmed and confirmed orders are
+discarded in the same transaction.
 
 ## Orders
 
@@ -55,8 +61,10 @@ generic public WorldState schema.
 
 ## Deliberately deferred
 
-This increment does not add invitations, participant roles, country registration,
-world generation or a web client. A member with no assigned country receives
-COUNTRY_NOT_ASSIGNED for order operations. These capabilities are part of the
-Stage 2 country setup / playable prototype work. Gameplay phase handlers also
-remain an explicit deployment adapter responsibility.
+This increment adds the authenticated membership and invitation
+workflows, but does not add participant roles, country registration, world
+generation or a web client. The country-setup increment supplies country
+registration and the initial snapshot; invitations are accepted only before
+that snapshot exists. A member with no assigned country receives
+COUNTRY_NOT_ASSIGNED for order operations. Gameplay phase handlers also remain
+an explicit deployment adapter responsibility.

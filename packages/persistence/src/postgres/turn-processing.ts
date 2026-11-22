@@ -141,6 +141,39 @@ export async function lockCampaignForOrderWrite(
   return row.current_turn;
 }
 
+/**
+ * Serializes invitation changes with initial country setup. Creation and
+ * acceptance require the pre-snapshot setup window; revocation may bypass it.
+ */
+export async function lockCampaignForInvitationWrite(
+  tx: PoolClient,
+  campaignId: string,
+  options: { readonly requireInitialSetup?: boolean } = {},
+): Promise<number> {
+  const result = await tx.query<{
+    status: string;
+    current_turn: number;
+    initial_setup: boolean;
+  }>(
+    'SELECT status, current_turn, ' +
+      '(current_turn = 1 ' +
+      'AND NOT EXISTS (SELECT 1 FROM world_snapshots AS snapshot ' +
+      'WHERE snapshot.campaign_id = campaigns.id AND snapshot.turn_number = 1) ' +
+      'AND NOT EXISTS (SELECT 1 FROM turn_jobs AS job ' +
+      'WHERE job.campaign_id = campaigns.id AND job.turn_number = 1)) AS initial_setup ' +
+      'FROM campaigns WHERE id = $1 FOR UPDATE',
+    [campaignId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new TurnProcessingError('Campaign not found');
+  if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
+  if ((options.requireInitialSetup ?? true) && !row.initial_setup) {
+    throw new OrdersAlreadyLockedError(
+      'Invitations are only allowed during initial campaign setup',
+    );
+  }
+  return row.current_turn;
+}
 /** First row lock for a membership mutation; serializes it with closeOrders(). */
 export async function lockCampaignForMembershipWrite(
   tx: PoolClient,
@@ -150,13 +183,22 @@ export async function lockCampaignForMembershipWrite(
     status: string;
     current_turn: number;
     orders_locked: boolean;
-  }>('SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
-    campaignId,
-  ]);
+    initial_setup_locked: boolean;
+  }>(
+    'SELECT status, current_turn, orders_locked, ' +
+      '(current_turn = 1 AND orders_locked ' +
+      'AND NOT EXISTS (SELECT 1 FROM turn_jobs AS job ' +
+      'WHERE job.campaign_id = campaigns.id AND job.turn_number = 1)) AS initial_setup_locked ' +
+      'FROM campaigns WHERE id = $1 FOR UPDATE',
+    [campaignId],
+  );
   const row = result.rows[0];
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
-  if (row.orders_locked) {
+  // During initial country registration, the first turn intentionally remains
+  // locked while some active members have no country. Allow a member to leave
+  // that setup window; the campaign row lock serializes this with country setup.
+  if (row.orders_locked && !row.initial_setup_locked) {
     throw new OrdersAlreadyLockedError('Membership changes are locked for the current turn');
   }
   return row.current_turn;

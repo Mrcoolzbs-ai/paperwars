@@ -14,6 +14,7 @@ on:
         stage-1.8-turn-processing,
         stage-1.8-worker-runtime,
         stage-1.9-campaign-api,
+        stage-2.1-invitations,
       ]
   pull_request:
     branches: [main]

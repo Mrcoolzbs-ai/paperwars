@@ -163,6 +163,45 @@ export const campaignMemberships = pgTable(
   ],
 );
 
+export const campaignInvitations = pgTable(
+  'campaign_invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    inviteeEmail: text('invitee_email').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    invitedByUserId: uuid('invited_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('pending'),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    acceptedByUserId: uuid('accepted_by_user_id').references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true, mode: 'date' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('campaign_invitations_token_hash_unique').on(table.tokenHash),
+    uniqueIndex('campaign_invitations_pending_email_unique')
+      .on(table.campaignId, sql.raw('lower(invitee_email)'))
+      .where(sql.raw("status = 'pending'")),
+    index('campaign_invitations_campaign_status_idx').on(table.campaignId, table.status),
+    check(
+      'campaign_invitations_email_normalized_check',
+      sql.raw('invitee_email = lower(btrim(invitee_email))'),
+    ),
+    check('campaign_invitations_token_hash_check', sql.raw("token_hash ~ '^[a-f0-9]{64}$'")),
+    check(
+      'campaign_invitations_status_check',
+      sql.raw("status in ('pending', 'accepted', 'revoked')"),
+    ),
+    check('campaign_invitations_expiry_check', sql.raw('expires_at > created_at')),
+  ],
+);
 export const worldSnapshots = pgTable(
   'world_snapshots',
   {
