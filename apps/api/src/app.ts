@@ -400,10 +400,7 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   app.get('/', async (_request, reply) => {
     const page = await readFile(new URL('../../web/public/index.html', import.meta.url));
-    return reply
-      .type('text/html; charset=utf-8')
-      .header('Cache-Control', 'no-cache')
-      .send(page);
+    return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(page);
   });
 
   app.get('/styles.css', async (_request, reply) => {
