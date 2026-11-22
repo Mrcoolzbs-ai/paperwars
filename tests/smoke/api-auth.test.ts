@@ -126,6 +126,34 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect.objectContaining({ id: campaign.json<{ campaign: { id: string } }>().campaign.id }),
       );
 
+      const campaignId = campaign.json<{ campaign: { id: string } }>().campaign.id;
+      await persistence!.pool.query(
+        `INSERT INTO world_snapshots (
+           campaign_id, turn_number, version, state_schema_version, ruleset_version, state
+         ) VALUES ($1, 1, 3, 1, 'baseline-v1', '{}'::jsonb)`,
+        [campaignId],
+      );
+      await persistence!.pool.query(
+        `UPDATE campaigns
+         SET orders_locked = FALSE,
+             orders_locked_at = NULL,
+             deadline_at = clock_timestamp() + INTERVAL '1 hour'
+         WHERE id = $1`,
+        [campaignId],
+      );
+
+      const confirmation = await app.inject({
+        method: 'POST',
+        url: `/campaigns/${campaignId}/orders/confirm`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(confirmation.statusCode).toBe(200);
+      expect(confirmation.json()).toMatchObject({
+        confirmed: true,
+        turnQueued: true,
+        turnJob: { turnNumber: 1, snapshotVersion: 3, finalizedOrderCount: 0, discardedOrderCount: 0 },
+      });
+
       const refreshed = await app.inject({
         method: 'POST',
         url: '/auth/refresh',
@@ -143,6 +171,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { name: 'private' },
       });
       expect(noAuth.statusCode).toBe(401);
+
+      const noConfirm = await app.inject({
+        method: 'POST',
+        url: `/campaigns/${randomUUID()}/orders/confirm`,
+      });
+      expect(noConfirm.statusCode).toBe(401);
 
       const badRefresh = await app.inject({
         method: 'POST',
