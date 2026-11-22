@@ -50,9 +50,9 @@ corepack pnpm --filter @paper-wars/persistence db:migrate
 corepack pnpm --filter @paper-wars/api dev
 ```
 
-Игровой интерфейс: `http://127.0.0.1:3000/`.
+Главная страница игрового клиента: `http://127.0.0.1:3000/`.
 
-Проверка API: `http://127.0.0.1:3000/health`.
+Health-check API: `http://127.0.0.1:3000/health`.
 
 ## Проверки
 
