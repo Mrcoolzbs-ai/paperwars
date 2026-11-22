@@ -11,6 +11,7 @@ import {
   type CampaignService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
+import { CampaignTurnProcessingError } from '@paper-wars/persistence';
 import {
   CampaignSetupNotReadyError,
   CountryAlreadyRegisteredError,
@@ -116,6 +117,15 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof AuthValidationError) {
     return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
+  }
+  if (error instanceof CampaignTurnProcessingError) {
+    const statusCode =
+      error.code === 'CAMPAIGN_NOT_FOUND'
+        ? 404
+        : error.code === 'NOT_ACTIVE_MEMBER'
+          ? 403
+          : 409;
+    return reply.code(statusCode).send({ error: error.code, message: error.message });
   }
   if (error instanceof EmailAlreadyRegisteredError) {
     return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED' });
@@ -281,6 +291,20 @@ function registerCampaignRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       await campaignService.leaveCampaign(user.id, getCampaignId(request));
       return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/orders/confirm', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turnJob = await campaignService.confirmOrders(user.id, getCampaignId(request));
+      return reply.send({
+        confirmed: true,
+        turnQueued: turnJob !== null,
+        ...(turnJob === null ? {} : { turnJob }),
+      });
     } catch (error) {
       return sendAuthError(error, reply);
     }
