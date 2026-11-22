@@ -9,7 +9,7 @@ import {
   type WorldSnapshot,
 } from '@paper-wars/domain';
 import { toId, toTurnNumber } from '@paper-wars/shared';
-import { createSimulationEngine } from '@paper-wars/simulation';
+import { createDeterministicRandomSource, createSimulationEngine } from '@paper-wars/simulation';
 
 interface TestState {
   readonly value: number;
@@ -148,6 +148,28 @@ describe('pure simulation engine', () => {
     expect(weightedCalls).toBe(0);
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.randomDraws)).toBe(true);
+  });
+
+  it('adapts the committed turn seed to deterministic uniform and weighted draws', () => {
+    const random = createDeterministicRandomSource({
+      campaignId: snapshot.campaignId,
+      turnNumber: snapshot.turnNumber,
+      rngVersion: 'rng-v1',
+      turnSeed: Buffer.alloc(32, 7),
+    });
+
+    const first = random.uniform('economy', 'tax-country-1', 1, 100);
+    const repeated = random.uniform('economy', 'tax-country-1', 1, 100);
+    const weighted = random.weighted('discovery', 'cell-1', [
+      { id: 'ruins', weight: 1, value: 'ruins' },
+      { id: 'ordinary', weight: 98, value: 'ordinary' },
+      { id: 'gold', weight: 1, value: 'gold' },
+    ]);
+
+    expect(first).toBe(repeated);
+    expect(first).toBeGreaterThanOrEqual(1);
+    expect(first).toBeLessThanOrEqual(100);
+    expect(['ruins', 'ordinary', 'gold']).toContain(weighted);
   });
 
   it('is deterministic when given the same snapshot, finalized orders and random source', () => {
