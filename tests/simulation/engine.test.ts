@@ -278,7 +278,18 @@ describe('Simulation Engine phase runner', () => {
       value: 2,
     });
 
-    const inconsistentRandom = { ...random, weighted: () => 'common' };
+    const inconsistentRandom = {
+      ...random,
+      weighted: <T>(
+        _domain: string,
+        _drawId: string,
+        outcomes: readonly { readonly weight: number; readonly value: T }[],
+      ) => {
+        const first = outcomes[0];
+        if (first === undefined) throw new Error('A weighted test outcome is required');
+        return first.value;
+      },
+    };
     expect(() =>
       resolver({ snapshot, orders: [], ruleset: manifest, random: inconsistentRandom }),
     ).toThrow(/does not match its deterministic uniform draw/);
