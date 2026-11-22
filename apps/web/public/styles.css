@@ -7,8 +7,8 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.hidden{display:
 @media(max-width:650px){.topbar{height:65px}.server-state{display:none}.page-wrap{width:calc(100% - 30px);padding:35px 0}.auth-layout{grid-template-columns:1fr;margin:5px auto 25px;gap:25px}.hero-copy h1{font-size:58px;margin:18px 0 12px}.hero-lead{font-size:13px}.hero-stats{margin-top:24px;gap:17px}.hero-stats span{font-size:9px}.auth-card{padding:28px 22px}.welcome-row,.workspace-header{align-items:flex-start;flex-direction:column}.welcome-row h1{font-size:45px}.turn-chip{align-self:flex-start}.dashboard-grid{gap:14px}.campaign-panel,.create-campaign-panel,.map-panel,.info-panel,.note-panel,.system-create-panel,.system-list-panel,.country-form-panel,.admin-panel{padding:21px}.workspace-header h1{font-size:39px}.workspace-nav{gap:18px}.workspace-tab{font-size:10px}.section-intro{align-items:flex-start}.section-intro h2{font-size:25px}.rule-seal{flex-basis:64px;height:64px;font-size:21px}.map-preview{height:250px}.world-grid{inset:35px 25px}.map-legend .muted{margin-left:0}.side-stack{grid-template-columns:1fr}.principle-row{grid-template-columns:1fr 105px 30px}.site-footer{height:auto;min-height:60px;flex-wrap:wrap;padding:15px;justify-content:center}.field-row{gap:8px}}
 
 /* Paper Wars map and setup UI refresh */
-.map-preview{position:relative;overflow:hidden;background:#07528c;border:1px solid #111;min-height:260px}
-canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%;background:#07528c;border:0;image-rendering:pixelated}
+.map-preview{position:relative;overflow:hidden;background:#0876b9;border:1px solid #111;min-height:260px}
+canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%;background:#0876b9;border:0;image-rendering:pixelated}
 .map-water-label,.map-compass{display:none!important}
 .map-open-button{position:absolute;right:14px;bottom:14px;z-index:4;background:#fff;color:#111;border:1px solid #111;padding:9px 14px;font-weight:700;box-shadow:3px 3px 0 #111}
 .map-modal{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;gap:10px;padding:14px;background:#081725;color:#f6f4ef}
@@ -18,7 +18,7 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .map-modal-toolbar strong{letter-spacing:.14em;font-size:12px}
 .map-modal-toolbar span{font-size:13px;color:#c4d0d9}
 .map-modal-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.map-canvas{display:block;flex:1;min-height:0;width:100%;height:100%;background:#07528c;border:1px solid #020d16;touch-action:none;cursor:grab}
+.map-canvas{display:block;flex:1;min-height:0;width:100%;height:100%;background:#0876b9;border:1px solid #020d16;touch-action:none;cursor:grab}
 .map-canvas:active{cursor:grabbing}
 .map-modal-footer{display:flex;justify-content:space-between;gap:12px;padding:7px 12px;color:#becbd4;font-size:12px;background:#122638;border:1px solid #354b5d}
 .principle-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:start}
