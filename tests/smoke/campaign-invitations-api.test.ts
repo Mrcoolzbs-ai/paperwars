@@ -124,7 +124,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('accepts a matching invitation and allows the member to leave during first-turn setup', async () => {
+    it('accepts an invitation and permits pre-game departure', async () => {
       const unauthenticated = await app.inject({
         method: 'POST',
         url: '/campaigns/' + campaignId + '/invitations',
