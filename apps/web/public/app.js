@@ -14,6 +14,90 @@
     selectedBuilding: 'factory',
     authMode: 'login',
     toastTimer: null,
+    mapView: null,
+    mapSelectedCenter: null,
+    mapTransform: null,
+    mapLayout: null,
+    mapDrag: null,
+  };
+
+  const principleCatalog = {
+    religion: {
+      positive: [
+        ['Милосердие','Помощь больным, бедным и попавшим в беду.','Снижает недовольство населения на 5%'],
+        ['Общинная взаимопомощь','Верующие обязаны поддерживать соседей и общину.','Увеличивает продовольственное снабжение на 5%'],
+        ['Священное гостеприимство','Путники и переселенцы получают защиту.','Повышает приток населения на 5%'],
+        ['Благотворительность','Храмы собирают средства для общественных нужд.','Снижает расходы на содержание зданий на 1 монету за ход'],
+        ['Единство общин','Общие обряды укрепляют чувство принадлежности.','Повышает стабильность государства на 5 пунктов'],
+        ['Защита слабых','Запрещено притеснять детей, стариков и беззащитных.','Снижает риск беспорядков на 10%'],
+        ['Священное образование','Знания и грамотность считаются добродетелью.','Ускоряет научное развитие на 5%'],
+        ['Уважение к жизни','Жизнь человека имеет особую ценность.','Снижает потери населения от кризисов на 5%'],
+        ['Труд как служение','Честный труд считается общественным долгом.','Повышает производство товаров на 5%'],
+        ['Мир между общинами','Споры следует решать переговорами.','Снижает напряжённость с соседями на 5%']
+      ],
+      neutral: [
+        ['Аскетизм','Последователи избегают роскоши и излишеств.','Не даёт числового бонуса или штрафа'],
+        ['Священные тексты','Учение опирается на письменные каноны.','Не даёт числового бонуса или штрафа'],
+        ['Праздничный календарь','Год разделён на религиозные праздники.','Не даёт числового бонуса или штрафа'],
+        ['Паломничество','Верующие посещают памятные места.','Не даёт числового бонуса или штрафа'],
+        ['Местные святыни','Почитаются места, связанные с историей общины.','Не даёт числового бонуса или штрафа'],
+        ['Молитвенные собрания','Община регулярно собирается для молитвы.','Не даёт числового бонуса или штрафа'],
+        ['Хранители традиций','Обряды передаются между поколениями.','Не даёт числового бонуса или штрафа'],
+        ['Многообразие обрядов','Допускаются разные местные формы богослужения.','Не даёт числового бонуса или штрафа'],
+        ['Погребальные обычаи','Покойных провожают установленным ритуалом.','Не даёт числового бонуса или штрафа'],
+        ['Сезонные церемонии','Обряды связаны со сменой времён года.','Не даёт числового бонуса или штрафа']
+      ],
+      negative: [
+        ['Религиозная десятина','Каждая семья отдаёт часть дохода храмам.','Повышает расходы населения на 5%'],
+        ['Запрет ереси','Отклонение от официального учения карается.','Повышает риск протестов на 5%'],
+        ['Закрытые духовные сословия','Высокие религиозные должности доступны узкому кругу.','Снижает социальную мобильность на 10%'],
+        ['Изоляция неверных','Не рекомендуется общаться с иными верованиями.','Ухудшает отношения с соседями другой веры на 5%'],
+        ['Догматизм','Толкование священных текстов не подлежит пересмотру.','Снижает научное развитие на 5%'],
+        ['Принудительное обращение','Власть поддерживает обращение силой.','Повышает риск восстаний на 10%'],
+        ['Культ мученичества','Жертвенность и страдание прославляются.','Увеличивает потери населения в конфликтах на 5%'],
+        ['Запрет роскоши','Частное потребление и украшения ограничиваются.','Снижает производство товаров на 5%'],
+        ['Священная война','Война может объявляться религиозным долгом.','Повышает мобилизацию на 5%, ухудшает дипломатию на 5%'],
+        ['Суровые религиозные наказания','Нарушение норм карается взысканиями.','Снижает стабильность на 5 пунктов']
+      ]
+    },
+    ideology: {
+      positive: [
+        ['Равенство перед законом','Закон применяется одинаково ко всем гражданам.','Снижает внутреннее недовольство на 5%'],
+        ['Общественные инвестиции','Государство вкладывает ресурсы в инфраструктуру.','Повышает эффективность инфраструктуры на 5%'],
+        ['Свобода исследований','Учёные могут проверять устоявшиеся взгляды.','Ускоряет исследования на 10%'],
+        ['Профессиональная служба','Должности занимают по компетенции.','Повышает эффективность управления на 5%'],
+        ['Социальная защита','Государство поддерживает уязвимые группы.','Снижает потери населения в кризисах на 5%'],
+        ['Гражданское участие','Жители участвуют в местных решениях.','Повышает стабильность на 5 пунктов'],
+        ['Открытая торговля','Обмен с другими государствами поощряется.','Повышает доход от торговли на 5%'],
+        ['Экологическая ответственность','Ресурсы используются с расчётом на будущее.','Снижает истощение ресурсов на 5%'],
+        ['Образование для всех','Базовое обучение доступно каждому жителю.','Ускоряет исследования на 5%'],
+        ['Мирное сосуществование','Различия взглядов не являются поводом для преследования.','Снижает дипломатическое напряжение на 5%']
+      ],
+      neutral: [
+        ['Конституционная традиция','Основной закон фиксирует устройство государства.','Не даёт числового бонуса или штрафа'],
+        ['Местное самоуправление','Регионы сохраняют собственные советы.','Не даёт числового бонуса или штрафа'],
+        ['Смешанная экономика','Частные и общественные предприятия сосуществуют.','Не даёт числового бонуса или штрафа'],
+        ['Светский характер власти','Органы государства отделены от религии.','Не даёт числового бонуса или штрафа'],
+        ['Наследие предков','Исторические обычаи сохраняются в обществе.','Не даёт числового бонуса или штрафа'],
+        ['Гражданский кодекс','Повседневные отношения регулируются единым кодексом.','Не даёт числового бонуса или штрафа'],
+        ['Коллегиальное руководство','Решения обсуждаются советом должностных лиц.','Не даёт числового бонуса или штрафа'],
+        ['Национальная символика','Символы подчёркивают общую историю.','Не даёт числового бонуса или штрафа'],
+        ['Обязательная перепись','Население и имущество регулярно учитываются.','Не даёт числового бонуса или штрафа'],
+        ['Региональные языки','Местные языки получают культурное признание.','Не даёт числового бонуса или штрафа']
+      ],
+      negative: [
+        ['Цензура прессы','Критика власти и официальной линии ограничивается.','Уменьшает распространение недовольства, но снижает стабильность на 5 пунктов'],
+        ['Монополия правящей партии','Политическая конкуренция запрещена.','Повышает управляемость на 5%, риск протестов на 5%'],
+        ['Принудительный труд','Государство назначает обязательные работы.','Снижает расходы строительства на 5%, счастье на 10%'],
+        ['Классовые привилегии','Права зависят от социального положения.','Снижает мобильность населения на 10%'],
+        ['Политические репрессии','Оппоненты власти преследуются государством.','Повышает недовольство на 10%'],
+        ['Милитаризация общества','Военная подготовка становится обязательной нормой.','Повышает мобилизационный резерв на 10%, производство ниже на 5%'],
+        ['Экономический протекционизм','Импорт ограничивается ради внутренних производителей.','Внутреннее производство +5%, торговый доход −10%'],
+        ['Культ лидера','Личность правителя ставится выше институтов.','Лояльность +5%, стабильность при смене власти −10%'],
+        ['Принудительная ассимиляция','Меньшинства обязаны отказаться от традиций.','Повышает риск мятежей на 10%'],
+        ['Экспансионизм','Расширение территории считается постоянной целью.','Стоимость захвата −5%, отношения с соседями −10%']
+      ]
+    }
   };
 
   const buildingMeta = {
@@ -141,36 +225,233 @@
     state.placements = {};
     $('#workspace-title').textContent = campaign.name;
     $('#workspace-meta').textContent = `ID ${campaign.id} · ${campaign.mapWidth} × ${campaign.mapHeight} · ${campaign.rulesetVersion || 'baseline-v1'}`;
-    $('#map-size-label').textContent = `${campaign.mapWidth} × ${campaign.mapHeight}`;
+    $('#map-size-label').textContent = campaign.mapWidth + ' × ' + campaign.mapHeight;
     $('#map-size-detail').textContent = `${campaign.mapWidth} × ${campaign.mapHeight}`;
     $('#country-status').textContent = campaign.countryId ? 'Основано' : 'Не основано';
+    state.mapView = null;
+    await loadCampaignMap();
     buildWorldPreview();
     showScreen('workspace');
     activateTab('overview');
     await loadSystems();
   }
 
+  function mapIsLand(x, y) {
+    const width = state.mapView?.width || 80;
+    const height = state.mapView?.height || 60;
+    const px = (x + 0.5) / width;
+    const py = (y + 0.5) / height;
+    const regions = [[0.18,0.30,0.16,0.23],[0.39,0.39,0.21,0.28],[0.70,0.28,0.18,0.24],[0.80,0.69,0.15,0.18],[0.39,0.79,0.22,0.16]];
+    return regions.some(([cx,cy,rx,ry]) => Math.pow((px-cx)/rx,2)+Math.pow((py-cy)/ry,2)<=1);
+  }
+
+  async function loadCampaignMap() {
+    if (!state.campaign) return;
+    const data = await request('/campaigns/' + state.campaign.id + '/map');
+    state.mapView = data.map;
+    buildWorldPreview();
+    if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
+  }
+
+  function countryColor(id) {
+    const colors = ['#e7d6a8','#c7d9b9','#d7c1db','#b9d8df','#e0c6b5','#c9c9e6','#d7d7b4'];
+    let hash = 0;
+    for (let i = 0; i < id.length; i += 1) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  function drawMapCanvas(canvas, miniature) {
+    if (!canvas || !state.mapView) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = '#0d4776';
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    const width = state.mapView.width;
+    const height = state.mapView.height;
+    let cellSize, left, top;
+    if (miniature) {
+      cellSize = Math.max(1, Math.min(12, (rect.width - 12) / width, (rect.height - 12) / height));
+      left = (rect.width - cellSize * width) / 2;
+      top = (rect.height - cellSize * height) / 2;
+    } else {
+      if (!state.mapTransform) {
+        const fit = Math.min((rect.width - 36) / width, (rect.height - 36) / height);
+        state.mapTransform = { zoom: Math.max(1, fit / 8), x: 18, y: 18 };
+      }
+      cellSize = Math.max(2, Math.min(36, 8 * state.mapTransform.zoom));
+      left = state.mapTransform.x;
+      top = state.mapTransform.y;
+      if (left + cellSize * width < 20) left = 20 - cellSize * width;
+      if (top + cellSize * height < 20) top = 20 - cellSize * height;
+      state.mapTransform.x = left;
+      state.mapTransform.y = top;
+    }
+    state.mapLayout = { left, top, cellSize };
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const px = left + x * cellSize;
+        const py = top + y * cellSize;
+        ctx.fillStyle = mapIsLand(x, y) ? '#ffffff' : ((x + y) % 2 ? '#0876b9' : '#064b83');
+        ctx.fillRect(px, py, cellSize, cellSize);
+        ctx.strokeStyle = '#111111';
+        ctx.lineWidth = miniature ? 0.35 : 0.8;
+        ctx.strokeRect(px, py, cellSize, cellSize);
+      }
+    }
+    for (const country of (state.mapView.countries || [])) {
+      ctx.fillStyle = countryColor(country.id);
+      for (const cell of country.cells) {
+        const px = left + cell.x * cellSize;
+        const py = top + cell.y * cellSize;
+        ctx.fillRect(px, py, cellSize, cellSize);
+        ctx.strokeStyle = '#111111';
+        ctx.lineWidth = miniature ? 0.45 : 1.4;
+        ctx.strokeRect(px, py, cellSize, cellSize);
+      }
+      if (!miniature && country.cells.length) {
+        const center = country.cells.reduce((acc, cell) => ({ x: acc.x + cell.x, y: acc.y + cell.y }), { x: 0, y: 0 });
+        ctx.fillStyle = '#111111';
+        ctx.font = 'bold ' + Math.max(10, Math.min(15, cellSize)) + 'px sans-serif';
+        ctx.fillText(country.name, left + center.x / country.cells.length * cellSize, top + center.y / country.cells.length * cellSize);
+      }
+    }
+    for (const reservation of (state.mapView.reservations || [])) {
+      ctx.save();
+      ctx.setLineDash([5, 3]);
+      ctx.strokeStyle = reservation.isMine ? '#13833c' : '#b07a16';
+      ctx.lineWidth = miniature ? 1 : 2.4;
+      ctx.strokeRect(left + (reservation.centerX - 2) * cellSize + 1, top + (reservation.centerY - 2) * cellSize + 1, cellSize * 5 - 2, cellSize * 5 - 2);
+      ctx.restore();
+    }
+    if (!miniature && state.mapSelectedCenter) {
+      const x = left + (state.mapSelectedCenter.x - 2) * cellSize;
+      const y = top + (state.mapSelectedCenter.y - 2) * cellSize;
+      ctx.fillStyle = '#f3d45b66';
+      ctx.fillRect(x, y, cellSize * 5, cellSize * 5);
+      ctx.strokeStyle = '#cf941e';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x + 1, y + 1, cellSize * 5 - 2, cellSize * 5 - 2);
+    }
+  }
+
   function buildWorldPreview() {
-    const grid = $('#world-grid');
-    const terrain = [
-      '............',
-      '..fff.......',
-      '.fffff..w...',
-      '..ff...ww...',
-      '...h..ww....',
-      '.....w......',
-      '............',
-    ];
-    grid.innerHTML = '';
-    terrain.forEach((row, y) => [...row].forEach((tile, x) => {
-      const cell = document.createElement('div');
-      cell.className = 'world-tile';
-      if (tile === 'f') cell.classList.add('forest');
-      if (tile === 'w') cell.classList.add('water');
-      if (tile === 'h') cell.classList.add('hill');
-      if (x === 5 && y === 3) cell.classList.add('capital');
-      grid.append(cell);
-    }));
+    drawMapCanvas($('#world-grid'), true);
+  }
+
+  function openMap() {
+    if (!state.campaign) return;
+    loadCampaignMap().catch((error) => showToast(error.message, true));
+    state.mapSelectedCenter = null;
+    state.mapTransform = null;
+    $('#confirm-spawn').disabled = true;
+    $('#map-selection-label').textContent = state.campaign.countryId
+      ? 'Государство уже основано. Перетаскивай карту и смотри территории игроков.'
+      : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
+    $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId));
+    $('#map-modal').classList.remove('hidden');
+    requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
+  }
+
+  function mapCellAt(clientX, clientY) {
+    if (!state.mapLayout) return null;
+    const rect = $('#map-canvas').getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left - state.mapLayout.left) / state.mapLayout.cellSize);
+    const y = Math.floor((clientY - rect.top - state.mapLayout.top) / state.mapLayout.cellSize);
+    if (x < 0 || y < 0 || x >= state.mapView.width || y >= state.mapView.height) return null;
+    return { x, y };
+  }
+
+  function chooseSpawnCenter(x, y) {
+    if (x < 2 || y < 2 || x + 2 >= state.mapView.width || y + 2 >= state.mapView.height) {
+      showToast('Оставь отступ не менее двух клеток от края карты.', true);
+      return;
+    }
+    for (let yy = y - 2; yy <= y + 2; yy += 1) for (let xx = x - 2; xx <= x + 2; xx += 1) {
+      if (!mapIsLand(xx, yy)) { showToast('Стартовая территория 5×5 должна целиком находиться на суше.', true); return; }
+    }
+    const occupied = new Set();
+    for (const country of (state.mapView.countries || [])) for (const cell of country.cells) occupied.add(cell.x + ',' + cell.y);
+    for (let yy = y - 2; yy <= y + 2; yy += 1) for (let xx = x - 2; xx <= x + 2; xx += 1) {
+      if (occupied.has(xx + ',' + yy)) { showToast('Эта территория пересекается с государством другого игрока.', true); return; }
+    }
+    for (const reservation of (state.mapView.reservations || [])) {
+      if (!reservation.isMine && Math.abs(reservation.centerX - x) <= 4 && Math.abs(reservation.centerY - y) <= 4) {
+        showToast('Эта область пересекается с точкой спавна другого игрока.', true);
+        return;
+      }
+    }
+    state.mapSelectedCenter = { x, y };
+    $('#confirm-spawn').disabled = false;
+    $('#map-selection-label').textContent = 'Предпросмотр границ: центр ' + x + ', ' + y + ' · территория 5×5 · 25 клеток.';
+    drawMapCanvas($('#map-canvas'), false);
+  }
+
+  async function confirmSpawn() {
+    if (!state.mapSelectedCenter || !state.campaign) return;
+    const center = state.mapSelectedCenter;
+    try {
+      await request('/campaigns/' + state.campaign.id + '/spawn-reservation', {
+        method: 'PUT', body: JSON.stringify({ centerX: center.x, centerY: center.y }),
+      });
+      $('#spawn-x').value = String(center.x);
+      $('#spawn-y').value = String(center.y);
+      await loadCampaignMap();
+      $('#map-selection-label').textContent = 'Точка зарезервирована. Теперь выбери или создай религию / идеологию.';
+      showToast('Точка старта зарезервирована.');
+      $('#map-modal').classList.add('hidden');
+      activateTab('systems');
+      await refreshAvailableSystems();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }
+
+  function renderPrincipleCatalog() {
+    const catalog = principleCatalog[$('#system-type').value];
+    $('#principles-list').innerHTML = ['positive','neutral','negative'].map((polarity) => {
+      const title = polarity === 'positive' ? 'ПОЗИТИВНЫЕ' : polarity === 'neutral' ? 'НЕЙТРАЛЬНЫЕ' : 'НЕГАТИВНЫЕ';
+      const items = catalog[polarity].map((item) => {
+        const tip = escapeHtml(item[1] + '\nИгровой эффект: ' + item[2]);
+        return '<label class="principle-option" title="' + tip + '"><input class="principle-check" type="checkbox" data-polarity="' + polarity + '" data-name="' + escapeHtml(item[0]) + '" data-description="' + escapeHtml(item[1]) + '" data-effect="' + escapeHtml(item[2]) + '"><span><strong>' + escapeHtml(item[0]) + '</strong><small>' + escapeHtml(item[2]) + '</small></span></label>';
+      }).join('');
+      return '<section class="principle-column ' + polarity + '"><h3>' + title + '</h3>' + items + '</section>';
+    }).join('');
+    $$('.principle-check').forEach((input) => input.addEventListener('change', updatePrincipleBalance));
+    updatePrincipleBalance();
+  }
+
+  function updatePrincipleBalance() {
+    const checked = $$('.principle-check:checked');
+    const count = (polarity) => checked.filter((input) => input.dataset.polarity === polarity).length;
+    const positive = count('positive');
+    const neutral = count('neutral');
+    const negative = count('negative');
+    const total = checked.length;
+    const valid = total > 0 && total <= 10 && positive <= 2 + negative;
+    $$('.principle-check:not(:checked)').forEach((input) => { input.disabled = total >= 10; });
+    $('#principle-balance').textContent = 'Позитивные: ' + positive + ' · Нейтральные: ' + neutral + ' · Негативные: ' + negative + ' · Всего: ' + total + '/10' + (valid ? ' · Баланс соблюдён' : ' · Нужен баланс (каждый позитивный после второго покрывается негативным)');
+    $('#principle-balance').classList.toggle('invalid', !valid);
+    return valid;
+  }
+
+  async function readOptionalImage(selector) {
+    const file = $(selector)?.files?.[0];
+    if (!file) return null;
+    if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 512 * 1024) {
+      throw new Error('Изображение должно быть PNG, JPEG или WebP и не больше 512 КБ.');
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Не удалось прочитать файл изображения.'));
+      reader.readAsDataURL(file);
+    });
   }
 
   function activateTab(tab) {
