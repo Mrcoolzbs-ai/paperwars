@@ -85,6 +85,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       countrySetup: ReturnType<typeof createCountrySetupService>,
       userId: string,
       campaignId: string,
+      buildings: ReadonlyArray<{ x: number; y: number }> = RELIGION_BUILDINGS,
     ): Promise<{ x: number; y: number }> {
       const map = await countrySetup.getCampaignMap(userId, campaignId);
       const occupied = new Set(
@@ -100,7 +101,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
               if (occupied.has(xx + ',' + yy)) free = false;
             }
           }
-          if (!free || land < 7) continue;
+          const buildingsOnLand = buildings.every(
+            (building) =>
+              map.terrain[
+                (y - 2 + building.y) * map.width + x - 2 + building.x
+              ] === 'l',
+          );
+          if (!free || land < 7 || !buildingsOnLand) continue;
           if (
             map.reservations.some(
               (item) => Math.abs(item.centerX - x) <= 4 && Math.abs(item.centerY - y) <= 4,
@@ -271,7 +278,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       // The second participant may create an immediately available system
       // after reserving a separate starting location, while turn one remains locked.
-      const secondSpawn = await findAvailableSpawn(countrySetup, secondUser.user.id, campaign.id);
+      const secondSpawn = await findAvailableSpawn(countrySetup, secondUser.user.id, campaign.id, IDEOLOGY_BUILDINGS);
       const secondSystem = await createApprovedSocialSystem(
         countrySetup,
         secondUser.user.id,
