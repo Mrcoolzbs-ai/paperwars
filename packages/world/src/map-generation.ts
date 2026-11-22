@@ -198,6 +198,12 @@ export function generateWorldMap(seedInput: string, width: number, height: numbe
     }
   }
   sourceCandidates.sort((left, right) => elevation[right]! - elevation[left]!);
+  if (sourceCandidates.length === 0) {
+    const fallback = Array.from({ length: size }, (_, index) => index)
+      .filter((index) => land[index] === 1)
+      .sort((left, right) => elevation[right]! - elevation[left]!);
+    sourceCandidates.push(...fallback.slice(0, Math.min(size, 300)));
+  }
   const riverCount = Math.min(8, Math.max(2, Math.floor(size / 2_400)));
   const riverSources: number[] = [];
   for (const candidate of sourceCandidates) {
@@ -226,5 +232,6 @@ export function generateWorldMap(seedInput: string, width: number, height: numbe
     );
   }
 
+  landCellCount = terrain.filter((cell) => cell === 'l').length;
   return { width, height, seed, terrain: terrain.join(''), landCellCount };
 }
