@@ -122,7 +122,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
                 if (mapData.terrain[yy * mapData.width + xx] === 'l') land += 1;
               }
             }
-            if (land >= 7) {
+            const buildingsOnLand = RELIGION_BUILDINGS.every(
+              (building) =>
+                mapData.terrain[
+                  (y - 2 + building.y) * mapData.width + x - 2 + building.x
+                ] === 'l',
+            );
+            if (land >= 7 && buildingsOnLand) {
               spawn = { x, y };
               break;
             }
