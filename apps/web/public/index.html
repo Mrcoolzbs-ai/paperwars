@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111916">
+  <meta name="description" content="Paper Wars: Rebirth — стратегическая игровая кампания">
+  <title>Paper Wars: Rebirth</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Paper Wars — главная">
+      <span class="brand-mark">PW</span>
+      <span><strong>PAPER WARS</strong><small>REBIRTH · GRAND STRATEGY</small></span>
+    </a>
+    <div class="topbar-right">
+      <span class="server-state"><i></i> СЕРВЕР В СЕТИ</span>
+      <span id="user-label" class="user-label hidden"></span>
+      <button id="logout-button" class="button button-quiet hidden" type="button">Выйти</button>
+    </div>
+  </header>
+
+  <main class="page-wrap">
+    <section id="auth-screen" class="auth-layout">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-line"></span> МИР ЖДЁТ СВОЕГО ПРАВИТЕЛЯ</div>
+        <h1>История не<br><em>написана.</em></h1>
+        <p class="hero-lead">Создай государство. Определи его веру и принципы. Построй мир, который переживёт века.</p>
+        <div class="hero-stats">
+          <div><strong>01</strong><span>Создай кампанию</span></div>
+          <div><strong>02</strong><span>Определи культуру</span></div>
+          <div><strong>03</strong><span>Оснуй государство</span></div>
+        </div>
+      </div>
+      <div class="auth-card panel">
+        <div class="panel-kicker">ДОСТУП К КАМПАНИИ</div>
+        <h2 id="auth-title">Добро пожаловать</h2>
+        <p id="auth-caption" class="muted">Войди, чтобы продолжить свою историю.</p>
+        <div class="auth-tabs">
+          <button class="auth-tab active" type="button" data-auth-mode="login">Войти</button>
+          <button class="auth-tab" type="button" data-auth-mode="register">Создать аккаунт</button>
+        </div>
+        <form id="auth-form" class="form-stack">
+          <label class="field"><span>Электронная почта</span><input id="auth-email" type="email" autocomplete="email" placeholder="commander@example.com" required></label>
+          <label class="field"><span>Пароль</span><input id="auth-password" type="password" autocomplete="current-password" minlength="10" placeholder="Не менее 10 символов" required></label>
+          <button id="auth-submit" class="button button-primary button-wide" type="submit">Войти в игру <span>↗</span></button>
+        </form>
+        <p id="auth-message" class="form-message" role="status"></p>
+        <div class="secure-note"><span>⌑</span> Защищённая сессия · локальный сервер</div>
+      </div>
+    </section>
+
+    <section id="game-screen" class="hidden">
+      <div class="welcome-row">
+        <div>
+          <div class="eyebrow"><span class="eyebrow-line"></span> КОМАНДОВАНИЕ</div>
+          <h1>Твоя <em>летопись.</em></h1>
+          <p class="muted">Выбери кампанию или начни новую главу.</p>
+        </div>
+        <div class="turn-chip"><span class="turn-dot"></span><span>МИР В ОЖИДАНИИ</span><b>ХОД 01</b></div>
+      </div>
+
+      <div class="dashboard-grid">
+        <section class="panel campaign-panel">
+          <div class="panel-heading">
+            <div><div class="panel-kicker">ТВОИ МИРЫ</div><h2>Кампании</h2></div>
+            <span id="campaign-count" class="count-chip">0</span>
+          </div>
+          <div id="campaign-list" class="campaign-list">
+            <div class="empty-state"><span class="empty-icon">⌘</span><strong>Пока нет кампаний</strong><p>Создай первую, чтобы начать.</p></div>
+          </div>
+        </section>
+
+        <section class="panel create-campaign-panel">
+          <div class="panel-kicker">НОВОЕ НАЧАЛО</div>
+          <h2>Создать кампанию</h2>
+          <p class="muted">Задай имя мира и размер стратегической карты.</p>
+          <form id="campaign-form" class="form-stack">
+            <label class="field"><span>Название кампании</span><input id="campaign-name" maxlength="80" minlength="2" placeholder="Например, Эпоха раздробленности" required></label>
+            <div class="field-row">
+              <label class="field"><span>Ширина карты</span><input id="map-width" type="number" min="5" max="200" value="40" required></label>
+              <label class="field"><span>Высота карты</span><input id="map-height" type="number" min="5" max="200" value="30" required></label>
+            </div>
+            <button class="button button-primary button-wide" type="submit">Создать мир <span>＋</span></button>
+          </form>
+          <p id="campaign-message" class="form-message" role="status"></p>
+        </section>
+      </div>
+      <div class="footnote"><span>◆</span> Paper Wars: Rebirth <span>·</span> Первая версия игрового кабинета. Мир сохраняется на сервере.</div>
+    </section>
+
+    <section id="workspace-screen" class="hidden">
+      <div class="workspace-header">
+        <div>
+          <button id="back-to-campaigns" type="button" class="back-link">← Все кампании</button>
+          <div class="eyebrow"><span class="eyebrow-line"></span> АКТИВНАЯ КАМПАНИЯ</div>
+          <h1 id="workspace-title">Название мира</h1>
+          <p id="workspace-meta" class="muted"></p>
+        </div>
+        <div class="turn-chip"><span class="turn-dot"></span><span>ПОДГОТОВКА</span><b>ХОД 01</b></div>
+      </div>
+
+      <nav class="workspace-nav" aria-label="Разделы кампании">
+        <button class="workspace-tab active" data-tab="overview" type="button">Обзор мира</button>
+        <button class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
+        <button class="workspace-tab" data-tab="country" type="button">Основание страны</button>
+        <button class="workspace-tab" data-tab="admin" type="button">Модерация</button>
+      </nav>
+
+      <section id="tab-overview" class="tab-panel">
+        <div class="overview-grid">
+          <div class="panel map-panel">
+            <div class="panel-heading">
+              <div><div class="panel-kicker">АТЛАС КАМПАНИИ</div><h2>Карта мира</h2></div>
+              <span class="map-coordinates">GRID · <span id="map-size-label">40 × 30</span></span>
+            </div>
+            <div class="map-preview">
+              <div class="map-water-label">МОРЕ НЕИЗВЕДАННОСТИ</div>
+              <div id="world-grid" class="world-grid" aria-label="Предварительный вид карты"></div>
+              <div class="map-compass"><span>N</span><b>✥</b></div>
+            </div>
+            <div class="map-legend"><span><i class="legend-land"></i> Неосвоенные земли</span><span><i class="legend-water"></i> Вода / декор</span><span class="muted">Схема карты · не рельеф сервера</span></div>
+          </div>
+          <div class="side-stack">
+            <div class="panel info-panel">
+              <div class="panel-kicker">ПАРАМЕТРЫ МИРА</div>
+              <div class="info-line"><span>Статус</span><b>Подготовка</b></div>
+              <div class="info-line"><span>Текущий ход</span><b>01</b></div>
+              <div class="info-line"><span>Размер карты</span><b id="map-size-detail">40 × 30</b></div>
+              <div class="info-line"><span>Государство</span><b id="country-status">Не основано</b></div>
+              <div class="info-line"><span>Системы убеждений</span><b id="system-count">0</b></div>
+            </div>
+            <div class="panel note-panel"><span class="note-icon">✦</span><div><strong>Первый шаг</strong><p>Создай религию или идеологию и отправь её на согласование. После одобрения можно основать государство.</p><button type="button" class="text-link" data-go-tab="systems">К созданию системы →</button></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-systems" class="tab-panel hidden">
+        <div class="section-intro"><div><div class="panel-kicker">ИДЕЙНАЯ ОСНОВА</div><h2>Вера формирует цивилизацию.</h2><p class="muted">Создай религию или идеологию. До десяти принципов; первые два позитивных бесплатны, последующие требуют отрицательного баланса.</p></div><div class="rule-seal">7 <small>СИСТЕМ<br>КАЖДОГО ТИПА</small></div></div>
+        <div class="systems-layout">
+          <div class="panel system-create-panel">
+            <div class="panel-kicker">НОВАЯ СИСТЕМА</div>
+            <h2>Создать учение</h2>
+            <form id="system-form" class="form-stack">
+              <label class="field"><span>Тип системы</span><select id="system-type"><option value="religion">Религия</option><option value="ideology">Идеология</option></select></label>
+              <label class="field"><span>Название</span><input id="system-name" minlength="2" maxlength="60" placeholder="Например, Путь Рассвета" required></label>
+              <div class="principles-heading"><div><strong>Принципы и верования</strong><small>От 1 до 10 записей</small></div><button id="add-principle" class="button button-small button-outline" type="button">＋ Добавить</button></div>
+              <div id="principles-list" class="principles-list"></div>
+              <button class="button button-primary button-wide" type="submit">Отправить на проверку <span>↗</span></button>
+            </form>
+            <p id="system-message" class="form-message" role="status"></p>
+          </div>
+          <div class="panel system-list-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">ТВОИ РАЗРАБОТКИ</div><h2>Созданные системы</h2></div><button id="refresh-systems" type="button" class="icon-button" title="Обновить">↻</button></div>
+            <div id="systems-list" class="systems-list"><div class="empty-state compact">Системы ещё не созданы.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-country" class="tab-panel hidden">
+        <div class="section-intro"><div><div class="panel-kicker">ПЕРВОЕ ПОСЕЛЕНИЕ</div><h2>Заложи фундамент государства.</h2><p class="muted">Выбери центр территории, официальную систему и размести семь стартовых построек на участке 5×5.</p></div><div class="rule-seal">5×5 <small>СТАРТОВАЯ<br>ТЕРРИТОРИЯ</small></div></div>
+        <div class="country-layout">
+          <div class="panel country-form-panel">
+            <div class="panel-kicker">ПАСПОРТ ГОСУДАРСТВА</div>
+            <form id="country-form" class="form-stack">
+              <label class="field"><span>Название государства</span><input id="country-name" minlength="2" maxlength="80" placeholder="Например, Королевство Арден" required></label>
+              <div class="field-row">
+                <label class="field"><span>Центр X</span><input id="spawn-x" type="number" min="2" value="20" required></label>
+                <label class="field"><span>Центр Y</span><input id="spawn-y" type="number" min="2" value="15" required></label>
+              </div>
+              <label class="field"><span>Официальная система</span><select id="official-system-type"><option value="religion">Религия</option><option value="ideology">Идеология</option></select></label>
+              <label class="field"><span>Одобренное учение</span><select id="official-system"><option value="">Сначала выбери тип системы</option></select></label>
+              <div class="form-hint">В списке отображаются твои одобренные системы и системы, разрешённые правилами доступности.</div>
+              <div class="building-picker">
+                <div><strong>Размещение построек</strong><small>Выбери тип и нажми на клетку</small></div>
+                <label class="field"><select id="building-type">
+                  <option value="factory">🏭 Фабрика (2)</option><option value="field">🌾 Поле (2)</option><option value="gold_mine">⛏ Золотой рудник (1)</option><option value="capital">★ Столица (1)</option><option value="religious_building">✦ Храм (1)</option><option value="science">⚗ Научный центр (1)</option><option value="barracks">⚔ Казармы (1)</option><option value="tower">♜ Башня (1)</option>
+                </select></label>
+                <div id="building-counts" class="building-counts"></div>
+              </div>
+              <div class="territory-grid-wrap">
+                <div class="territory-coords"><span>ТЕРРИТОРИЯ 5 × 5</span><span>ЦЕНТР ★</span></div>
+                <div id="territory-grid" class="territory-grid" aria-label="Размещение построек на территории 5 на 5"></div>
+              </div>
+              <button class="button button-primary button-wide" type="submit">Основать государство <span>↗</span></button>
+            </form>
+            <p id="country-message" class="form-message" role="status"></p>
+          </div>
+          <div class="side-stack">
+            <div class="panel info-panel"><div class="panel-kicker">ПРАВИЛА СТАРТА</div><div class="info-line"><span>Фабрики</span><b>2</b></div><div class="info-line"><span>Поля</span><b>2</b></div><div class="info-line"><span>Золотой рудник</span><b>1</b></div><div class="info-line"><span>Столица</span><b>1</b></div><div class="info-line"><span>Особая постройка</span><b>1</b></div></div>
+            <div class="panel note-panel"><span class="note-icon">⚑</span><div><strong>Согласование обязательно</strong><p>Новая религия или идеология становится доступной для основания страны только после одобрения администратором.</p></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-admin" class="tab-panel hidden">
+        <div class="section-intro"><div><div class="panel-kicker">УПРАВЛЕНИЕ КАЧЕСТВОМ</div><h2>Совет хранителей.</h2><p class="muted">Проверяй заявки игроков и принимай решение об одобрении.</p></div><button id="refresh-pending" class="button button-outline" type="button">Обновить список ↻</button></div>
+        <div class="panel admin-panel"><div id="pending-list" class="systems-list"><div class="empty-state compact">Загрузка заявок…</div></div></div>
+      </section>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </main>
+  <footer class="site-footer"><span>© PAPER WARS: REBIRTH</span><span>BUILD A WORLD THAT REMEMBERS</span><a href="/health" target="_blank" rel="noreferrer">Состояние API ↗</a></footer>
+</body>
+</html>
