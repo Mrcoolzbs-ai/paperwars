@@ -130,49 +130,82 @@ function validateInteger(value: number, field: string): void {
 
 function validateImageDataUrl(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === '') return null;
-  if (typeof value !== 'string' || value.length > 700_000 ||
-      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) {
-    throw new CountrySetupValidationError(field + ' must be a PNG, JPEG or WebP image under 512 KiB');
+  if (
+    typeof value !== 'string' ||
+    value.length > 700_000 ||
+    !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)
+  ) {
+    throw new CountrySetupValidationError(
+      field + ' must be a PNG, JPEG or WebP image under 512 KiB',
+    );
   }
   return value;
 }
 
 const CULTURE_OPTIONS = new Set([
-  'militaristic','pacifist','xenophobic','xenophilic','hierarchical','egalitarian',
-  'spiritual','rationalist','collectivist','individualistic','expansionist','isolationist',
+  'militaristic',
+  'pacifist',
+  'xenophobic',
+  'xenophilic',
+  'hierarchical',
+  'egalitarian',
+  'spiritual',
+  'rationalist',
+  'collectivist',
+  'individualistic',
+  'expansionist',
+  'isolationist',
 ]);
 const GOVERNMENT_OPTIONS = new Set([
-  'technocracy','democracy','oligarchy','dictatorship','monarchy','ideocracy','theocracy','fascism',
+  'technocracy',
+  'democracy',
+  'oligarchy',
+  'dictatorship',
+  'monarchy',
+  'ideocracy',
+  'theocracy',
+  'fascism',
 ]);
 
 function validateCulture(value: unknown): string[] {
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || value.length > 5) throw new CountrySetupValidationError('Choose no more than five cultural traits');
+  if (!Array.isArray(value) || value.length > 5)
+    throw new CountrySetupValidationError('Choose no more than five cultural traits');
   const items = value.map((item) => {
-    if (typeof item !== 'string' || !CULTURE_OPTIONS.has(item)) throw new CountrySetupValidationError('A selected cultural trait is invalid');
+    if (typeof item !== 'string' || !CULTURE_OPTIONS.has(item))
+      throw new CountrySetupValidationError('A selected cultural trait is invalid');
     return item;
   });
-  if (new Set(items).size !== items.length) throw new CountrySetupValidationError('Cultural traits must be unique');
+  if (new Set(items).size !== items.length)
+    throw new CountrySetupValidationError('Cultural traits must be unique');
   return items;
 }
 
 function validateGovernment(value: unknown): string {
   const selected = value === undefined || value === null || value === '' ? 'monarchy' : value;
-  if (typeof selected !== 'string' || !GOVERNMENT_OPTIONS.has(selected)) throw new CountrySetupValidationError('A selected form of government is invalid');
+  if (typeof selected !== 'string' || !GOVERNMENT_OPTIONS.has(selected))
+    throw new CountrySetupValidationError('A selected form of government is invalid');
   return selected;
 }
 
 function isLandCell(x: number, y: number, width: number, height: number): boolean {
   const px = (x + 0.5) / width;
   const py = (y + 0.5) / height;
-  const regions = [[0.18,0.30,0.16,0.23],[0.39,0.39,0.21,0.28],[0.70,0.28,0.18,0.24],[0.80,0.69,0.15,0.18],[0.39,0.79,0.22,0.16]] as const;
-  return regions.some(([cx,cy,rx,ry]) => ((px-cx)/rx)**2 + ((py-cy)/ry)**2 <= 1);
+  const regions = [
+    [0.18, 0.3, 0.16, 0.23],
+    [0.39, 0.39, 0.21, 0.28],
+    [0.7, 0.28, 0.18, 0.24],
+    [0.8, 0.69, 0.15, 0.18],
+    [0.39, 0.79, 0.22, 0.16],
+  ] as const;
+  return regions.some(([cx, cy, rx, ry]) => ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1);
 }
 
 function validateSpawnLand(cx: number, cy: number, width: number, height: number): void {
-  for (let y = cy - 2; y <= cy + 2; y += 1) for (let x = cx - 2; x <= cx + 2; x += 1) {
-    if (!isLandCell(x, y, width, height)) throw new SpawnAreaUnavailableError();
-  }
+  for (let y = cy - 2; y <= cy + 2; y += 1)
+    for (let x = cx - 2; x <= cx + 2; x += 1) {
+      if (!isLandCell(x, y, width, height)) throw new SpawnAreaUnavailableError();
+    }
 }
 
 function validateCountryName(value: unknown): string {
@@ -265,8 +298,13 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
     }
     principleNames.add(key);
     const effect = value['effect'];
-    if (effect !== undefined && (typeof effect !== 'string' || effect.trim().length < 1 || effect.trim().length > 500)) {
-      throw new CountrySetupValidationError('Principle ' + (index + 1) + ' has an invalid game effect');
+    if (
+      effect !== undefined &&
+      (typeof effect !== 'string' || effect.trim().length < 1 || effect.trim().length > 500)
+    ) {
+      throw new CountrySetupValidationError(
+        'Principle ' + (index + 1) + ' has an invalid game effect',
+      );
     }
     if (polarity === 'positive') positiveCount += 1;
     if (polarity === 'negative') negativeCount += 1;
@@ -586,15 +624,21 @@ export function createCountrySetupService(options: {
         [campaignId, userId],
       );
       if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
-      const dims = await options.pool.query<{ map_width: number | null; map_height: number | null }>(
-        'SELECT map_width, map_height FROM campaigns WHERE id = $1',
-        [campaignId],
-      );
+      const dims = await options.pool.query<{
+        map_width: number | null;
+        map_height: number | null;
+      }>('SELECT map_width, map_height FROM campaigns WHERE id = $1', [campaignId]);
       const map = dims.rows[0];
-      if (!map || map.map_width === null || map.map_height === null) throw new CampaignSetupNotReadyError();
+      if (!map || map.map_width === null || map.map_height === null)
+        throw new CampaignSetupNotReadyError();
       const data = await options.pool.query<{
-        country_id: string; name: string; owner_user_id: string; flag_data_url: string | null;
-        x: number; y: number; building_type: StartBuildingType | null;
+        country_id: string;
+        name: string;
+        owner_user_id: string;
+        flag_data_url: string | null;
+        x: number;
+        y: number;
+        building_type: StartBuildingType | null;
       }>(
         `SELECT country.id AS country_id, country.name, country.owner_user_id,
                 country.flag_data_url, cell.x, cell.y, building.building_type
@@ -607,26 +651,47 @@ export function createCountrySetupService(options: {
          ORDER BY country.name, cell.y, cell.x`,
         [campaignId],
       );
-      const groups = new Map<string, {
-        id: string; name: string; ownerUserId: string; flagDataUrl: string | null;
-        cells: Array<{ x: number; y: number; buildingType: StartBuildingType | null }>;
-      }>();
+      const groups = new Map<
+        string,
+        {
+          id: string;
+          name: string;
+          ownerUserId: string;
+          flagDataUrl: string | null;
+          cells: Array<{ x: number; y: number; buildingType: StartBuildingType | null }>;
+        }
+      >();
       for (const row of data.rows) {
         let country = groups.get(row.country_id);
         if (!country) {
-          country = { id: row.country_id, name: row.name, ownerUserId: row.owner_user_id, flagDataUrl: row.flag_data_url, cells: [] };
+          country = {
+            id: row.country_id,
+            name: row.name,
+            ownerUserId: row.owner_user_id,
+            flagDataUrl: row.flag_data_url,
+            cells: [],
+          };
           groups.set(row.country_id, country);
         }
         country.cells.push({ x: row.x, y: row.y, buildingType: row.building_type });
       }
-      const reservations = await options.pool.query<{ user_id: string; center_x: number; center_y: number }>(
+      const reservations = await options.pool.query<{
+        user_id: string;
+        center_x: number;
+        center_y: number;
+      }>(
         'SELECT user_id, center_x, center_y FROM campaign_spawn_reservations WHERE campaign_id = $1 ORDER BY updated_at',
         [campaignId],
       );
       return {
-        width: map.map_width, height: map.map_height, countries: [...groups.values()],
+        width: map.map_width,
+        height: map.map_height,
+        countries: [...groups.values()],
         reservations: reservations.rows.map((row) => ({
-          userId: row.user_id, centerX: row.center_x, centerY: row.center_y, isMine: row.user_id === userId,
+          userId: row.user_id,
+          centerX: row.center_x,
+          centerY: row.center_y,
+          isMine: row.user_id === userId,
         })),
       };
     },
@@ -642,15 +707,24 @@ export function createCountrySetupService(options: {
           [campaignId],
         );
         const map = dims.rows[0];
-        if (!map || map.map_width === null || map.map_height === null) throw new CampaignSetupNotReadyError();
+        if (!map || map.map_width === null || map.map_height === null)
+          throw new CampaignSetupNotReadyError();
         const member = await client.query<MembershipRow>(
           'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
           [campaignId, userId],
         );
-        if (!member.rows[0] || member.rows[0].status !== 'active') throw new NotActiveCampaignMemberError();
+        if (!member.rows[0] || member.rows[0].status !== 'active')
+          throw new NotActiveCampaignMemberError();
         if (member.rows[0].country_id !== null) throw new CountryAlreadyRegisteredError();
-        if (centerX < 2 || centerY < 2 || centerX + 2 >= map.map_width || centerY + 2 >= map.map_height) {
-          throw new CountrySetupValidationError('The selected 5x5 starting area is outside the campaign map');
+        if (
+          centerX < 2 ||
+          centerY < 2 ||
+          centerX + 2 >= map.map_width ||
+          centerY + 2 >= map.map_height
+        ) {
+          throw new CountrySetupValidationError(
+            'The selected 5x5 starting area is outside the campaign map',
+          );
         }
         validateSpawnLand(centerX, centerY, map.map_width, map.map_height);
         const occupied = await client.query(
@@ -708,7 +782,9 @@ export function createCountrySetupService(options: {
         );
         const reservedCenter = spawnReservation.rows[0];
         if (!reservedCenter) {
-          throw new CountrySetupValidationError('Select and reserve a starting place on the map before creating a belief system');
+          throw new CountrySetupValidationError(
+            'Select and reserve a starting place on the map before creating a belief system',
+          );
         }
 
         const count = await client.query<{ count: number }>(
@@ -1051,8 +1127,14 @@ export function createCountrySetupService(options: {
           [campaignId, userId],
         );
         const reservedCenter = spawnReservation.rows[0];
-        if (!reservedCenter || reservedCenter.center_x !== input.spawnX || reservedCenter.center_y !== input.spawnY) {
-          throw new CountrySetupValidationError('Reserve the selected spawn point on the map before founding your country');
+        if (
+          !reservedCenter ||
+          reservedCenter.center_x !== input.spawnX ||
+          reservedCenter.center_y !== input.spawnY
+        ) {
+          throw new CountrySetupValidationError(
+            'Reserve the selected spawn point on the map before founding your country',
+          );
         }
 
         validateSpawnLand(input.spawnX, input.spawnY, campaign.map_width, campaign.map_height);
@@ -1060,11 +1142,24 @@ export function createCountrySetupService(options: {
           `SELECT 1 FROM campaign_spawn_reservations
            WHERE campaign_id = $1 AND user_id <> $2
              AND center_x BETWEEN $3 AND $4 AND center_y BETWEEN $5 AND $6 LIMIT 1`,
-          [campaignId, userId, input.spawnX - 4, input.spawnX + 4, input.spawnY - 4, input.spawnY + 4],
+          [
+            campaignId,
+            userId,
+            input.spawnX - 4,
+            input.spawnX + 4,
+            input.spawnY - 4,
+            input.spawnY + 4,
+          ],
         );
         if (reservedByOther.rows.length > 0) throw new SpawnAreaUnavailableError();
         const system = await resolveOfficialSystem(
-          client, campaignId, userId, input.spawnX, input.spawnY, officialSystemId, availabilityPolicy,
+          client,
+          campaignId,
+          userId,
+          input.spawnX,
+          input.spawnY,
+          officialSystemId,
+          availabilityPolicy,
         );
         validateBuildingPlacements(input.buildings, system.type);
 

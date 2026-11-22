@@ -212,9 +212,7 @@ export const campaignSpawnReservations = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     centerX: integer('center_x').notNull(),
     centerY: integer('center_y').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
     primaryKey({ columns: [table.campaignId, table.userId] }),

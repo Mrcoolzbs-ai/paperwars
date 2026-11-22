@@ -82,7 +82,11 @@ export interface CampaignMapCountry {
   readonly name: string;
   readonly ownerUserId: string;
   readonly flagDataUrl: string | null;
-  readonly cells: ReadonlyArray<{ readonly x: number; readonly y: number; readonly buildingType: StartBuildingType | null }>;
+  readonly cells: ReadonlyArray<{
+    readonly x: number;
+    readonly y: number;
+    readonly buildingType: StartBuildingType | null;
+  }>;
 }
 
 export interface CampaignSpawnReservation {
@@ -146,7 +150,12 @@ export interface CreatedCountry {
 
 export interface CountrySetupService {
   getCampaignMap(userId: string, campaignId: string): Promise<CampaignMapView>;
-  reserveSpawn(userId: string, campaignId: string, centerX: number, centerY: number): Promise<CampaignSpawnReservation>;
+  reserveSpawn(
+    userId: string,
+    campaignId: string,
+    centerX: number,
+    centerY: number,
+  ): Promise<CampaignSpawnReservation>;
   createSocialSystem(
     userId: string,
     campaignId: string,

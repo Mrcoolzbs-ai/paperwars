@@ -167,7 +167,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         });
         expect(availableImmediately.statusCode).toBe(200);
         expect(
-          availableImmediately.json<{ systems: Array<{ id: string }> }>().systems.map((item) => item.id),
+          availableImmediately
+            .json<{ systems: Array<{ id: string }> }>()
+            .systems.map((item) => item.id),
         ).toContain(createdSystem.id);
 
         const pending = await app.inject({

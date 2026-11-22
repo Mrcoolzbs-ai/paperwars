@@ -72,7 +72,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
     async createCampaign(ownerUserId, nameInput, mapSize) {
       const turnDurationHours = mapSize?.turnDurationHours ?? 24;
       if (![1, 2, 4, 8, 12, 24, 48, 72, 168].includes(turnDurationHours)) {
-        throw new AuthValidationError('Turn duration must be one of 1, 2, 4, 8, 12, 24, 48, 72 or 168 hours');
+        throw new AuthValidationError(
+          'Turn duration must be one of 1, 2, 4, 8, 12, 24, 48, 72 or 168 hours',
+        );
       }
       if (
         !Number.isSafeInteger(mapSize?.mapWidth) ||
@@ -181,7 +183,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
     },
 
     async joinCampaign(userId, campaignId) {
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(campaignId)) {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          campaignId,
+        )
+      ) {
         throw new AuthValidationError('Campaign ID is invalid');
       }
       const client = await options.pool.connect();
@@ -199,12 +205,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           [campaignId],
         );
         const target = campaign.rows[0];
-        if (
-          target?.status !== 'active' ||
-          target.current_turn !== 1 ||
-          !target.orders_locked
-        ) {
-          throw new AuthValidationError('Campaign is no longer accepting players for the initial setup');
+        if (target?.status !== 'active' || target.current_turn !== 1 || !target.orders_locked) {
+          throw new AuthValidationError(
+            'Campaign is no longer accepting players for the initial setup',
+          );
         }
         await client.query(
           `INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed)
