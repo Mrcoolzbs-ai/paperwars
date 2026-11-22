@@ -71,7 +71,10 @@ echo.
 echo [1/5] Проверка Docker Desktop...
 docker info >nul 2>&1
 if errorlevel 1 (
-  echo [WAIT] Docker не отвечает. Запустите Docker Desktop и дождитесь его готовности.
+  echo [WAIT] Запускаю Docker Desktop, если он установлен...
+  if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+  if exist "%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe" start "" "%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe"
+  echo [WAIT] Ожидание готовности Docker (до 60 секунд)...
   set "DOCKER_TRIES=0"
   goto wait_docker
 )
