@@ -24,7 +24,6 @@ import {
   SpawnAreaUnavailableError,
   SystemAvailabilityNotConfiguredError,
   type CountrySetupService,
-  type CreateCountryInput,
   type CreateSocialSystemInput,
   type OfficialSystemType,
   type SocialSystemReviewInput,
