@@ -236,8 +236,12 @@
     await loadSystems();
     if (!campaign.countryId) {
       const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
-      if (reservation) activateTab('systems');
-      else openMap();
+      if (reservation) {
+        activateTab('systems');
+        await refreshAvailableSystems();
+      } else {
+        openMap();
+      }
     }
   }
 
@@ -827,6 +831,9 @@
         updatePrincipleBalance();
         setMessage('#system-message', 'Учение создано и сразу доступно для выбора.', true);
         await loadSystems();
+        $('#official-system-type').value = $('#system-type').value;
+        updateBuildingChoices();
+        await refreshAvailableSystems();
         showToast('Учение создано. Согласование не требуется.');
       } catch (error) {
         setMessage('#system-message', error.message);
