@@ -307,11 +307,15 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         map_width: number | null;
         map_height: number | null;
         turn_duration_hours: number;
+        map_seed: string;
+        player_count: number;
       }>(
         `SELECT c.id, c.name, c.status, c.current_turn, c.orders_locked,
                 m.status AS member_status, m.country_id,
                 seed.commitment AS first_turn_commitment, c.created_at,
-                c.map_width, c.map_height, c.turn_duration_hours
+                c.map_width, c.map_height, c.turn_duration_hours, c.map_seed,
+                (SELECT COUNT(*)::int FROM campaign_memberships AS active_members
+                 WHERE active_members.campaign_id = c.id AND active_members.status = 'active') AS player_count
          FROM campaign_memberships AS m
          JOIN campaigns AS c ON c.id = m.campaign_id
          LEFT JOIN random_seeds AS seed
@@ -333,6 +337,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         mapWidth: row.map_width,
         mapHeight: row.map_height,
         turnDurationHours: row.turn_duration_hours,
+        mapSeed: row.map_seed,
+        playerCount: row.player_count,
+        maxPlayers: row.map_width !== null && row.map_height !== null
+          ? Math.floor((row.map_width * row.map_height) / 100)
+          : 0,
       }));
     },
   };
