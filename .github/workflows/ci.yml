@@ -5,6 +5,7 @@ on:
     branches:
       [
         main,
+        stage-3-graphical-client,
         stage-2-country-setup,
         stage-1.1-monorepo,
         stage-1.2-postgres-foundation,
