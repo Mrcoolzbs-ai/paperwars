@@ -103,7 +103,9 @@ describe('pure simulation engine', () => {
     rngVersion: 'rng-v1',
   });
 
-  it('resolves finalized orders and attaches its own auditable uniform/weighted draw journal', () => {
+  it(
+    'resolves finalized orders and attaches its own auditable uniform/weighted draw journal',
+    () => {
     let weightedCalls = 0;
     const random: RandomSource = {
       uniform: createRandomSource().uniform,
@@ -149,8 +151,9 @@ describe('pure simulation engine', () => {
     });
     expect(weightedCalls).toBe(0);
     expect(Object.isFrozen(result)).toBe(true);
-    expect(Object.isFrozen(result.randomDraws)).toBe(true);
-  });
+      expect(Object.isFrozen(result.randomDraws)).toBe(true);
+    },
+  );
 
   it('adapts the committed turn seed to deterministic uniform and weighted draws', () => {
     const random = createDeterministicRandomSource({
