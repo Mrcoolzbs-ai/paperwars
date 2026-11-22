@@ -194,7 +194,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(librarySystems[0]).toMatchObject({ name: 'Harbor Light' });
         const librarySystemId = librarySystems[0]?.id;
 
-
         const overwritten = await app.inject({
           method: 'POST',
           url: `/campaigns/${campaign.id}/social-systems`,
