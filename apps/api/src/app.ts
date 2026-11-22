@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   AuthValidationError,
@@ -395,6 +396,35 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const engine = createSimulationEngine({
     rulesetVersion: options.rulesetVersion ?? 'baseline-v1',
     rngVersion: options.rngVersion ?? 'rng-v1',
+  });
+
+  app.get('/', async (_request, reply) => {
+    const page = await readFile(new URL('../../web/public/index.html', import.meta.url));
+    return reply
+      .type('text/html; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(page);
+  });
+
+  app.get('/styles.css', async (_request, reply) => {
+    const stylesheet = await readFile(new URL('../../web/public/styles.css', import.meta.url));
+    return reply
+      .type('text/css; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(stylesheet);
+  });
+
+  app.get('/app.js', async (_request, reply) => {
+    const script = await readFile(new URL('../../web/public/app.js', import.meta.url));
+    return reply
+      .type('text/javascript; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(script);
+  });
+
+  app.get('/favicon.svg', async (_request, reply) => {
+    const icon = await readFile(new URL('../../web/public/favicon.svg', import.meta.url));
+    return reply.type('image/svg+xml').header('Cache-Control', 'public, max-age=86400').send(icon);
   });
 
   app.get('/health', async () => ({
