@@ -716,23 +716,46 @@ export const playerSocialSystemLibrary = pgTable(
   'player_social_system_library',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    ownerUserId: uuid('owner_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    ownerUserId: uuid('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     systemType: text('system_type').notNull(),
     name: text('name').notNull(),
-    principles: jsonb('principles').$type<readonly {
-      readonly name: string; readonly description: string; readonly effect?: string;
-      readonly polarity: 'positive' | 'negative' | 'neutral';
-    }[]>().notNull().default([]),
+    principles: jsonb('principles')
+      .$type<
+        readonly {
+          readonly name: string;
+          readonly description: string;
+          readonly effect?: string;
+          readonly polarity: 'positive' | 'negative' | 'neutral';
+        }[]
+      >()
+      .notNull()
+      .default([]),
     emblemDataUrl: text('emblem_data_url'),
-    sourceCampaignId: uuid('source_campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+    sourceCampaignId: uuid('source_campaign_id').references(() => campaigns.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('player_social_system_library_owner_name_unique').on(table.ownerUserId, sql`lower(btrim(${table.name}))`),
+    uniqueIndex('player_social_system_library_owner_name_unique').on(
+      table.ownerUserId,
+      sql`lower(btrim(${table.name}))`,
+    ),
     index('player_social_system_library_owner_updated_idx').on(table.ownerUserId, table.updatedAt),
-    check('player_social_system_library_type_check', sql`${table.systemType} in ('religion', 'ideology')`),
-    check('player_social_system_library_name_length_check', sql`char_length(btrim(${table.name})) between 2 and 60`),
-    check('player_social_system_library_principles_array_check', sql`jsonb_typeof(${table.principles}) = 'array'`),
+    check(
+      'player_social_system_library_type_check',
+      sql`${table.systemType} in ('religion', 'ideology')`,
+    ),
+    check(
+      'player_social_system_library_name_length_check',
+      sql`char_length(btrim(${table.name})) between 2 and 60`,
+    ),
+    check(
+      'player_social_system_library_principles_array_check',
+      sql`jsonb_typeof(${table.principles}) = 'array'`,
+    ),
   ],
 );

@@ -322,7 +322,9 @@ function registerCountryRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const systems = await countrySetupService.listMySocialSystemLibrary(user.id);
       return reply.send({ systems });
-    } catch (error) { return sendAuthError(error, reply); }
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
   });
 
   app.get('/campaigns/:campaignId/countries/mine', async (request, reply) => {
@@ -330,7 +332,9 @@ function registerCountryRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const country = await countrySetupService.getMyCountry(user.id, getCampaignId(request));
       return reply.send({ country });
-    } catch (error) { return sendAuthError(error, reply); }
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
   });
 
   app.get('/campaigns/:campaignId/map', async (request, reply) => {

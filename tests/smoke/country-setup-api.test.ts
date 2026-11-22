@@ -187,9 +187,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(library.statusCode).toBe(200);
-        expect(library.json<{ systems: Array<{ id: string; name: string }> }>().systems).toContainEqual(
-          expect.objectContaining({ id: createdSystem.id, name: 'Harbor Light' }),
-        );
+        expect(
+          library.json<{ systems: Array<{ id: string; name: string }> }>().systems,
+        ).toContainEqual(expect.objectContaining({ id: createdSystem.id, name: 'Harbor Light' }));
 
         const overwritten = await app.inject({
           method: 'POST',
@@ -199,15 +199,31 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             type: 'religion',
             name: 'Harbor Light',
             principles: [
-              { name: 'Hospitality', description: 'The community welcomes travelers and protects guests.', polarity: 'positive' },
-              { name: 'Seasonal rites', description: 'The community observes neutral seasonal ceremonies.', polarity: 'neutral' },
-              { name: 'Shared stewardship', description: 'Members care for common places.', polarity: 'positive' },
+              {
+                name: 'Hospitality',
+                description: 'The community welcomes travelers and protects guests.',
+                polarity: 'positive',
+              },
+              {
+                name: 'Seasonal rites',
+                description: 'The community observes neutral seasonal ceremonies.',
+                polarity: 'neutral',
+              },
+              {
+                name: 'Shared stewardship',
+                description: 'Members care for common places.',
+                polarity: 'positive',
+              },
             ],
           },
         });
         expect(overwritten.statusCode).toBe(201);
-        expect(overwritten.json<{ system: { id: string; principles: unknown[] } }>().system.id).toBe(createdSystem.id);
-        expect(overwritten.json<{ system: { principles: unknown[] } }>().system.principles).toHaveLength(3);
+        expect(
+          overwritten.json<{ system: { id: string; principles: unknown[] } }>().system.id,
+        ).toBe(createdSystem.id);
+        expect(
+          overwritten.json<{ system: { principles: unknown[] } }>().system.principles,
+        ).toHaveLength(3);
 
         const mine = await app.inject({
           method: 'GET',
@@ -268,8 +284,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(countryProfile.statusCode).toBe(200);
-        expect(countryProfile.json<{ country: { name: string; residentCount: number; officialSystem: { name: string } } }>().country)
-          .toMatchObject({ name: 'Harbor Republic', residentCount: 18, officialSystem: { name: 'Harbor Light' } });
+        expect(
+          countryProfile.json<{
+            country: { name: string; residentCount: number; officialSystem: { name: string } };
+          }>().country,
+        ).toMatchObject({
+          name: 'Harbor Republic',
+          residentCount: 18,
+          officialSystem: { name: 'Harbor Light' },
+        });
 
         expect(
           createdCountry.json<{

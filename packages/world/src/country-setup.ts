@@ -376,10 +376,17 @@ function toSocialSystemView(row: SocialSystemRow): SocialSystemView {
   };
 }
 
-function toPlayerSocialSystemTemplateView(row: PlayerSocialSystemLibraryRow): PlayerSocialSystemTemplateView {
+function toPlayerSocialSystemTemplateView(
+  row: PlayerSocialSystemLibraryRow,
+): PlayerSocialSystemTemplateView {
   return {
-    id: row.id, type: row.system_type, name: row.name, principles: row.principles,
-    emblemDataUrl: row.emblem_data_url, sourceCampaignId: row.source_campaign_id, updatedAt: row.updated_at,
+    id: row.id,
+    type: row.system_type,
+    name: row.name,
+    principles: row.principles,
+    emblemDataUrl: row.emblem_data_url,
+    sourceCampaignId: row.source_campaign_id,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -816,21 +823,29 @@ export function createCountrySetupService(options: {
         await lockInitialSetupCampaign(client, campaignId);
         const memberResult = await client.query<MembershipRow>(
           `SELECT status, country_id FROM campaign_memberships
-           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`, [campaignId, userId],
+           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`,
+          [campaignId, userId],
         );
         const member = memberResult.rows[0];
-        if (member === undefined || member.status !== 'active') throw new NotActiveCampaignMemberError();
+        if (member === undefined || member.status !== 'active')
+          throw new NotActiveCampaignMemberError();
         if (member.country_id !== null) throw new CountryAlreadyRegisteredError();
 
         const reservationResult = await client.query<{ center_x: number; center_y: number }>(
           `SELECT center_x, center_y FROM campaign_spawn_reservations
-           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`, [campaignId, userId],
+           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`,
+          [campaignId, userId],
         );
         const reservation = reservationResult.rows[0];
-        if (!reservation) throw new CountrySetupValidationError('Reserve a starting place before creating a belief system');
+        if (!reservation)
+          throw new CountrySetupValidationError(
+            'Reserve a starting place before creating a belief system',
+          );
 
         const duplicateResult = await client.query<{
-          id: string; created_by_user_id: string | null; is_referenced: boolean;
+          id: string;
+          created_by_user_id: string | null;
+          is_referenced: boolean;
         }>(
           `SELECT system.id, system.created_by_user_id,
                   EXISTS (SELECT 1 FROM countries
@@ -838,10 +853,12 @@ export function createCountrySetupService(options: {
            FROM social_systems AS system
            WHERE system.campaign_id = $1 AND lower(btrim(system.name)) = lower($2)
              AND system.creation_kind = 'player_created' AND system.lifecycle_status = 'active'
-           LIMIT 1 FOR UPDATE`, [campaignId, validated.name],
+           LIMIT 1 FOR UPDATE`,
+          [campaignId, validated.name],
         );
         const duplicate = duplicateResult.rows[0];
-        if (duplicate && duplicate.created_by_user_id !== userId) throw new SocialSystemNameConflictError();
+        if (duplicate && duplicate.created_by_user_id !== userId)
+          throw new SocialSystemNameConflictError();
 
         const count = await client.query<{ count: number }>(
           `SELECT count(*)::integer AS count FROM social_systems
@@ -850,7 +867,8 @@ export function createCountrySetupService(options: {
              AND ($3::uuid IS NULL OR id <> $3)`,
           [campaignId, validated.type, duplicate?.id ?? null],
         );
-        if ((count.rows[0]?.count ?? 0) >= MAX_PLAYER_SYSTEMS_PER_TYPE) throw new SocialSystemLimitReachedError();
+        if ((count.rows[0]?.count ?? 0) >= MAX_PLAYER_SYSTEMS_PER_TYPE)
+          throw new SocialSystemLimitReachedError();
 
         await client.query(
           `INSERT INTO player_social_system_library (
@@ -860,7 +878,14 @@ export function createCountrySetupService(options: {
            DO UPDATE SET system_type = EXCLUDED.system_type, name = EXCLUDED.name,
              principles = EXCLUDED.principles, emblem_data_url = EXCLUDED.emblem_data_url,
              source_campaign_id = EXCLUDED.source_campaign_id, updated_at = clock_timestamp()`,
-          [userId, validated.type, validated.name, JSON.stringify(validated.principles), validated.emblemDataUrl, campaignId],
+          [
+            userId,
+            validated.type,
+            validated.name,
+            JSON.stringify(validated.principles),
+            validated.emblemDataUrl,
+            campaignId,
+          ],
         );
 
         let saved: SocialSystemRow | undefined;
@@ -873,15 +898,24 @@ export function createCountrySetupService(options: {
              WHERE campaign_id = $1 AND id = $2
              RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
                        principles, approval_status, review_reason, created_at, emblem_data_url`,
-            [campaignId, duplicate.id, validated.type, validated.name, reservation.center_x, reservation.center_y,
-             JSON.stringify(validated.principles), validated.emblemDataUrl],
+            [
+              campaignId,
+              duplicate.id,
+              validated.type,
+              validated.name,
+              reservation.center_x,
+              reservation.center_y,
+              JSON.stringify(validated.principles),
+              validated.emblemDataUrl,
+            ],
           );
           saved = updated.rows[0];
         } else {
-          if (duplicate) await client.query(
-            `UPDATE social_systems SET lifecycle_status = 'destroyed' WHERE campaign_id = $1 AND id = $2`,
-            [campaignId, duplicate.id],
-          );
+          if (duplicate)
+            await client.query(
+              `UPDATE social_systems SET lifecycle_status = 'destroyed' WHERE campaign_id = $1 AND id = $2`,
+              [campaignId, duplicate.id],
+            );
           const inserted = await client.query<SocialSystemRow>(
             `INSERT INTO social_systems (
                campaign_id, system_type, name, origin_x, origin_y, traits, created_by_user_id,
@@ -890,8 +924,16 @@ export function createCountrySetupService(options: {
                        'player_created', 'active')
              RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
                        principles, approval_status, review_reason, created_at, emblem_data_url`,
-            [campaignId, validated.type, validated.name, reservation.center_x, reservation.center_y,
-             userId, JSON.stringify(validated.principles), validated.emblemDataUrl],
+            [
+              campaignId,
+              validated.type,
+              validated.name,
+              reservation.center_x,
+              reservation.center_y,
+              userId,
+              JSON.stringify(validated.principles),
+              validated.emblemDataUrl,
+            ],
           );
           saved = inserted.rows[0];
         }
@@ -900,9 +942,14 @@ export function createCountrySetupService(options: {
         transactionOpen = false;
         return toSocialSystemView(saved);
       } catch (error) {
-        if (transactionOpen) { await client.query('ROLLBACK'); transactionOpen = false; }
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
         throw error;
-      } finally { client.release(); }
+      } finally {
+        client.release();
+      }
     },
 
     async listMySocialSystems(userId, campaignId) {
@@ -1109,7 +1156,8 @@ export function createCountrySetupService(options: {
     async getMyCountry(userId, campaignId) {
       const member = await options.pool.query(
         `SELECT 1 FROM campaign_memberships
-         WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`, [campaignId, userId],
+         WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+        [campaignId, userId],
       );
       if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
 
@@ -1146,14 +1194,27 @@ export function createCountrySetupService(options: {
         ),
       ]);
       return {
-        id: country.country_id, campaignId: country.campaign_id, name: country.country_name,
-        culture: country.culture, government: country.government, flagDataUrl: country.flag_data_url,
+        id: country.country_id,
+        campaignId: country.campaign_id,
+        name: country.country_name,
+        culture: country.culture,
+        government: country.government,
+        flagDataUrl: country.flag_data_url,
         officialSystem: {
-          id: country.system_id, type: country.system_type, name: country.system_name,
-          principles: country.system_principles, emblemDataUrl: country.system_emblem_data_url,
+          id: country.system_id,
+          type: country.system_type,
+          name: country.system_name,
+          principles: country.system_principles,
+          emblemDataUrl: country.system_emblem_data_url,
         },
-        territory: { centerX: country.center_x, centerY: country.center_y, width: 5 as const, height: 5 as const },
-        buildings: buildings.rows, residentCount: population.rows[0]?.resident_count ?? 0,
+        territory: {
+          centerX: country.center_x,
+          centerY: country.center_y,
+          width: 5 as const,
+          height: 5 as const,
+        },
+        buildings: buildings.rows,
+        residentCount: population.rows[0]?.resident_count ?? 0,
       } satisfies CountryProfileView;
     },
 
