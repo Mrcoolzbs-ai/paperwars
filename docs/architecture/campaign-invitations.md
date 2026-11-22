@@ -2,12 +2,14 @@
 
 ## Lifecycle
 
-An active campaign member may invite an email address while a campaign is in its
-initial setup state only: current_turn is 1, the turn-1 world snapshot does not
+An active campaign member may create an invitation only while the campaign is
+in its initial setup state: current_turn is 1, the turn-1 world snapshot does not
 exist, and no turn-1 job has been created. The campaign row is locked FOR UPDATE
-before membership or invitation rows are read or written. This is deliberately
-separate from ordinary membership writes: once the initial snapshot exists, the
-campaign must reject further invitations so no participant joins mid-turn.
+before membership or invitation rows are read or written. This predicate is
+based on the setup lifecycle, not on orders_locked: after the first snapshot is
+created, invitations must remain unavailable even when country setup opens turn
+one and sets orders_locked to false. This prevents a participant without a
+registered country from joining after the game has started.
 
 Creating an invitation normalizes the target email and creates a cryptographically
 random 32-byte base64url token. PostgreSQL stores only the SHA-256 hash, a
@@ -29,8 +31,11 @@ and marks the invitation accepted in one transaction. A token can only be used
 once. An existing membership is not silently reactivated.
 
 The invitation creator or another active member cannot accept for a different
-email. Only the creator can revoke their own pending invitation; revoked and
-accepted invitations cannot be reused.
+email. Acceptance is subject to the same initial-setup predicate as invitation
+creation, so a previously issued pending token cannot add a member after the
+turn-1 snapshot exists. Only the creator can revoke their own pending invitation.
+Revocation remains available to the active creator after initial setup, while
+the campaign itself is active; revoked and accepted invitations cannot be reused.
 
 ## HTTP endpoints
 
