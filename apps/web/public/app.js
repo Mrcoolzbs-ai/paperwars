@@ -194,6 +194,21 @@
     renderCampaigns();
   }
 
+  async function leaveCampaign(campaignId) {
+    const campaign = state.campaigns.find((item) => item.id === campaignId);
+    if (!campaign || !window.confirm('Покинуть кампанию «' + campaign.name + '»? Она исчезнет из твоего списка.')) return;
+    try {
+      await request('/campaigns/' + campaignId + '/leave', { method: 'DELETE' });
+      const wasOpen = state.campaign?.id === campaignId;
+      if (wasOpen) state.campaign = null;
+      await loadCampaigns();
+      if (wasOpen) showScreen('game');
+      showToast('Ты покинул кампанию. Она удалена из твоего списка.');
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }
+
   function renderCampaigns() {
     $('#campaign-count').textContent = String(state.campaigns.length);
     const host = $('#campaign-list');
@@ -202,13 +217,23 @@
       return;
     }
     host.innerHTML = state.campaigns.map((campaign) => `
-      <button class="campaign-card" type="button" data-campaign-id="${escapeHtml(campaign.id)}">
-        <span><strong>${escapeHtml(campaign.name)}</strong><small>ХОД ${String(campaign.currentTurn).padStart(2, '0')} · ${campaign.mapWidth || '—'} × ${campaign.mapHeight || '—'} · ${campaign.countryId ? 'ГОСУДАРСТВО ОСНОВАНО' : 'ОЖИДАЕТ ОСНОВАНИЯ'}</small></span>
-        <span class="campaign-arrow">↗</span>
-      </button>`).join('');
-    $$('.campaign-card', host).forEach((button) => button.addEventListener('click', () => {
+      <article class="campaign-card">
+        <button class="campaign-open" type="button" data-campaign-id="${escapeHtml(campaign.id)}">
+          <span><strong>${escapeHtml(campaign.name)}</strong><small>ХОД ${String(campaign.currentTurn).padStart(2, '0')} · ${campaign.mapWidth || '—'} × ${campaign.mapHeight || '—'} · ${campaign.countryId ? 'ГОСУДАРСТВО ОСНОВАНО' : 'ОЖИДАЕТ ОСНОВАНИЯ'}</small></span>
+          <span class="campaign-arrow">↗</span>
+        </button>
+        <div class="campaign-card-meta">
+          <span>Игроки <strong>${campaign.playerCount}/${campaign.maxPlayers}</strong></span>
+          <span>SEED <code>${escapeHtml(campaign.mapSeed)}</code></span>
+          <button class="campaign-leave" data-campaign-id="${escapeHtml(campaign.id)}" type="button">Покинуть</button>
+        </div>
+      </article>`).join('');
+    $('.campaign-open', host).forEach((button) => button.addEventListener('click', () => {
       const campaign = state.campaigns.find((item) => item.id === button.dataset.campaignId);
       if (campaign) openCampaign(campaign);
+    }));
+    $('.campaign-leave', host).forEach((button) => button.addEventListener('click', () => {
+      leaveCampaign(button.dataset.campaignId);
     }));
   }
 
@@ -224,9 +249,12 @@
     state.availableSystems = [];
     state.placements = {};
     $('#workspace-title').textContent = campaign.name;
-    $('#workspace-meta').textContent = `ID ${campaign.id} · ${campaign.mapWidth} × ${campaign.mapHeight} · ${campaign.rulesetVersion || 'baseline-v1'}`;
+    $('#workspace-meta').textContent = `ID ${campaign.id} · ${campaign.mapWidth} × ${campaign.mapHeight} · ${campaign.rulesetVersion || 'baseline-v1'} · SEED ${campaign.mapSeed}`;
     $('#map-size-label').textContent = campaign.mapWidth + ' × ' + campaign.mapHeight;
     $('#map-size-detail').textContent = `${campaign.mapWidth} × ${campaign.mapHeight}`;
+    $('#map-seed-detail').textContent = campaign.mapSeed;
+    $('#player-count-chip').textContent = 'Игроки ' + campaign.playerCount + '/' + campaign.maxPlayers;
+    $('#player-count-detail').textContent = campaign.playerCount + '/' + campaign.maxPlayers;
     $('#country-status').textContent = campaign.countryId ? 'Основано' : 'Не основано';
     state.mapView = null;
     await loadCampaignMap();
@@ -245,13 +273,13 @@
     }
   }
 
+  function terrainCodeAt(x, y) {
+    if (!state.mapView || x < 0 || y < 0 || x >= state.mapView.width || y >= state.mapView.height) return 'w';
+    return state.mapView.terrain[y * state.mapView.width + x] || 'w';
+  }
+
   function mapIsLand(x, y) {
-    const width = state.mapView?.width || 80;
-    const height = state.mapView?.height || 60;
-    const px = (x + 0.5) / width;
-    const py = (y + 0.5) / height;
-    const regions = [[0.18,0.30,0.16,0.23],[0.39,0.39,0.21,0.28],[0.70,0.28,0.18,0.24],[0.80,0.69,0.15,0.18],[0.39,0.79,0.22,0.16]];
-    return regions.some(([cx,cy,rx,ry]) => Math.pow((px-cx)/rx,2)+Math.pow((py-cy)/ry,2)<=1);
+    return terrainCodeAt(x, y) === 'l';
   }
 
   async function loadCampaignMap() {
@@ -279,7 +307,7 @@
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
-    ctx.fillStyle = '#0d4776';
+    ctx.fillStyle = '#0876b9';
     ctx.fillRect(0, 0, rect.width, rect.height);
     const width = state.mapView.width;
     const height = state.mapView.height;
@@ -306,7 +334,7 @@
       for (let x = 0; x < width; x += 1) {
         const px = left + x * cellSize;
         const py = top + y * cellSize;
-        ctx.fillStyle = mapIsLand(x, y) ? '#ffffff' : ((x + y) % 2 ? '#0876b9' : '#064b83');
+        ctx.fillStyle = mapIsLand(x, y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.35 : 0.8;
@@ -320,7 +348,7 @@
         maxX = Math.max(maxX, cell.x); maxY = Math.max(maxY, cell.y);
         const px = left + cell.x * cellSize;
         const py = top + cell.y * cellSize;
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
@@ -400,8 +428,15 @@
       showToast('Оставь отступ не менее двух клеток от края карты.', true);
       return;
     }
-    for (let yy = y - 2; yy <= y + 2; yy += 1) for (let xx = x - 2; xx <= x + 2; xx += 1) {
-      if (!mapIsLand(xx, yy)) { showToast('Стартовая территория 5×5 должна целиком находиться на суше.', true); return; }
+    let landCells = 0;
+    for (let yy = y - 2; yy <= y + 2; yy += 1) {
+      for (let xx = x - 2; xx <= x + 2; xx += 1) {
+        if (mapIsLand(xx, yy)) landCells += 1;
+      }
+    }
+    if (landCells < 7) {
+      showToast('В территории 5×5 должно быть не менее семи клеток суши.', true);
+      return;
     }
     const occupied = new Set();
     for (const country of (state.mapView.countries || [])) for (const cell of country.cells) occupied.add(cell.x + ',' + cell.y);
@@ -427,8 +462,6 @@
       await request('/campaigns/' + state.campaign.id + '/spawn-reservation', {
         method: 'PUT', body: JSON.stringify({ centerX: center.x, centerY: center.y }),
       });
-      $('#spawn-x').value = String(center.x);
-      $('#spawn-y').value = String(center.y);
       await loadCampaignMap();
       $('#map-selection-label').textContent = 'Точка зарезервирована. Теперь выбери или создай религию / идеологию.';
       showToast('Точка старта зарезервирована.');
@@ -551,9 +584,10 @@
   async function refreshAvailableSystems() {
     if (!state.campaign) return;
     const type = $('#official-system-type').value;
-    const x = Number($('#spawn-x').value);
-    const y = Number($('#spawn-y').value);
-    if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+    const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+    if (!reservation) return;
+    const x = reservation.centerX;
+    const y = reservation.centerY;
     const query = new URLSearchParams({ systemType: type, spawnX: String(x), spawnY: String(y) });
     const select = $('#official-system');
     select.innerHTML = '<option value="">Загрузка…</option>';
@@ -683,6 +717,12 @@
 
   async function submitCountry(event) {
     event.preventDefault();
+    const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+    if (!reservation) {
+      setMessage('#country-message', 'Сначала зарезервируй место на карте.');
+      openMap();
+      return;
+    }
     const counts = Object.values(state.placements).reduce((acc, type) => {
       acc[type] = (acc[type] || 0) + 1;
       return acc;
@@ -696,35 +736,42 @@
       setMessage('#country-message', 'Размести семь построек: 2 фабрики, 2 поля, рудник, столицу и одну особую постройку.');
       return;
     }
-    const payload = {
-      name: $('#country-name').value.trim(),
-      culture: $('#culture-list input:checked').map((input) => input.value),
-      government: $('#government').value,
-      flagDataUrl: await readOptionalImage('#country-flag'),
-      spawnX: Number($('#spawn-x').value),
-      spawnY: Number($('#spawn-y').value),
-      officialSystemId: $('#official-system').value,
-      buildings: Object.entries(state.placements).map(([key, type]) => {
-        const [x, y] = key.split(',').map(Number);
-        return { type, x, y };
-      }),
-    };
-    if (!payload.officialSystemId) {
+    if (!$('#official-system').value) {
       setMessage('#country-message', 'Сначала выбери доступную религию или идеологию.');
       return;
     }
+    const submitButton = $('#country-form button[type="submit"]');
+    submitButton.disabled = true;
     try {
-      const data = await request(`/campaigns/${state.campaign.id}/countries`, {
+      const payload = {
+        name: $('#country-name').value.trim(),
+        culture: $$('#culture-list input:checked').map((input) => input.value),
+        government: $('#government').value,
+        flagDataUrl: await readOptionalImage('#country-flag'),
+        spawnX: reservation.centerX,
+        spawnY: reservation.centerY,
+        officialSystemId: $('#official-system').value,
+        buildings: Object.entries(state.placements).map(([key, type]) => {
+          const [x, y] = key.split(',').map(Number);
+          return { type, x, y };
+        }),
+      };
+      const data = await request('/campaigns/' + state.campaign.id + '/countries', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      showToast(`Государство «${data.country.name}» основано!`);
-      setMessage('#country-message', `Государство создано. Территория ${data.country.territory.width}×${data.country.territory.height}, жителей: ${data.country.residentCount}.`, true);
+      showToast('Государство «' + data.country.name + '» основано!');
+      setMessage('#country-message', 'Государство создано. Территория 5×5, жителей: ' + data.country.residentCount + '.', true);
       state.campaign.countryId = data.country.id;
       $('#country-status').textContent = 'Основано';
+      await loadCampaignMap();
       await loadCampaigns();
+      buildWorldPreview();
     } catch (error) {
-      setMessage('#country-message', error.message);
+      setMessage('#country-message', error.message || 'Не удалось создать государство.');
+      showToast(error.message || 'Не удалось создать государство.', true);
+    } finally {
+      submitButton.disabled = false;
     }
   }
 
@@ -783,13 +830,16 @@
             mapWidth: Number($('#map-width').value),
             mapHeight: Number($('#map-height').value),
             turnDurationHours: Number($('#turn-duration-hours').value),
+            mapSeed: $('#map-seed').value.trim(),
           }),
         });
         $('#campaign-form').reset();
         $('#map-width').value = '80';
         $('#map-height').value = '60';
+        $('#map-seed').value = '';
+        $('#turn-duration-hours').value = '24';
         await loadCampaigns();
-        showToast(`Кампания «${data.campaign.name}» создана.`);
+        showToast('Кампания «' + data.campaign.name + '» создана · seed ' + data.campaign.mapSeed + ' · слотов ' + data.campaign.maxPlayers + '.');
       } catch (error) {
         setMessage('#campaign-message', error.message);
       }
@@ -883,6 +933,16 @@
         event.target.checked = false;
         showToast('Можно выбрать не более пяти культурных характеристик.', true);
       }
+      const opposites = [
+        ['militaristic','pacifist'], ['xenophobic','xenophilic'],
+        ['hierarchical','egalitarian'], ['spiritual','rationalist'],
+        ['collectivist','individualistic'], ['expansionist','isolationist'],
+      ];
+      const chosen = new Set($('#culture-list input:checked').map((input) => input.value));
+      $('#culture-list input').forEach((input) => {
+        const opposite = opposites.find((pair) => pair.includes(input.value))?.find((value) => value !== input.value);
+        input.disabled = (!input.checked && chosen.size >= 5) || Boolean(opposite && chosen.has(opposite));
+      });
     });
     $('#official-system-type').addEventListener('change', () => {
       updateBuildingChoices();
