@@ -917,7 +917,7 @@ export function createCountrySetupService(options: {
                 principles, approval_status, review_reason, created_at, emblem_data_url
          FROM social_systems
          WHERE campaign_id = $1 AND created_by_user_id = $2
-           AND creation_kind = 'player_created'
+           AND creation_kind = 'player_created' AND lifecycle_status = 'active'
          ORDER BY created_at, id`,
         [campaignId, userId],
       );
