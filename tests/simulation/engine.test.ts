@@ -10,6 +10,7 @@ import {
   createNoOpTurnPhaseHandler,
   createTurnResolver,
   SimulationPhaseConfigurationError,
+  SimulationRandomDrawConflictError,
   TURN_PHASE_ORDER,
   type TurnPhase,
   type TurnPhaseContext,
@@ -295,6 +296,34 @@ describe('Simulation Engine phase runner', () => {
     expect(() =>
       resolver({ snapshot, orders: [], ruleset: manifest, random: inconsistentRandom }),
     ).toThrow(/does not match its deterministic uniform draw/);
+  });
+
+  it('rejects reuse of a weighted draw ID with a changed outcome table', () => {
+    const handlers = createHandlers();
+    const resolver = createTurnResolver({
+      engine,
+      phaseHandlers: {
+        ...handlers,
+        MOVE: (context) => {
+          context.random.weighted('test', 'shared:weighted', [
+            { id: 'common', weight: 2, value: 'common' },
+            { id: 'rare', weight: 1, value: 'rare' },
+          ]);
+          return { state: context.state };
+        },
+        BATTLE: (context) => {
+          context.random.weighted('test', 'shared:weighted', [
+            { id: 'common', weight: 1, value: 'common' },
+            { id: 'rare', weight: 2, value: 'rare' },
+          ]);
+          return { state: context.state };
+        },
+      },
+    });
+
+    expect(() => resolver({ snapshot, orders: [], ruleset: manifest, random })).toThrow(
+      SimulationRandomDrawConflictError,
+    );
   });
 
   it('deduplicates identical draws and rejects reuse with changed bounds', () => {
