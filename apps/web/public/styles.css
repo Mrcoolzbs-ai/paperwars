@@ -80,3 +80,7 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
   .map-modal-actions{display:grid;grid-template-columns:1fr}
   .map-modal-actions .button{width:100%}
 }
+
+/* Water cells may belong to the 5x5 border, but cannot hold buildings. */
+.territory-cell.water-cell{background:#0876b9!important;color:#d5e8f4;border-color:#111;cursor:not-allowed;opacity:.9}
+.territory-cell.water-cell:disabled{filter:saturate(.82)}
