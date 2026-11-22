@@ -91,6 +91,7 @@
               <option value="8">8 часов</option><option value="12">12 часов</option><option value="24" selected>24 часа</option>
               <option value="48">48 часов</option><option value="72">72 часа</option><option value="168">7 дней</option>
             </select></label>
+            <label class="field"><span>Seed мира (необязательно)</span><input id="map-seed" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}" placeholder="Пусто — случайный seed"><small class="muted">Одинаковый seed создаёт одинаковые материки и реки.</small></label>
             <button class="button button-primary button-wide" type="submit">Создать мир <span>＋</span></button>
           </form>
           <p id="campaign-message" class="form-message" role="status"></p>
@@ -115,7 +116,11 @@
           <h1 id="workspace-title">Название мира</h1>
           <p id="workspace-meta" class="muted"></p>
         </div>
-        <div class="turn-chip"><span class="turn-dot"></span><span>ПОДГОТОВКА</span><b>ХОД 01</b></div>
+        <div class="workspace-header-actions">
+          <div class="turn-chip"><span class="turn-dot"></span><span>ПОДГОТОВКА</span><b>ХОД 01</b></div>
+          <div id="player-count-chip" class="player-count-chip">Игроки 1/1</div>
+          <button id="leave-campaign" class="button button-quiet" type="button">Выйти из кампании</button>
+        </div>
       </div>
 
       <nav class="workspace-nav" aria-label="Разделы кампании">
@@ -157,11 +162,13 @@
               <div class="panel-kicker">ПАРАМЕТРЫ МИРА</div>
               <div class="info-line"><span>Статус</span><b>Подготовка</b></div>
               <div class="info-line"><span>Текущий ход</span><b>01</b></div>
-              <div class="info-line"><span>Размер карты</span><b id="map-size-detail">40 × 30</b></div>
+              <div class="info-line"><span>Размер карты</span><b id="map-size-detail">80 × 60</b></div>
+              <div class="info-line"><span>Seed мира</span><b id="map-seed-detail">—</b></div>
+              <div class="info-line"><span>Игроки</span><b id="player-count-detail">1/1</b></div>
               <div class="info-line"><span>Государство</span><b id="country-status">Не основано</b></div>
               <div class="info-line"><span>Системы убеждений</span><b id="system-count">0</b></div>
             </div>
-            <div class="panel note-panel"><span class="note-icon">✦</span><div><strong>Первый шаг</strong><p>Создай религию или идеологию и отправь её на согласование. После одобрения можно основать государство.</p><button type="button" class="text-link" data-go-tab="systems">К созданию системы →</button></div></div>
+            <div class="panel note-panel"><span class="note-icon">✦</span><div><strong>Первый шаг</strong><p>Выбери место на карте, затем создай или выбери веру и основывай государство.</p><button type="button" class="text-link" data-go-tab="systems">К созданию системы →</button></div></div>
           </div>
         </div>
       </section>
@@ -197,10 +204,7 @@
             <div class="panel-kicker">ПАСПОРТ ГОСУДАРСТВА</div>
             <form id="country-form" class="form-stack">
               <label class="field"><span>Название государства</span><input id="country-name" minlength="2" maxlength="80" placeholder="Например, Королевство Арден" required></label>
-              <div class="field-row">
-                <label class="field"><span>Центр X</span><input id="spawn-x" type="number" min="2" value="20" required></label>
-                <label class="field"><span>Центр Y</span><input id="spawn-y" type="number" min="2" value="15" required></label>
-              </div>
+              <div class="form-hint">Место основания выбирается на карте. Территория 5×5 может частично выходить в воду, если в ней не менее семи клеток суши.</div>
               <label class="field"><span>Официальная система</span><select id="official-system-type"><option value="religion">Религия</option><option value="ideology">Идеология</option></select></label>
               <label class="field"><span>Религия или идеология</span><select id="official-system"><option value="">Сначала выбери учение</option></select></label>
               <div class="form-hint">Можно выбрать собственное учение или одно из трёх ближайших учений этого типа.</div>
