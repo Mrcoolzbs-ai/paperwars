@@ -10,7 +10,8 @@
 - **Stage 1.3** — deterministic RNG, commit-reveal seed service, AES-256-GCM, versioned keys и random draw audit log: merged (PR #5).
 - **Stage 1.4** — scrypt auth, HS256 access JWT, rotating refresh sessions/replay detection и атомарное campaign + first seed create: merged (PR #6).
 - **Stage 1.5** — branded domain entities, snapshot/order/event/turn contracts, ruleset compatibility и schema-version migrations: merged (PR #7).
-- Последний чистый CI: build, typecheck, lint, format-check и 55/55 тестов прошли на PostgreSQL 18.7.
+- PR #8 (Draft): предварительная регистрация и согласование религий/идеологий до создания государства, стартовая территория 5×5 и семь зданий; CI прошёл: build, typecheck, lint, format-check и 60/60 тестов на PostgreSQL 18.7.
+- PR #8 также добавляет первый графический Web-клиент: карта, выбор территории, редактор стартовой раскладки и подключение к API.
 
 Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
@@ -77,7 +78,7 @@ Health-check API: `GET http://127.0.0.1:3000/health`.
 ## Текущие ограничения
 
 - Participant invitations/roles, audit trail и rate limiting для публичных auth endpoints пока не реализованы.
-- Полный country setup (official system, стартовые здания/население, world snapshot) ещё не реализован; это Stage 2.
+- Базовый начальный country setup вынесен в Draft PR #8: выбор одобренной системы, территория 5×5, стартовые здания/население и первичный snapshot. Полноценное состояние мира и дальнейшие игровые механики ещё впереди.
 - Domain contracts и pure TurnResolver interface уже есть, но Simulation Engine пока не исполняет игровые ходы.
 - PostgreSQL Worker, закрытие приказов, lease/fencing и atomic turn finalization ещё не реализованы.
 - Графический Web-клиент предварительной версии добавлен; публичный API seed reveal, полный Simulation Engine и игровой цикл ещё не реализованы.
