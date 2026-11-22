@@ -17,6 +17,8 @@ if (scriptStart === -1 || scriptEnd === -1 || hasExtraScript) {
 new Script(html.slice(scriptStart + 8, scriptEnd), {
   filename: 'apps/web/src/index.html',
 });
+const browserScript = await readFile(resolve(root, 'public/app.js'), 'utf8');
+new Script(browserScript, { filename: 'apps/web/public/app.js' });
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
