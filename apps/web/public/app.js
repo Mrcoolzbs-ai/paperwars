@@ -11,7 +11,6 @@
     availableSystems: [],
     pending: [],
     countryProfile: null,
-    countryActionSelection: null,
     loadedSystemEmblemDataUrl: null,
     buildingIconCache: {},
     principles: [],
@@ -117,27 +116,113 @@
   };
   function buildingIconHtml(type,extraClass='') {
     const meta=buildingMeta[type];if(!meta)return '';
-    if(type==='gold_mine')return '<span class="building-gold-symbol '+extraClass+'" title="Золотая шахта">З</span>';
-    if(meta.asset)return '<img class="building-icon-img '+extraClass+'" src="'+meta.asset+'" alt="'+escapeHtml(meta.label)+'" draggable="false">';
+    if(type==='gold_mine')return '<span class="building-gold-symbol '+extraClass+'" data-building-type="gold_mine" title="Золотая шахта">З</span>';
+    if(meta.asset)return '<img class="building-icon-img '+extraClass+'" data-building-type="'+type+'" src="'+meta.asset+'" alt="'+escapeHtml(meta.label)+'" draggable="false">';
     return '<svg class="building-icon-svg '+extraClass+'" viewBox="0 0 100 100" aria-label="'+escapeHtml(meta.label)+'" fill="none" stroke="#111" stroke-width="6" stroke-linecap="round"><circle cx="50" cy="50" r="17"/><path d="M50 4v24M50 72v24M4 50h24M72 50h24M17 17l17 17M66 66l17 17M83 17 66 34M34 66 17 83"/></svg>';
   }
-  function drawBuildingMapIcon(ctx,canvas,miniature,type,x,y,size) {
-    if(miniature||size<2.4||!buildingMeta[type])return;
-    const meta=buildingMeta[type],inset=Math.max(.3,size*.07),inner=Math.max(1,size-inset*2);
-    if(type==='gold_mine'){
-      ctx.save();ctx.fillStyle='#efc900';ctx.strokeStyle='#705c00';ctx.lineWidth=Math.max(.2,size*.035);
-      ctx.font='900 '+Math.max(3,inner*.92)+'px Arial,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.strokeText('З',x+size/2,y+size/2);ctx.fillText('З',x+size/2,y+size/2);ctx.restore();return;
+  function drawBuildingMapIcon(ctx, type, x, y, size) {
+    const meta = buildingMeta[type];
+    if (!meta || size < 1.5) return;
+
+    const marker = type === 'gold_mine' ? 'З' : meta.code.slice(0, 1);
+    const insetRatio = type === 'factory' || type === 'tower' ? 0.19 : 0.11;
+    const inset = Math.max(0.35, size * insetRatio);
+    const inner = Math.max(1, size - inset * 2);
+    const left = x + (size - inner) / 2;
+    const top = y + (size - inner) / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 0.25, y + 0.25, Math.max(0.5, size - 0.5), Math.max(0.5, size - 0.5));
+    ctx.clip();
+
+    if (size < 5.5) {
+      const markerSize = Math.max(1.3, size * 0.72);
+      ctx.fillStyle = type === 'gold_mine' ? '#efc900' : '#16251c';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = Math.max(0.35, size * 0.08);
+      ctx.fillRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
+      ctx.strokeRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
+      ctx.fillStyle = type === 'gold_mine' ? '#342800' : '#fff';
+      ctx.font = '900 ' + Math.max(3, size * 0.7) + 'px Arial,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(marker, x + size / 2, y + size / 2 + 0.2);
+      ctx.restore();
+      return;
     }
-    if(type==='religious_building'){
-      ctx.save();ctx.strokeStyle='#111';ctx.lineWidth=Math.max(.4,size*.07);ctx.beginPath();ctx.arc(x+size/2,y+size/2,inner*.22,0,Math.PI*2);
-      for(let i=0;i<8;i++){const a=i*Math.PI/4,cx=x+size/2,cy=y+size/2;ctx.moveTo(cx+Math.cos(a)*inner*.31,cy+Math.sin(a)*inner*.31);ctx.lineTo(cx+Math.cos(a)*inner*.47,cy+Math.sin(a)*inner*.47);}
-      ctx.stroke();ctx.restore();return;
+
+    if (type === 'gold_mine') {
+      ctx.fillStyle = '#f1ce24';
+      ctx.strokeStyle = '#765f00';
+      ctx.lineWidth = Math.max(0.45, size * 0.045);
+      ctx.fillRect(left, top, inner, inner);
+      ctx.strokeRect(left, top, inner, inner);
+      ctx.fillStyle = '#302700';
+      ctx.font = '900 ' + Math.max(5, inner * 0.78) + 'px Georgia,serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('З', x + size / 2, y + size / 2 + 0.3);
+      ctx.restore();
+      return;
     }
-    let cached=state.buildingIconCache[type];
-    if(!cached){const img=new Image();cached={img,ready:false};img.onload=()=>{cached.ready=true;const el=$('#map-canvas');if(el&&!$('#map-modal').classList.contains('hidden'))drawMapCanvas(el,false);};img.src=meta.asset;state.buildingIconCache[type]=cached;}
-    if(cached.ready){const ratio=Math.min(inner/cached.img.naturalWidth,inner/cached.img.naturalHeight),w=cached.img.naturalWidth*ratio,h=cached.img.naturalHeight*ratio;ctx.save();ctx.globalCompositeOperation='multiply';ctx.drawImage(cached.img,x+(size-w)/2,y+(size-h)/2,w,h);ctx.restore();return;}
-    ctx.save();ctx.fillStyle='#111';ctx.font='700 '+Math.max(3,inner*.45)+'px Arial,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(meta.code.slice(0,1),x+size/2,y+size/2);ctx.restore();
+
+    if (type === 'religious_building') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(left, top, inner, inner);
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = Math.max(0.7, size * 0.065);
+      ctx.beginPath();
+      ctx.arc(x + size / 2, y + size / 2, inner * 0.22, 0, Math.PI * 2);
+      for (let i = 0; i < 8; i += 1) {
+        const angle = i * Math.PI / 4;
+        const cx = x + size / 2;
+        const cy = y + size / 2;
+        ctx.moveTo(cx + Math.cos(angle) * inner * 0.31, cy + Math.sin(angle) * inner * 0.31);
+        ctx.lineTo(cx + Math.cos(angle) * inner * 0.47, cy + Math.sin(angle) * inner * 0.47);
+      }
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    let cached = state.buildingIconCache[type];
+    if (!cached) {
+      const img = new Image();
+      cached = { img, ready: false, failed: false };
+      img.onload = () => {
+        cached.ready = true;
+        const canvas = $('#map-canvas');
+        if (canvas && !$('#map-modal').classList.contains('hidden')) drawMapCanvas(canvas, false);
+      };
+      img.onerror = () => {
+        cached.failed = true;
+        const canvas = $('#map-canvas');
+        if (canvas && !$('#map-modal').classList.contains('hidden')) drawMapCanvas(canvas, false);
+      };
+      img.src = meta.asset;
+      state.buildingIconCache[type] = cached;
+    }
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(left, top, inner, inner);
+    if (cached.ready && cached.img.naturalWidth > 0) {
+      const ratio = Math.min(inner / cached.img.naturalWidth, inner / cached.img.naturalHeight);
+      const width = cached.img.naturalWidth * ratio;
+      const height = cached.img.naturalHeight * ratio;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(cached.img, x + (size - width) / 2, y + (size - height) / 2, width, height);
+    } else {
+      ctx.fillStyle = '#111';
+      ctx.font = '900 ' + Math.max(5, inner * 0.62) + 'px Arial,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(marker, x + size / 2, y + size / 2 + 0.3);
+    }
+    ctx.strokeStyle = '#202820';
+    ctx.lineWidth = Math.max(0.35, size * 0.035);
+    ctx.strokeRect(left, top, inner, inner);
+    ctx.restore();
   }
   async function request(url, options = {}) { {
     const headers = new Headers(options.headers || {});
@@ -387,7 +472,6 @@
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
-        drawBuildingMapIcon(ctx, canvas, miniature, cell.buildingType, px, py, cellSize);
       }
       if (!miniature && country.cells.length) {
         ctx.strokeStyle = '#050505';
@@ -398,6 +482,18 @@
         ctx.font = 'bold ' + Math.max(10, Math.min(15, cellSize)) + 'px sans-serif';
         ctx.fillText(country.name, left + ((minX + maxX + 1) / 2) * cellSize,
           top + ((minY + maxY + 1) / 2) * cellSize);
+      }
+    }
+    // Building symbols are rendered after country labels and borders so map text
+    // can never cover occupied-cell markers.
+    if (!miniature) {
+      for (const country of (state.mapView.countries || [])) {
+        for (const cell of country.cells || []) {
+          if (!cell.buildingType) continue;
+          const px = left + cell.x * cellSize;
+          const py = top + cell.y * cellSize;
+          drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
+        }
       }
     }
     for (const reservation of (state.mapView.reservations || [])) {
@@ -692,61 +788,128 @@
   const governmentLabels={monarchy:'Монархия',democracy:'Демократия',oligarchy:'Олигархия',dictatorship:'Диктатура',technocracy:'Технократия',ideocracy:'Идеократия',theocracy:'Теократия',fascism:'Фашизм'};
   function cultureSymbols(values){
     if(!values?.length)return '<span class="country-culture-empty">Культура не задана</span>';
-    return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+' — '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
+    return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
   }
-  function renderFoundedCards(country){
-    const faithType=country.officialSystem.type,system=country.officialSystem;
-    $('#systems-tab-label').textContent=faithType==='religion'?'Вера':'Идеология';$('#country-tab-label').textContent='Страна';
-    $('#systems-intro').classList.add('hidden');$('#systems-builder').classList.add('hidden');$('#faith-card-host').classList.remove('hidden');
-    $('#country-intro').classList.add('hidden');$('#country-builder').classList.add('hidden');$('#country-card-host').classList.remove('hidden');
-    const counts=new Map((country.buildings||[]).map((x)=>[x.type,x.count]));
-    const list=(system.principles||[]).map((p)=>'<li><strong>'+escapeHtml(p.name)+'</strong><span>'+escapeHtml(p.description)+'</span><small>'+(p.polarity==='positive'?'Положительное':p.polarity==='negative'?'Отрицательное':'Нейтральное')+'</small></li>').join('');
-    const metrics=faithType==='religion'?[['♟','Адепты','—'],['★','Святые места','—'],['⌂','Церкви',String(counts.get('religious_building')||0)]]:[['♟','Адепты','—'],['▥','Крылья','—'],['⌂','Центры','—']];
-    $('#faith-card-host').innerHTML=`
-      <article class="archive-card faith-doc-card">
-        <header class="faith-doc-header"><h2>${escapeHtml(system.name)}</h2>${system.emblemDataUrl?`<img class="faith-doc-emblem" src="${escapeHtml(system.emblemDataUrl)}" alt="Символ учения">`:'<div class="faith-doc-emblem faith-doc-emblem-placeholder">PW</div>'}</header>
-        <div class="faith-doc-content"><section class="faith-doc-beliefs"><h3>${faithType==='religion'?'Верования':'Принципы'}</h3><ul>${list||'<li>Пока нет добавленных верований или принципов.</li>'}</ul></section>
-          <aside class="faith-doc-authority"><h3>Авторитет</h3><div class="authority-levels"><div><span>Величие</span><i class="authority-greatness"></i></div><div><span>Понимание</span><i class="authority-understanding"></i></div><div><span>Безразличие</span><i class="authority-indifference"></i></div><div><span>Избегание</span><i class="authority-avoidance"></i></div></div><small>Шкала будет заполняться симуляцией</small></aside>
-        </div>
-        <div class="faith-doc-metrics">${metrics.map((v)=>`<div class="faith-doc-metric"><b>${v[0]}</b><span>${v[1]}</span><strong>${v[2]}</strong></div>`).join('')}</div>
-        <section class="faith-doc-notes"><h3>Заметки</h3><p>Пока заметок нет.</p></section>
-      </article>`;
-    const top=[['♟♟','Люди',String(country.residentCount)],['⚗','Наука',String(counts.get('science')||0)],['♜','Замок',String((counts.get('tower')||0)+(counts.get('barracks')||0))],['♛','Правитель','Не назначен']];
-    $('#country-card-host').innerHTML=`
-      <article class="archive-card country-doc-card">
-        <header class="country-doc-header"><div class="country-doc-title"><h2>${escapeHtml(country.name)}</h2><i></i></div>${country.flagDataUrl?`<img class="country-doc-flag" src="${escapeHtml(country.flagDataUrl)}" alt="Флаг государства">`:'<div class="country-doc-flag country-doc-flag-placeholder">ФЛАГ</div>'}</header>
-        <div class="country-doc-top-stats">${top.map((x)=>`<div class="country-doc-top-stat"><b>${x[0]}</b><span>${x[1]}</span><strong>${escapeHtml(x[2])}</strong></div>`).join('')}</div>
-        <div class="country-doc-middle"><section class="country-doc-military"><h3>Ресурсы (военные)</h3><div><b>⚔</b><span>—</span><span>—</span></div><small>Показатели армии пока не рассчитываются</small></section><section class="country-doc-notes"><h3>Заметки</h3><p>Заметки государства пока пусты.</p></section></div>
-        <h3 class="country-doc-section-title">ЭКОНОМИКА</h3><div class="country-doc-economy"><div><b class="country-doc-gold">З</b><span>Золотые шахты</span><strong>${counts.get('gold_mine')||0}</strong></div><div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>—</strong><small>Экономика пока не рассчитывается</small></div></div>
-        <h3 class="country-doc-section-title">ПОЛИТИКА</h3><div class="country-doc-government"><b>♜</b><span>${escapeHtml(governmentLabels[country.government]||country.government)}</span></div>
-        <div class="country-doc-bottom">
-          <section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>${counts.get('factory')||0} фабр.</span><small>Производство: —</small></section>
-          <section><b class="country-doc-tile-icon">⌂</b><strong>Еда</strong><span>${counts.get('field')||0} поля</span><small>Производство: —</small></section>
-          <section class="country-doc-faith">${system.emblemDataUrl?`<img src="${escapeHtml(system.emblemDataUrl)}" alt="">`:'<b>✦</b>'}<strong>${faithType==='religion'?'Религия':'Идеология'}</strong><span>${escapeHtml(system.name)}</span></section>
-          <section class="country-doc-culture"><strong>Культура</strong><div class="culture-symbols">${cultureSymbols(country.culture||[])}</div></section>
-        </div><section id="country-actions-host" class="country-action-host"></section>
-        <footer class="country-doc-footer">Территория 5 × 5 · центр ${country.territory.centerX??'—'}, ${country.territory.centerY??'—'}</footer>
-      </article>`;
-    renderCountryActions(country);
-  }
-  function renderCountryActions(country){
-    const host=$('#country-actions-host');if(!host)return;const mc=(state.mapView?.countries||[]).find((x)=>x.id===country.id);
-    if(!mc||mc.cells.length!==25){host.innerHTML='<p class="country-action-hint">Карта территории пока недоступна. Обнови карту кампании.</p>';return;}
-    const cells=[...mc.cells].sort((a,b)=>a.y-b.y||a.x-b.x);
-    if(state.countryActionSelection){const s=cells.find((x)=>x.x===state.countryActionSelection.x&&x.y===state.countryActionSelection.y);if(!s||s.buildingType||!mapIsLand(s.x,s.y))state.countryActionSelection=null;}
-    host.innerHTML=`
-      <div class="country-action-panel"><header><h3>ДЕЙСТВИЯ ГОСУДАРСТВА</h3><p>Выбери свободную сухопутную клетку на своей территории.</p></header>
-        <div class="country-action-layout"><div class="country-action-grid">${cells.map((c)=>{const land=mapIsLand(c.x,c.y),sel=state.countryActionSelection?.x===c.x&&state.countryActionSelection?.y===c.y,label=c.buildingType?buildingMeta[c.buildingType]?.label:land?'Свободная клетка':'Вода';return `<button type="button" class="country-action-cell ${land?'':'water'} ${c.buildingType?'occupied':'free'} ${sel?'selected':''}" data-x="${c.x}" data-y="${c.y}" ${land?'':'disabled'} title="${escapeHtml(label+' · '+c.x+', '+c.y)}">${c.buildingType?buildingIconHtml(c.buildingType):'<span>·</span>'}</button>`;}).join('')}</div>
-          <div class="country-action-controls"><p id="country-action-selection">${state.countryActionSelection?'Выбрана клетка '+state.countryActionSelection.x+', '+state.countryActionSelection.y:'Клетка не выбрана'}</p>
-            <label class="field"><span>Новая постройка</span><select id="country-build-type"><option value="factory">Фабрика</option><option value="field">Поле</option><option value="science">Лаборатория</option><option value="barracks">Казарма</option><option value="tower">Замок / башня</option><option value="religious_building">Церковь</option></select></label>
-            <button id="build-country-building" class="button button-primary" type="button" disabled>Построить</button><button id="move-country-capital" class="button button-outline" type="button" disabled>Перенести столицу сюда</button>
-            <small>Постройка занимает свободную клетку и уменьшает население на 1. Перенос столицы освобождает старую клетку. Золотую шахту открывают колонизацией. Пока действия не расходуют ОД.</small>
-          </div></div></div>`;
-    const update=()=>{const s=state.countryActionSelection,c=s&&cells.find((x)=>x.x===s.x&&x.y===s.y);$('#country-action-selection').textContent=s?'Выбрана клетка '+s.x+', '+s.y:'Клетка не выбрана';$('#build-country-building').disabled=!c||!!c.buildingType||!mapIsLand(c.x,c.y);$('#move-country-capital').disabled=!c||!!c.buildingType||!mapIsLand(c.x,c.y);$$('.country-action-cell',host).forEach((b)=>b.classList.toggle('selected',Number(b.dataset.x)===s?.x&&Number(b.dataset.y)===s?.y));};
-    $$('.country-action-cell',host).forEach((b)=>b.addEventListener('click',()=>{state.countryActionSelection={x:Number(b.dataset.x),y:Number(b.dataset.y)};update();}));
-    $('#build-country-building').addEventListener('click',async()=>{const s=state.countryActionSelection;if(!s)return;try{await request('/campaigns/'+state.campaign.id+'/countries/mine/buildings',{method:'POST',body:JSON.stringify({type:$('#country-build-type').value,x:s.x,y:s.y})});state.countryActionSelection=null;await loadCampaignMap();await loadCountryProfile();showToast('Постройка размещена. Один житель занял её клетку.');}catch(e){showToast(e.message,true);}});
-    $('#move-country-capital').addEventListener('click',async()=>{const s=state.countryActionSelection;if(!s)return;try{await request('/campaigns/'+state.campaign.id+'/countries/mine/capital',{method:'PUT',body:JSON.stringify({x:s.x,y:s.y})});state.countryActionSelection=null;await loadCampaignMap();await loadCountryProfile();showToast('Столица перенесена. Прежняя клетка освобождена.');}catch(e){showToast(e.message,true);}});
-    update();
+  function renderFoundedCards(country) {
+    const faithType = country.officialSystem.type;
+    const system = country.officialSystem;
+    $('#systems-tab-label').textContent = faithType === 'religion' ? 'Вера' : 'Идеология';
+    $('#country-tab-label').textContent = 'Страна';
+    $('#systems-intro').classList.add('hidden');
+    $('#systems-builder').classList.add('hidden');
+    $('#faith-card-host').classList.remove('hidden');
+    $('#country-intro').classList.add('hidden');
+    $('#country-builder').classList.add('hidden');
+    $('#country-card-host').classList.remove('hidden');
+
+    const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
+    const principleRows = (system.principles || []).map((principle) =>
+      '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
+      '<span>' + escapeHtml(principle.description) + '</span>' +
+      '<small>' + (principle.polarity === 'positive' ? 'Положительное' :
+        principle.polarity === 'negative' ? 'Отрицательное' : 'Нейтральное') + '</small></li>'
+    ).join('');
+    const faithMetrics = faithType === 'religion'
+      ? [['♟', 'Последователи', '—'], ['★', 'Святые места', '—'], ['⌂', 'Храмы', String(counts.get('religious_building') || 0)]]
+      : [['♟', 'Последователи', '—'], ['▥', 'Крылья', '—'], ['⌂', 'Центры', '—']];
+
+    $('#faith-card-host').innerHTML =
+      '<article class="archive-card faith-doc-card">' +
+        '<header class="faith-doc-header">' +
+          '<div class="faith-doc-title-block"><div class="archive-card-kicker">' +
+            (faithType === 'religion' ? 'ОФИЦИАЛЬНАЯ РЕЛИГИЯ ГОСУДАРСТВА' : 'ГОСУДАРСТВЕННАЯ ИДЕОЛОГИЯ') +
+          '</div><h2>' + escapeHtml(system.name) + '</h2></div>' +
+          (system.emblemDataUrl
+            ? '<img class="faith-doc-emblem" src="' + escapeHtml(system.emblemDataUrl) + '" alt="Символ учения">'
+            : '<div class="faith-doc-emblem faith-doc-emblem-placeholder">✦</div>') +
+        '</header>' +
+        '<div class="faith-doc-content">' +
+          '<section class="faith-doc-beliefs"><h3>' +
+            (faithType === 'religion' ? 'Верования' : 'Принципы') +
+          '</h3><ul>' + (principleRows || '<li><strong>Нет записей</strong><span>Для этой системы ещё не добавлены пункты.</span></li>') + '</ul></section>' +
+          '<aside class="faith-doc-authority"><h3>Авторитет</h3>' +
+            '<div class="authority-levels">' +
+              '<div><span>Величие</span><i class="authority-greatness"></i></div>' +
+              '<div><span>Понимание</span><i class="authority-understanding"></i></div>' +
+              '<div><span>Безразличие</span><i class="authority-indifference"></i></div>' +
+              '<div><span>Избегание</span><i class="authority-avoidance"></i></div>' +
+            '</div><small>Значения появятся после запуска соответствующих расчётов симуляции.</small>' +
+          '</aside>' +
+        '</div>' +
+        '<div class="faith-doc-metrics">' +
+          faithMetrics.map((metric) =>
+            '<div class="faith-doc-metric"><b>' + metric[0] + '</b><span>' + metric[1] +
+            '</span><strong>' + escapeHtml(metric[2]) + '</strong></div>'
+          ).join('') +
+        '</div>' +
+        '<section class="faith-doc-notes"><h3>Заметки</h3><p>Заметки системы пока не заполнены.</p></section>' +
+        '<footer class="country-doc-footer">Карточка официальной системы · ' +
+          (faithType === 'religion' ? 'Религия' : 'Идеология') +
+        '</footer>' +
+      '</article>';
+
+    const countryStats = [
+      ['♟♟', 'Люди', String(country.residentCount)],
+      ['⚗', 'Наука', String(counts.get('science') || 0)],
+      ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
+      ['♛', 'Правитель', 'Не назначен'],
+    ];
+    $('#country-card-host').innerHTML =
+      '<article class="archive-card country-doc-card">' +
+        '<header class="country-doc-header">' +
+          '<div class="country-doc-title"><div class="archive-card-kicker">КАРТОЧКА ГОСУДАРСТВА</div>' +
+            '<h2>' + escapeHtml(country.name) + '</h2><i></i></div>' +
+          (country.flagDataUrl
+            ? '<img class="country-doc-flag" src="' + escapeHtml(country.flagDataUrl) + '" alt="Флаг государства">'
+            : '<div class="country-doc-flag country-doc-flag-placeholder">ФЛАГ</div>') +
+        '</header>' +
+        '<div class="country-doc-top-stats">' +
+          countryStats.map((item) =>
+            '<div class="country-doc-top-stat"><b>' + item[0] + '</b><span>' + item[1] +
+            '</span><strong>' + escapeHtml(item[2]) + '</strong></div>'
+          ).join('') +
+        '</div>' +
+        '<div class="country-doc-middle">' +
+          '<section class="country-doc-military"><h3>Военные ресурсы</h3>' +
+            '<div><b>⚔</b><span>—</span><span>—</span></div>' +
+            '<small>Ресурсы армии пока не рассчитываются симуляцией.</small>' +
+          '</section>' +
+          '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
+        '</div>' +
+        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
+        '<div class="country-doc-economy">' +
+          '<div><b class="country-doc-gold">З</b><span>Золотые шахты</span><strong>' +
+            String(counts.get('gold_mine') || 0) + '</strong></div>' +
+          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>—</strong>' +
+            '<small>Экономические расчёты ещё не подключены.</small></div>' +
+        '</div>' +
+        '<h3 class="country-doc-section-title">ПОЛИТИКА</h3>' +
+        '<div class="country-doc-government"><b>♜</b><span>' +
+          escapeHtml(governmentLabels[country.government] || country.government) +
+        '</span></div>' +
+        '<div class="country-doc-bottom">' +
+          '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
+            String(counts.get('factory') || 0) + ' фабрики</span><small>Производство: пока не рассчитывается</small></section>' +
+          '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
+            String(counts.get('field') || 0) + ' поля</span><small>Производство: пока не рассчитывается</small></section>' +
+          '<section class="country-doc-faith">' +
+            (system.emblemDataUrl
+              ? '<img src="' + escapeHtml(system.emblemDataUrl) + '" alt="">'
+              : '<b>✦</b>') +
+            '<strong>' + (faithType === 'religion' ? 'Вера' : 'Идеология') + '</strong>' +
+            '<span>' + escapeHtml(system.name) + '</span></section>' +
+          '<section class="country-doc-culture"><strong>Культура</strong>' +
+            '<div class="culture-symbols">' + cultureSymbols(country.culture || []) + '</div>' +
+          '</section>' +
+        '</div>' +
+        '<section class="country-doc-inactive-actions" aria-live="polite">' +
+          '<strong>Игровые действия пока недоступны</strong>' +
+          '<p>Строительство, перемещение, колонизация и приказы появятся после подключения движка ходов.</p>' +
+        '</section>' +
+        '<footer class="country-doc-footer">Территория 5 × 5 · центр ' +
+          (country.territory.centerX ?? '—') + ', ' + (country.territory.centerY ?? '—') +
+        '</footer>' +
+      '</article>';
   }
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
     if (state.principles.length >= 10) {
