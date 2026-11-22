@@ -23,7 +23,7 @@ const RELIGION_BUILDINGS: ReadonlyArray<StartBuildingPlacement> = [
 ];
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
-  'pre-country social system HTTP workflow',
+  'map-first and immediately available social system HTTP workflow',
   () => {
     const persistence =
       databaseUrl === undefined
@@ -53,7 +53,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('submits, reviews and selects a system before registering a country', async () => {
+    it('reserves a map location, creates an immediately available system and registers a country', async () => {
       if (persistence === undefined) throw new Error('DATABASE_URL is not configured');
       const auth = createAuthService({
         pool: persistence.pool,
@@ -77,7 +77,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const campaign = await campaigns.createCampaign(
         admin.user.id,
         `social system api ${randomUUID()}`,
-        { mapWidth: 20, mapHeight: 20 },
+        { mapWidth: 20, mapHeight: 20, turnDurationHours: 4 },
       );
       await persistence.pool.query(
         `INSERT INTO campaign_memberships (
@@ -95,10 +95,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rngVersion: 'rng-v1',
         secureCookies: false,
         authService: auth,
+        campaignService: campaigns,
         countrySetupService,
       });
+      await countrySetupService.reserveSpawn(admin.user.id, campaign.id, 5, 5);
 
       try {
+        const map = await app.inject({
+          method: 'GET',
+          url: `/campaigns/${campaign.id}/map`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+        });
+        expect(map.statusCode).toBe(200);
+        expect(
+          map.json<{ map: { reservations: Array<{ isMine: boolean }> } }>().map.reservations,
+        ).toContainEqual(expect.objectContaining({ isMine: true }));
         const submitted = await app.inject({
           method: 'POST',
           url: `/campaigns/${campaign.id}/social-systems`,
@@ -110,6 +121,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
               {
                 name: 'Hospitality',
                 description: 'The community welcomes travelers and protects guests.',
+                effect: 'Improves visitor growth by 5%.',
                 polarity: 'positive',
               },
               {
@@ -121,11 +133,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           },
         });
         expect(submitted.statusCode).toBe(201);
-        const pendingSystem = submitted.json<{
+        const createdSystem = submitted.json<{
           system: { id: string; approvalStatus: string; type: string };
         }>().system;
-        expect(pendingSystem).toMatchObject({
-          approvalStatus: 'pending',
+        expect(createdSystem).toMatchObject({
+          approvalStatus: 'approved',
           type: 'religion',
         });
 
@@ -137,43 +149,26 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(mine.statusCode).toBe(200);
         expect(
           mine.json<{ systems: Array<{ id: string }> }>().systems.map((item) => item.id),
-        ).toContain(pendingSystem.id);
+        ).toContain(createdSystem.id);
 
         const nonAdminReview = await app.inject({
           method: 'POST',
-          url: `/campaigns/${campaign.id}/social-systems/${pendingSystem.id}/review`,
+          url: `/campaigns/${campaign.id}/social-systems/${createdSystem.id}/review`,
           headers: { authorization: 'Bearer ' + member.accessToken },
           payload: { decision: 'approve' },
         });
         expect(nonAdminReview.statusCode).toBe(403);
         expect(nonAdminReview.json<{ error: string }>().error).toBe('SOCIAL_SYSTEM_ADMIN_REQUIRED');
 
-        const availableBeforeReview = await app.inject({
+        const availableImmediately = await app.inject({
           method: 'GET',
           url: `/campaigns/${campaign.id}/social-systems/available?systemType=religion&spawnX=5&spawnY=5`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
-        expect(availableBeforeReview.statusCode).toBe(200);
+        expect(availableImmediately.statusCode).toBe(200);
         expect(
-          availableBeforeReview.json<{ systems: Array<{ id: string }> }>().systems,
-        ).toHaveLength(0);
-
-        const rejectedCountry = await app.inject({
-          method: 'POST',
-          url: `/campaigns/${campaign.id}/countries`,
-          headers: { authorization: 'Bearer ' + admin.accessToken },
-          payload: {
-            name: 'Unapproved Republic',
-            spawnX: 5,
-            spawnY: 5,
-            officialSystemId: pendingSystem.id,
-            buildings: RELIGION_BUILDINGS,
-          },
-        });
-        expect(rejectedCountry.statusCode).toBe(422);
-        expect(rejectedCountry.json<{ error: string }>().error).toBe(
-          'OFFICIAL_SYSTEM_NOT_AVAILABLE',
-        );
+          availableImmediately.json<{ systems: Array<{ id: string }> }>().systems.map((item) => item.id),
+        ).toContain(createdSystem.id);
 
         const pending = await app.inject({
           method: 'GET',
@@ -181,30 +176,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(pending.statusCode).toBe(200);
-        expect(pending.json<{ systems: Array<{ id: string }> }>().systems).toHaveLength(1);
-
-        const approval = await app.inject({
-          method: 'POST',
-          url: `/campaigns/${campaign.id}/social-systems/${pendingSystem.id}/review`,
-          headers: { authorization: 'Bearer ' + admin.accessToken },
-          payload: { decision: 'approve', reason: 'The submitted principles are consistent.' },
-        });
-        expect(approval.statusCode).toBe(200);
-        expect(approval.json<{ system: { approvalStatus: string } }>().system.approvalStatus).toBe(
-          'approved',
-        );
-
-        const availableAfterReview = await app.inject({
-          method: 'GET',
-          url: `/campaigns/${campaign.id}/social-systems/available?systemType=religion&spawnX=5&spawnY=5`,
-          headers: { authorization: 'Bearer ' + admin.accessToken },
-        });
-        expect(availableAfterReview.statusCode).toBe(200);
-        expect(
-          availableAfterReview
-            .json<{ systems: Array<{ id: string }> }>()
-            .systems.map((item) => item.id),
-        ).toContain(pendingSystem.id);
+        expect(pending.json<{ systems: Array<{ id: string }> }>().systems).toHaveLength(0);
 
         const createdCountry = await app.inject({
           method: 'POST',
@@ -214,7 +186,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             name: 'Harbor Republic',
             spawnX: 5,
             spawnY: 5,
-            officialSystemId: pendingSystem.id,
+            officialSystemId: createdSystem.id,
             buildings: RELIGION_BUILDINGS,
           },
         });
@@ -225,7 +197,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           }>().country,
         ).toMatchObject({
           name: 'Harbor Republic',
-          officialSystem: { id: pendingSystem.id, type: 'religion' },
+          officialSystem: { id: createdSystem.id, type: 'religion' },
         });
       } finally {
         await app.close();
