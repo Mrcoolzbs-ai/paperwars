@@ -109,7 +109,9 @@ describe('pure simulation engine', () => {
       uniform: createRandomSource().uniform,
       weighted<T>() {
         weightedCalls += 1;
-        throw new Error('The engine must record weighted draws through uniform targets') as unknown as T;
+        throw new Error(
+          'The engine must record weighted draws through uniform targets',
+        ) as unknown as T;
       },
     };
 
