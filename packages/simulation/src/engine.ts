@@ -58,6 +58,11 @@ const MAX_UNIFORM_RANGE = 0x1_0000_0000;
 /** Creates the production RandomSource from the committed seed for one campaign turn. */
 export function createDeterministicRandomSource(context: RNGContext): RandomSource {
   return Object.freeze({
+    context: Object.freeze({
+      campaignId: context.campaignId,
+      turnNumber: context.turnNumber,
+      rngVersion: context.rngVersion,
+    }),
     uniform: (domain: string, drawId: string, min: number, max: number) =>
       drawUniform(context, domain, drawId, min, max),
     weighted: <T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]) =>
@@ -219,6 +224,15 @@ export function createSimulationEngine(config: SimulationEngineConfig): Simulati
         );
       }
       assertFinalizedOrders(input.snapshot, input.orders);
+      if (
+        input.random.context.campaignId !== input.snapshot.campaignId ||
+        input.random.context.turnNumber !== input.snapshot.turnNumber ||
+        input.random.context.rngVersion !== descriptor.rngVersion
+      ) {
+        throw new TurnResolutionInvariantError(
+          'Random source campaign, turn or RNG version does not match the simulation input',
+        );
+      }
 
       const randomDraws: RandomDrawRecord[] = [];
       const recordedRandom = createRecordedRandomSource(input.random, randomDraws);
