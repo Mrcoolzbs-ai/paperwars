@@ -640,6 +640,30 @@ export function createCountrySetupService(options: {
           );
         }
 
+        // Keep the first turn locked until every active participant has
+        // registered a country. The campaign row is already held FOR UPDATE,
+        // so membership changes and concurrent country setup serialize here.
+        const pendingMembers = await client.query(
+          `SELECT 1
+           FROM campaign_memberships
+           WHERE campaign_id = $1
+             AND status = 'active'
+             AND country_id IS NULL
+           LIMIT 1`,
+          [campaignId],
+        );
+        if (pendingMembers.rows.length === 0) {
+          await client.query(
+            `UPDATE campaigns
+             SET orders_locked = FALSE, orders_locked_at = NULL
+             WHERE id = $1
+               AND status = 'active'
+               AND current_turn = 1
+               AND orders_locked = TRUE`,
+            [campaignId],
+          );
+        }
+
         await client.query('COMMIT');
         transactionOpen = false;
 
