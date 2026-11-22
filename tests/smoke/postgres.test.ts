@@ -74,6 +74,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           migration_name: '0006_campaign_setup_enhancements.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
+        {
+          migration_name: '0007_campaign_world_seed.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
       ]);
     });
 
