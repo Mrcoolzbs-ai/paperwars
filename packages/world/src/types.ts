@@ -1,6 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
 
 export type OfficialSystemType = 'religion' | 'ideology';
+export type SocialSystemPolarity = 'positive' | 'negative' | 'neutral';
+export type SocialSystemApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type SocialSystemReviewDecision = 'approve' | 'reject';
 export type StartBuildingType =
   | 'factory'
   | 'field'
@@ -11,6 +14,34 @@ export type StartBuildingType =
   | 'barracks'
   | 'tower';
 
+export interface SocialSystemPrinciple {
+  readonly name: string;
+  readonly description: string;
+  readonly polarity: SocialSystemPolarity;
+}
+
+export interface CreateSocialSystemInput {
+  readonly type: unknown;
+  readonly name: unknown;
+  readonly principles: unknown;
+}
+
+export interface SocialSystemReviewInput {
+  readonly decision: unknown;
+  readonly reason?: unknown;
+}
+
+export interface SocialSystemView {
+  readonly id: string;
+  readonly campaignId: string;
+  readonly type: OfficialSystemType;
+  readonly name: string;
+  readonly principles: readonly SocialSystemPrinciple[];
+  readonly approvalStatus: SocialSystemApprovalStatus;
+  readonly reviewReason: string | null;
+  readonly createdAt: Date;
+}
+
 export interface StartBuildingPlacement {
   readonly type: StartBuildingType;
   /** Horizontal offset inside the 5x5 territory, from 0 through 4. */
@@ -19,19 +50,14 @@ export interface StartBuildingPlacement {
   readonly y: number;
 }
 
-export interface OfficialSystemChoice {
-  readonly type: OfficialSystemType;
-  readonly existingSystemId?: string;
-  readonly newSystemName?: string;
-}
-
 export interface CreateCountryInput {
   readonly name: unknown;
   /** Center X coordinate of the 5x5 starting territory. */
   readonly spawnX: number;
   /** Center Y coordinate of the 5x5 starting territory. */
   readonly spawnY: number;
-  readonly officialSystem: OfficialSystemChoice;
+  /** ID of a previously created and administrator-approved system. */
+  readonly officialSystemId: unknown;
   readonly buildings: ReadonlyArray<StartBuildingPlacement>;
 }
 
@@ -39,8 +65,9 @@ export interface AvailableSocialSystem {
   readonly id: string;
   readonly type: OfficialSystemType;
   readonly name: string;
-  readonly originX: number;
-  readonly originY: number;
+  readonly originX: number | null;
+  readonly originY: number | null;
+  readonly principles: readonly SocialSystemPrinciple[];
 }
 
 export interface SocialSystemAvailabilityQuery {
@@ -65,6 +92,8 @@ export interface SocialSystemAvailabilityPolicy {
 export interface CountrySetupOptions {
   readonly pool: Pool;
   readonly systemAvailabilityPolicy?: SocialSystemAvailabilityPolicy;
+  /** Global administrator user IDs allowed to approve/reject submitted systems. */
+  readonly socialSystemAdminUserIds?: readonly string[];
 }
 
 export interface CreatedCountry {
@@ -84,6 +113,22 @@ export interface CreatedCountry {
 }
 
 export interface CountrySetupService {
+  createSocialSystem(
+    userId: string,
+    campaignId: string,
+    input: CreateSocialSystemInput,
+  ): Promise<SocialSystemView>;
+  listMySocialSystems(userId: string, campaignId: string): Promise<readonly SocialSystemView[]>;
+  listPendingSocialSystems(
+    adminUserId: string,
+    campaignId: string,
+  ): Promise<readonly SocialSystemView[]>;
+  reviewSocialSystem(
+    adminUserId: string,
+    campaignId: string,
+    systemId: string,
+    input: SocialSystemReviewInput,
+  ): Promise<SocialSystemView>;
   listAvailableSystems(
     userId: string,
     campaignId: string,
