@@ -376,8 +376,6 @@
     if (!miniature && state.mapSelectedCenter) {
       const x = left + (state.mapSelectedCenter.x - 2) * cellSize;
       const y = top + (state.mapSelectedCenter.y - 2) * cellSize;
-      ctx.fillStyle = '#f3d45b66';
-      ctx.fillRect(x, y, cellSize * 5, cellSize * 5);
       ctx.strokeStyle = '#cf941e';
       ctx.lineWidth = 3;
       ctx.strokeRect(x + 1, y + 1, cellSize * 5 - 2, cellSize * 5 - 2);
