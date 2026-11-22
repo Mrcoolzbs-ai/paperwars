@@ -161,6 +161,7 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof SystemAvailabilityNotConfiguredError) {
     return reply.code(503).send({ error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED' });
   }
+  reply.log.error({ err: error }, 'Unhandled API request error');
   return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
 
