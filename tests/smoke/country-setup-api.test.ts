@@ -190,7 +190,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
         const availableImmediately = await app.inject({
           method: 'GET',
-          url: `/campaigns/${campaign.id}/social-systems/available?systemType=religion&spawnX=' + spawn.x + '&spawnY=' + spawn.y`,
+          url: `/campaigns/${campaign.id}/social-systems/available?systemType=religion&spawnX=${spawn.x}&spawnY=${spawn.y}`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(availableImmediately.statusCode).toBe(200);
