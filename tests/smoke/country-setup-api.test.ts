@@ -358,7 +358,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(ownedCountry?.cells).toHaveLength(25);
         const buildingCounts = (ownedCountry?.cells || []).reduce<Record<string, number>>(
           (counts, cell) => {
-          if (cell.buildingType) counts[cell.buildingType] = (counts[cell.buildingType] || 0) + 1;
+            if (cell.buildingType) {
+              counts[cell.buildingType] = (counts[cell.buildingType] || 0) + 1;
+            }
             return counts;
           },
           {},
