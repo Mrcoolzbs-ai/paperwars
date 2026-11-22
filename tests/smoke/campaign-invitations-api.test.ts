@@ -224,7 +224,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { email: otherEmail },
       });
       expect(pending.statusCode).toBe(201);
-      const pendingToken = pending.json<{ invitation: { token: string } }>().invitation.token;
+      const pendingInvitation = pending.json<{
+        invitation: { id: string; token: string };
+      }>().invitation;
+      const pendingToken = pendingInvitation.token;
 
       await persistence!.pool.query(
         'INSERT INTO world_snapshots (campaign_id, turn_number, version, state_schema_version, ruleset_version, state) ' +
@@ -255,6 +258,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       expect(afterSetup.statusCode).toBe(409);
       expect(afterSetup.json<{ error: string }>().error).toBe('ORDERS_LOCKED');
+
+      const revokedAfterSetup = await app.inject({
+        method: 'POST',
+        url: '/campaigns/' + campaignId + '/invitations/' + pendingInvitation.id + '/revoke',
+        headers: { authorization: 'Bearer ' + ownerToken },
+      });
+      expect(revokedAfterSetup.statusCode).toBe(204);
+      const revokedRow = await persistence!.pool.query<{ status: string }>(
+        'SELECT status FROM campaign_invitations WHERE id = $1',
+        [pendingInvitation.id],
+      );
+      expect(revokedRow.rows[0]?.status).toBe('revoked');
 
       const membership = await persistence!.pool.query<{ status: string }>(
         'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
