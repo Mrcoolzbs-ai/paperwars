@@ -26,7 +26,9 @@ describe('seeded world map generation', () => {
 
   it('contains mixed land and water and supports partially coastal 5x5 starts', () => {
     const map = generateWorldMap('coastal-settlement', 80, 60);
-    const waterCount = Array.from(map.terrain).filter((cell) => cell === 'w' || cell === 'r').length;
+    const waterCount = Array.from(map.terrain).filter(
+      (cell) => cell === 'w' || cell === 'r',
+    ).length;
     expect(map.landCellCount).toBeGreaterThan(0);
     expect(waterCount).toBeGreaterThan(0);
 

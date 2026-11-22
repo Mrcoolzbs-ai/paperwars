@@ -97,7 +97,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       }
       const mapSeedInput = mapSize.mapSeed?.trim() ?? '';
       if (mapSeedInput && !/^[a-zA-Z0-9_-]{1,64}$/.test(mapSeedInput)) {
-        throw new AuthValidationError('World seed must contain 1 to 64 letters, digits, underscores or hyphens');
+        throw new AuthValidationError(
+          'World seed must contain 1 to 64 letters, digits, underscores or hyphens',
+        );
       }
       const mapSeed = mapSeedInput || randomUUID().replaceAll('-', '').slice(0, 16);
       const maxPlayers = Math.floor((mapSize.mapWidth * mapSize.mapHeight) / 100);
@@ -224,10 +226,15 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         );
         const target = campaign.rows[0];
         if (
-          target?.status !== 'active' || target.current_turn !== 1 || !target.orders_locked ||
-          target.map_width === null || target.map_height === null
+          target?.status !== 'active' ||
+          target.current_turn !== 1 ||
+          !target.orders_locked ||
+          target.map_width === null ||
+          target.map_height === null
         ) {
-          throw new AuthValidationError('Campaign is no longer accepting players for the initial setup');
+          throw new AuthValidationError(
+            'Campaign is no longer accepting players for the initial setup',
+          );
         }
         const existing = await client.query<{ status: string }>(
           'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
@@ -346,9 +353,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         turnDurationHours: row.turn_duration_hours,
         mapSeed: row.map_seed,
         playerCount: row.player_count,
-        maxPlayers: row.map_width !== null && row.map_height !== null
-          ? Math.floor((row.map_width * row.map_height) / 100)
-          : 0,
+        maxPlayers:
+          row.map_width !== null && row.map_height !== null
+            ? Math.floor((row.map_width * row.map_height) / 100)
+            : 0,
       }));
     },
   };

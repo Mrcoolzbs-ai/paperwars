@@ -233,8 +233,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await campaigns.joinCampaign(guests[0]!.user.id, campaign.id);
       await campaigns.joinCampaign(guests[1]!.user.id, campaign.id);
       await campaigns.joinCampaign(guests[2]!.user.id, campaign.id);
-      await expect(campaigns.joinCampaign(guests[3]!.user.id, campaign.id))
-        .rejects.toBeInstanceOf(AuthValidationError);
+      await expect(campaigns.joinCampaign(guests[3]!.user.id, campaign.id)).rejects.toBeInstanceOf(
+        AuthValidationError,
+      );
 
       let ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
       expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });

@@ -201,7 +201,13 @@ function validateGovernment(value: unknown): string {
   return selected;
 }
 
-function validateSpawnLand(seed: string, cx: number, cy: number, width: number, height: number): void {
+function validateSpawnLand(
+  seed: string,
+  cx: number,
+  cy: number,
+  width: number,
+  height: number,
+): void {
   const world = generateWorldMap(seed, width, height);
   let landCells = 0;
   for (let y = cy - 2; y <= cy + 2; y += 1) {
@@ -714,10 +720,9 @@ export function createCountrySetupService(options: {
           map_width: number | null;
           map_height: number | null;
           map_seed: string;
-        }>(
-          'SELECT map_width, map_height, map_seed FROM campaigns WHERE id = $1 FOR UPDATE',
-          [campaignId],
-        );
+        }>('SELECT map_width, map_height, map_seed FROM campaigns WHERE id = $1 FOR UPDATE', [
+          campaignId,
+        ]);
         const map = dims.rows[0];
         if (!map || map.map_width === null || map.map_height === null)
           throw new CampaignSetupNotReadyError();
@@ -1149,7 +1154,13 @@ export function createCountrySetupService(options: {
           );
         }
 
-        validateSpawnLand(campaign.map_seed, input.spawnX, input.spawnY, campaign.map_width, campaign.map_height);
+        validateSpawnLand(
+          campaign.map_seed,
+          input.spawnX,
+          input.spawnY,
+          campaign.map_width,
+          campaign.map_height,
+        );
         const reservedByOther = await client.query(
           `SELECT 1 FROM campaign_spawn_reservations
            WHERE campaign_id = $1 AND user_id <> $2

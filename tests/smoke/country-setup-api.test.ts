@@ -106,7 +106,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         });
         expect(initialMap.statusCode).toBe(200);
         const mapData = initialMap.json<{
-          map: { width: number; height: number; terrain: string; reservations: Array<{ isMine: boolean }> };
+          map: {
+            width: number;
+            height: number;
+            terrain: string;
+            reservations: Array<{ isMine: boolean }>;
+          };
         }>().map;
         let spawn = { x: -1, y: -1 };
         for (let y = 2; y < mapData.height - 2 && spawn.x < 0; y += 1) {
@@ -117,7 +122,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
                 if (mapData.terrain[yy * mapData.width + xx] === 'l') land += 1;
               }
             }
-            if (land >= 7) { spawn = { x, y }; break; }
+            if (land >= 7) {
+              spawn = { x, y };
+              break;
+            }
           }
         }
         if (spawn.x < 0) throw new Error('No valid seeded spawn area in API test map');

@@ -101,9 +101,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             }
           }
           if (!free || land < 7) continue;
-          if (map.reservations.some((item) =>
-            Math.abs(item.centerX - x) <= 4 && Math.abs(item.centerY - y) <= 4,
-          )) continue;
+          if (
+            map.reservations.some(
+              (item) => Math.abs(item.centerX - x) <= 4 && Math.abs(item.centerY - y) <= 4,
+            )
+          )
+            continue;
           return { x, y };
         }
       }
@@ -542,7 +545,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
 
       await expect(
-        countrySetup.reserveSpawn(secondUser.user.id, campaign.id, collisionSpawn.x + 2, collisionSpawn.y),
+        countrySetup.reserveSpawn(
+          secondUser.user.id,
+          campaign.id,
+          collisionSpawn.x + 2,
+          collisionSpawn.y,
+        ),
       ).rejects.toBeInstanceOf(SpawnAreaUnavailableError);
 
       const afterFailure = await current.pool.query<{

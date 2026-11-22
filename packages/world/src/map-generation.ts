@@ -26,9 +26,7 @@ function mix32(value: number): number {
 }
 
 function latticeValue(x: number, y: number, seed: number): number {
-  const mixed = mix32(
-    seed ^ Math.imul(x | 0, 0x9e3779b1) ^ Math.imul(y | 0, 0x85ebca77),
-  );
+  const mixed = mix32(seed ^ Math.imul(x | 0, 0x9e3779b1) ^ Math.imul(y | 0, 0x85ebca77));
   return mixed / 0xffffffff;
 }
 
@@ -42,8 +40,7 @@ function valueNoise(x: number, y: number, seed: number): number {
   const tx = smooth(x - x0);
   const ty = smooth(y - y0);
   const north = latticeValue(x0, y0, seed) * (1 - tx) + latticeValue(x0 + 1, y0, seed) * tx;
-  const south =
-    latticeValue(x0, y0 + 1, seed) * (1 - tx) + latticeValue(x0 + 1, y0 + 1, seed) * tx;
+  const south = latticeValue(x0, y0 + 1, seed) * (1 - tx) + latticeValue(x0 + 1, y0 + 1, seed) * tx;
   return north * (1 - ty) + south * ty;
 }
 
@@ -53,7 +50,8 @@ function fractalNoise(x: number, y: number, seed: number): number {
   let amplitude = 1;
   let frequency = 1;
   for (let octave = 0; octave < 5; octave += 1) {
-    total += valueNoise(x * frequency, y * frequency, mix32(seed + octave * 0x9e3779b9)) * amplitude;
+    total +=
+      valueNoise(x * frequency, y * frequency, mix32(seed + octave * 0x9e3779b9)) * amplitude;
     weight += amplitude;
     amplitude *= 0.5;
     frequency *= 2.03;
@@ -120,7 +118,11 @@ function carveRiver(
   }
 }
 
-export function generateWorldMap(seedInput: string, width: number, height: number): GeneratedWorldMap {
+export function generateWorldMap(
+  seedInput: string,
+  width: number,
+  height: number,
+): GeneratedWorldMap {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 20 || height < 20) {
     throw new RangeError('World map dimensions must be safe integers of at least 20x20');
   }
@@ -153,7 +155,8 @@ export function generateWorldMap(seedInput: string, width: number, height: numbe
         width *
         0.095;
       const warpY =
-        (fractalNoise(x / warpScaleX - 11.2, y / warpScaleY + 23.1, seedNumber ^ 0x02e5be93) - 0.5) *
+        (fractalNoise(x / warpScaleX - 11.2, y / warpScaleY + 23.1, seedNumber ^ 0x02e5be93) -
+          0.5) *
         height *
         0.095;
       const continental = fractalNoise(
@@ -166,7 +169,9 @@ export function generateWorldMap(seedInput: string, width: number, height: numbe
         y / detailScale - 17.8,
         seedNumber ^ 0x4cf5ad43,
       );
-      const latitude = Math.sin(((y / Math.max(1, height - 1)) * Math.PI * 2) + seedNumber / 0xffffffff);
+      const latitude = Math.sin(
+        (y / Math.max(1, height - 1)) * Math.PI * 2 + seedNumber / 0xffffffff,
+      );
       const landness = continental * 0.76 + detail * 0.24 + latitude * 0.018;
       const index = y * width + x;
       elevation[index] = landness;

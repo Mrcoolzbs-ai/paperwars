@@ -94,7 +94,9 @@ export const campaigns = pgTable(
     rngVersion: text('rng_version').notNull(),
     mapWidth: integer('map_width'),
     mapHeight: integer('map_height'),
-    mapSeed: text('map_seed').notNull().default(sql`substr(md5(random()::text || clock_timestamp()::text), 1, 16)`),
+    mapSeed: text('map_seed')
+      .notNull()
+      .default(sql`substr(md5(random()::text || clock_timestamp()::text), 1, 16)`),
     turnDurationHours: integer('turn_duration_hours').notNull().default(24),
     createdAt: createdAt(),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
