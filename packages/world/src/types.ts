@@ -99,6 +99,9 @@ export interface CampaignSpawnReservation {
 export interface CampaignMapView {
   readonly width: number;
   readonly height: number;
+  readonly seed: string;
+  /** Row-major l/w/r terrain encoding produced by the shared seeded generator. */
+  readonly terrain: string;
   readonly countries: readonly CampaignMapCountry[];
   readonly reservations: readonly CampaignSpawnReservation[];
 }
