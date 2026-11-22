@@ -111,6 +111,7 @@ describe('pure simulation engine', () => {
   it('resolves finalized orders and attaches its own auditable uniform/weighted draw journal', () => {
     let weightedCalls = 0;
     const random: RandomSource = {
+      context: createRandomSource().context,
       uniform: createRandomSource().uniform,
       weighted<T>() {
         weightedCalls += 1;
