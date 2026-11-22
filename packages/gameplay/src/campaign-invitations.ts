@@ -241,7 +241,7 @@ export function createCampaignInvitationService(
       assertUuid(campaignId, 'campaignId');
       assertUuid(invitationId, 'invitationId');
       await inTransaction(options.pool, async (tx) => {
-        await lockCampaignForInvitationWrite(tx, campaignId);
+        await lockCampaignForInvitationWrite(tx, campaignId, { requireInitialSetup: false });
         const inviter = await tx.query<{ user_id: string }>(
           'SELECT user_id FROM campaign_memberships ' +
             "WHERE campaign_id = $1 AND user_id = $2 AND status = 'active' FOR SHARE",
