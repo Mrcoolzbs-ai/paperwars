@@ -94,6 +94,7 @@ export const campaigns = pgTable(
     rngVersion: text('rng_version').notNull(),
     mapWidth: integer('map_width'),
     mapHeight: integer('map_height'),
+    mapSeed: text('map_seed').notNull().default(''),
     turnDurationHours: integer('turn_duration_hours').notNull().default(24),
     createdAt: createdAt(),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
