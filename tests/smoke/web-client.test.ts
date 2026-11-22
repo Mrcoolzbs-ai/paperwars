@@ -62,11 +62,17 @@ describe('browser client', () => {
     expect(script.body).toContain('/campaigns');
     const mapRenderer = script.body.slice(
       script.body.indexOf('function drawBuildingMapIcon'),
-      script.body.indexOf('async function request', script.body.indexOf('function drawBuildingMapIcon')),
+      script.body.indexOf(
+        'async function request',
+        script.body.indexOf('function drawBuildingMapIcon'),
+      ),
     );
     const countryCardRenderer = script.body.slice(
       script.body.indexOf('function renderFoundedCards'),
-      script.body.indexOf('function addPrincipleRow', script.body.indexOf('function renderFoundedCards')),
+      script.body.indexOf(
+        'function addPrincipleRow',
+        script.body.indexOf('function renderFoundedCards'),
+      ),
     );
     expect(mapRenderer).toContain("ctx.fillText('З'");
     expect(mapRenderer).not.toContain('strokeRect');
