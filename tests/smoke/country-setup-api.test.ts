@@ -126,7 +126,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
               (building) =>
                 mapData.terrain[(y - 2 + building.y) * mapData.width + x - 2 + building.x] === 'l',
             );
-            if (land >= 7 && buildingsOnLand) {
+            if (land >= 9 && buildingsOnLand) {
               spawn = { x, y };
               break;
             }
