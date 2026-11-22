@@ -356,7 +356,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           return counts;
         }, {});
         expect(buildingCounts).toEqual({
-          barracks: 1,
+          religious_building: 1,
           capital: 1,
           factory: 2,
           field: 2,
