@@ -305,6 +305,16 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(countryProfile.statusCode).toBe(200);
+        const profileData = countryProfile.json<{
+          country: {
+            name: string;
+            residentCount: number;
+            officialSystem: { name: string };
+            territory: { centerX: number | null; centerY: number | null };
+          };
+        }>().country;
+        expect(profileData.territory.centerX).toBe(spawn.x);
+        expect(profileData.territory.centerY).toBe(spawn.y);
         expect(
           countryProfile.json<{
             country: { name: string; residentCount: number; officialSystem: { name: string } };
@@ -323,6 +333,110 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           name: 'Harbor Republic',
           officialSystem: { id: createdSystem.id, type: 'religion' },
         });
+        // Simulate the setup-complete state: the other participant has left,
+        // so this campaign is ready for its first turn and its initial actions.
+        await persistence.pool.query(
+          `UPDATE campaign_memberships SET status = 'left'
+           WHERE campaign_id = $1 AND user_id = $2`,
+          [campaign.id, member.user.id],
+        );
+        await persistence.pool.query(
+          'UPDATE campaigns SET orders_locked = FALSE WHERE id = $1',
+          [campaign.id],
+        );
+
+        const actionMapResponse = await app.inject({
+          method: 'GET',
+          url: `/campaigns/${campaign.id}/map`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+        });
+        expect(actionMapResponse.statusCode).toBe(200);
+        const actionMap = actionMapResponse.json<{
+          map: {
+            width: number;
+            height: number;
+            terrain: string;
+            countries: Array<{
+              id: string;
+              cells: Array<{ x: number; y: number; population: number; buildingType: string | null }>;
+            }>;
+          };
+        }>().map;
+        const ownedCountry = actionMap.countries.find(
+          (item) => item.id === createdCountry.json<{ country: { id: string } }>().country.id,
+        );
+        if (!ownedCountry) throw new Error('Created country was not returned by map endpoint');
+        const freeLand = ownedCountry.cells.filter(
+          (cell) =>
+            cell.buildingType === null &&
+            cell.population > 0 &&
+            actionMap.terrain[cell.y * actionMap.width + cell.x] === 'l',
+        );
+        expect(freeLand.length).toBeGreaterThanOrEqual(2);
+        const constructionCell = freeLand[0];
+        const newCapitalCell = freeLand[1];
+        if (!constructionCell || !newCapitalCell) {
+          throw new Error('The test country does not have enough free land for both actions');
+        }
+
+        const construction = await app.inject({
+          method: 'POST',
+          url: `/campaigns/${campaign.id}/countries/mine/buildings`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+          payload: { type: 'factory', x: constructionCell.x, y: constructionCell.y },
+        });
+        expect(construction.statusCode).toBe(204);
+
+        const afterConstruction = await app.inject({
+          method: 'GET',
+          url: `/campaigns/${campaign.id}/map`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+        });
+        const afterConstructionCountry = afterConstruction
+          .json<{ map: { countries: typeof actionMap.countries } }>()
+          .map.countries.find((item) => item.id === ownedCountry.id);
+        expect(afterConstructionCountry?.cells).toContainEqual(
+          expect.objectContaining({
+            x: constructionCell.x,
+            y: constructionCell.y,
+            buildingType: 'factory',
+            population: 0,
+          }),
+        );
+
+        const capitalMove = await app.inject({
+          method: 'PUT',
+          url: `/campaigns/${campaign.id}/countries/mine/capital`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+          payload: { x: newCapitalCell.x, y: newCapitalCell.y },
+        });
+        expect(capitalMove.statusCode).toBe(204);
+
+        const afterCapitalMove = await app.inject({
+          method: 'GET',
+          url: `/campaigns/${campaign.id}/map`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+        });
+        const movedCells = afterCapitalMove
+          .json<{ map: { countries: typeof actionMap.countries } }>()
+          .map.countries.find((item) => item.id === ownedCountry.id)?.cells || [];
+        expect(movedCells).toContainEqual(
+          expect.objectContaining({
+            x: newCapitalCell.x,
+            y: newCapitalCell.y,
+            buildingType: 'capital',
+            population: 0,
+          }),
+        );
+        expect(movedCells).toContainEqual(
+          expect.objectContaining({
+            x: spawn.x - 2 + RELIGION_BUILDINGS.find((item) => item.type === 'capital')!.x,
+            y: spawn.y - 2 + RELIGION_BUILDINGS.find((item) => item.type === 'capital')!.y,
+            buildingType: null,
+            population: 1,
+          }),
+        );
+
       } finally {
         await app.close();
       }

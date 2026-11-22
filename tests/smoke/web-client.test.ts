@@ -20,6 +20,8 @@ describe('browser client', () => {
     const script = await app.inject({ method: 'GET', url: '/app.js' });
     const stylesheet = await app.inject({ method: 'GET', url: '/styles.css' });
     const icon = await app.inject({ method: 'GET', url: '/favicon.svg' });
+    const factory = await app.inject({ method: 'GET', url: '/assets/buildings/factory.jpg' });
+    const gold = await app.inject({ method: 'GET', url: '/assets/buildings/gold-mark.jpg' });
 
     expect(script.statusCode).toBe(200);
     expect(script.headers['content-type']).toContain('javascript');
@@ -28,6 +30,11 @@ describe('browser client', () => {
     expect(stylesheet.headers['content-type']).toContain('text/css');
     expect(icon.statusCode).toBe(200);
     expect(icon.headers['content-type']).toContain('image/svg+xml');
+    expect(factory.statusCode).toBe(200);
+    expect(factory.headers['content-type']).toContain('image/jpeg');
+    expect(factory.rawPayload.byteLength).toBeGreaterThan(500);
+    expect(gold.statusCode).toBe(200);
+    expect(gold.headers['content-type']).toContain('image/jpeg');
   });
 
   it('keeps the health endpoint separate from the game home page', async () => {
