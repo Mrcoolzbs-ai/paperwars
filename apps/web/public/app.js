@@ -112,7 +112,7 @@
     religious_building:{label:'Церковь',code:'☼',required:1},
     science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg'},
     barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg'},
-    tower:{label:'Замок / башня',code:'ЗМ',required:1,asset:'/assets/buildings/tower.jpg'},
+    tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg'},
   };
   function buildingIconHtml(type,extraClass='') {
     const meta=buildingMeta[type];if(!meta)return '';
