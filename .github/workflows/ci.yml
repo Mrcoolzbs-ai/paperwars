@@ -64,9 +64,6 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Format check
-        run: |
-          pnpm exec prettier --write packages/simulation/src/engine.ts tests/simulation/engine.test.ts
-          git diff -- packages/simulation/src/engine.ts tests/simulation/engine.test.ts
-          pnpm format:check
+        run: pnpm format:check
       - name: Tests
         run: pnpm --filter @paper-wars/tests test
