@@ -153,6 +153,7 @@ function createRecordedRandomSource(
   };
 
   return Object.freeze({
+    context: source.context,
     uniform,
     weighted<T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]): T {
       if (!Array.isArray(outcomes) || outcomes.length === 0) {
