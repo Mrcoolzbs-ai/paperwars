@@ -103,7 +103,9 @@ try {
     campaignService,
     countrySetupService,
     secureCookies: process.env['NODE_ENV'] === 'production',
-    webEntryPath: resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html'),
+    ...(process.env['NODE_ENV'] === 'production'
+      ? { webEntryPath: resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html') }
+      : {}),
   });
 
   await app.listen({ port, host });
