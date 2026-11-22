@@ -16,3 +16,12 @@ export {
   drawWeightedAndRecord,
   RandomDrawConflictError,
 } from './postgres/random-draws.js';
+export {
+  confirmCampaignOrders,
+  closeOrders,
+  CampaignTurnProcessingError,
+} from './postgres/turn-processing.js';
+export type {
+  CampaignTurnProcessingErrorCode,
+  ClosedTurnJob,
+} from './postgres/turn-processing.js';
