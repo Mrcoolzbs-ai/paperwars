@@ -10,6 +10,7 @@ import {
   type RulesetDefinition,
   type TurnResolution,
   type TurnResolver,
+  type WeightedOutcome,
   type WorldSnapshot,
 } from '@paper-wars/domain';
 
@@ -134,7 +135,7 @@ function createRecordedRandomSource(source: RandomSource, journal: RandomDrawRec
 
   return Object.freeze({
     uniform,
-    weighted<T>(domain: string, drawId: string, outcomes: Parameters<RandomSource['weighted']>[2]): T {
+    weighted<T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]): T {
       if (!Array.isArray(outcomes) || outcomes.length === 0) {
         throw new TurnResolutionInvariantError('Weighted random outcomes must not be empty');
       }
