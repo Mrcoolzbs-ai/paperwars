@@ -94,6 +94,7 @@ export const campaigns = pgTable(
     rngVersion: text('rng_version').notNull(),
     mapWidth: integer('map_width'),
     mapHeight: integer('map_height'),
+    turnDurationHours: integer('turn_duration_hours').notNull().default(24),
     createdAt: createdAt(),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
   },
@@ -131,6 +132,7 @@ export const socialSystems = pgTable(
       onDelete: 'set null',
     }),
     approvalStatus: text('approval_status').notNull().default('approved'),
+    emblemDataUrl: text('emblem_data_url'),
     principles: jsonb('principles')
       .$type<
         readonly {
@@ -211,6 +213,9 @@ export const countries = pgTable(
       .references(() => users.id),
     name: text('name').notNull(),
     status: text('status').notNull().default('active'),
+    culture: text('culture').array().notNull().default([]),
+    government: text('government').notNull().default('monarchy'),
+    flagDataUrl: text('flag_data_url'),
     officialSystemType: text('official_system_type'),
     officialSystemId: uuid('official_system_id'),
     setupCompleted: boolean('setup_completed').notNull().default(false),
