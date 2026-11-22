@@ -6,7 +6,10 @@ import {
   createCampaignService,
 } from '@paper-wars/auth';
 import { createApp } from '@paper-wars/api';
-import { createCampaignInvitationService } from '@paper-wars/gameplay';
+import {
+  createCampaignGameService,
+  createCampaignInvitationService,
+} from '@paper-wars/gameplay';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 
@@ -48,6 +51,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           rngVersion: 'hmac-v1',
         })
       : undefined;
+    const game = persistence ? createCampaignGameService({ pool: persistence.pool }) : undefined;
     const invitations = persistence
       ? createCampaignInvitationService({ pool: persistence.pool, invitationTtlSeconds: 3600 })
       : undefined;
@@ -57,6 +61,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       secureCookies: false,
       ...(auth === undefined ? {} : { authService: auth }),
       ...(campaigns === undefined ? {} : { campaignService: campaigns }),
+      ...(game === undefined ? {} : { campaignGameService: game }),
       ...(invitations === undefined ? {} : { campaignInvitationService: invitations }),
     });
     let ownerId = '';
