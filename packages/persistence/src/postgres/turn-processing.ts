@@ -168,8 +168,8 @@ export async function lockCampaignForInvitationWrite(
   const row = result.rows[0];
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
-  if (row.orders_locked && !row.initial_setup) {
-    throw new OrdersAlreadyLockedError('Membership changes are locked for the current turn');
+  if (!row.initial_setup) {
+    throw new OrdersAlreadyLockedError('Invitations are only allowed during initial campaign setup');
   }
   return row.current_turn;
 }
