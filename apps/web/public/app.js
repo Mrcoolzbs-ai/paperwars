@@ -933,14 +933,14 @@
       ['collectivist','individualistic'], ['expansionist','isolationist'],
     ];
     const syncCultureOptions = () => {
-      const chosen = new Set($('#culture-list input:checked').map((input) => input.value));
-      $('#culture-list input').forEach((input) => {
+      const chosen = new Set(Array.from(document.querySelectorAll('#culture-list input:checked'), (input) => input.value));
+      Array.from(document.querySelectorAll('#culture-list input')).forEach((input) => {
         const opposite = cultureOpposites.find((pair) => pair.includes(input.value))?.find((value) => value !== input.value);
         input.disabled = (!input.checked && chosen.size >= 5) || Boolean(opposite && chosen.has(opposite));
       });
     };
     $('#culture-list').addEventListener('change', (event) => {
-      const selected = $('#culture-list input:checked');
+      const selected = Array.from(document.querySelectorAll('#culture-list input:checked'));
       if (selected.length > 5 && event.target.checked) {
         event.target.checked = false;
         showToast('Можно выбрать не более пяти культурных характеристик.', true);
