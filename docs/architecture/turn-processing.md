@@ -4,7 +4,20 @@
 
 ## 6. Обработка хода, приказы и worker jobs
 
-Все перечисленные ниже механизмы — технические контракты будущей реализации.
+Закрытие приказов, TurnJob и Worker ниже пока остаются техническими контрактами будущей реализации. Начальный I/O-free orchestration core Stage 1.7 уже реализован в `@paper-wars/simulation`.
+
+### 6.0. Реализованный pure orchestration core — Stage 1.7 (начальный инкремент)
+
+`createSimulationEngine(...).resolveTurn(...)` выполняет чистую orchestration-оболочку без обращения к БД, HTTP, системному времени или глобальному RNG:
+
+1. Проверяет совместимость manifest, engine/ruleset/RNG versions и snapshot schema.
+2. Допускает в resolver только finalized orders, принадлежащие тому же campaign и turn; дублирующиеся ID не допускаются.
+3. Передаёт snapshot, список приказов, ruleset и переданный вызывающей стороной `RandomSource` в ruleset resolver.
+4. Перехватывает uniform draws, проверяет безопасные целочисленные диапазоны/значения и запрещает повторное использование пары domain/drawId.
+5. Реализует weighted selection через uniform integer target в диапазоне `0..totalWeight-1`. Это сохраняет точное выпавшее значение в существующем формате `random_draws`; порядок outcomes является входом resolver и должен задаваться нормативной таблицей.
+6. Сам формирует авторитетный `randomDraws` и проверяет campaign, turn, source snapshot version и однозначное соответствие каждого входного приказа одному order result.
+
+Ruleset resolver возвращает `TurnSimulationResult` без RNG-журнала: журнал принадлежит orchestration engine и не может быть подменён resolver. Engine не реализует игровые эффекты автоматически: конкретные фазы, проверки приказов и переходы состояния добавляются отдельными правилами с tests. Успешные unit-тесты текущего pure core проверяют контракт и повторяемость на фиксированном RNG, но не закрывают игровой цикл.
 
 ### 6.1. Семантика хода и snapshots
 
