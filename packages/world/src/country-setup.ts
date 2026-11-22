@@ -15,6 +15,9 @@ import {
 } from './errors.js';
 import type {
   AvailableSocialSystem,
+  CampaignMapCountry,
+  CampaignMapView,
+  CampaignSpawnReservation,
   CountrySetupService,
   CreateSocialSystemInput,
   OfficialSystemType,
@@ -60,6 +63,9 @@ interface SnapshotCellRow {
   readonly official_system_id: string;
   readonly system_name: string;
   readonly system_principles: readonly SocialSystemPrinciple[];
+  readonly culture: readonly string[];
+  readonly government: string;
+  readonly flag_data_url: string | null;
   readonly cell_id: string;
   readonly x: number;
   readonly y: number;
@@ -78,12 +84,16 @@ interface SocialSystemRow {
   readonly approval_status: SocialSystemApprovalStatus;
   readonly review_reason: string | null;
   readonly created_at: Date;
+  readonly emblem_data_url?: string | null;
 }
 
 interface SnapshotCountry {
   readonly id: string;
   readonly ownerUserId: string;
   readonly name: string;
+  readonly culture: readonly string[];
+  readonly government: string;
+  readonly flagDataUrl: string | null;
   readonly officialSystem: {
     readonly id: string;
     readonly type: OfficialSystemType;
@@ -121,6 +131,53 @@ function validateInteger(value: number, field: string): void {
   }
 }
 
+function validateImageDataUrl(value: unknown, field: string): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.length > 700_000 ||
+      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw new CountrySetupValidationError(field + ' must be a PNG, JPEG or WebP image under 512 KiB');
+  }
+  return value;
+}
+
+const CULTURE_OPTIONS = new Set([
+  'militaristic','pacifist','xenophobic','xenophilic','hierarchical','egalitarian',
+  'spiritual','rationalist','collectivist','individualistic','expansionist','isolationist',
+]);
+const GOVERNMENT_OPTIONS = new Set([
+  'technocracy','democracy','oligarchy','dictatorship','monarchy','ideocracy','theocracy','fascism',
+]);
+
+function validateCulture(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 5) throw new CountrySetupValidationError('Choose no more than five cultural traits');
+  const items = value.map((item) => {
+    if (typeof item !== 'string' || !CULTURE_OPTIONS.has(item)) throw new CountrySetupValidationError('A selected cultural trait is invalid');
+    return item;
+  });
+  if (new Set(items).size !== items.length) throw new CountrySetupValidationError('Cultural traits must be unique');
+  return items;
+}
+
+function validateGovernment(value: unknown): string {
+  const selected = value === undefined || value === null || value === '' ? 'monarchy' : value;
+  if (typeof selected !== 'string' || !GOVERNMENT_OPTIONS.has(selected)) throw new CountrySetupValidationError('A selected form of government is invalid');
+  return selected;
+}
+
+function isLandCell(x: number, y: number, width: number, height: number): boolean {
+  const px = (x + 0.5) / width;
+  const py = (y + 0.5) / height;
+  const regions = [[0.18,0.30,0.16,0.23],[0.39,0.39,0.21,0.28],[0.70,0.28,0.18,0.24],[0.80,0.69,0.15,0.18],[0.39,0.79,0.22,0.16]] as const;
+  return regions.some(([cx,cy,rx,ry]) => ((px-cx)/rx)**2 + ((py-cy)/ry)**2 <= 1);
+}
+
+function validateSpawnLand(cx: number, cy: number, width: number, height: number): void {
+  for (let y = cy - 2; y <= cy + 2; y += 1) for (let x = cx - 2; x <= cx + 2; x += 1) {
+    if (!isLandCell(x, y, width, height)) throw new SpawnAreaUnavailableError();
+  }
+}
+
 function validateCountryName(value: unknown): string {
   if (typeof value !== 'string') {
     throw new CountrySetupValidationError('Country name must be a string');
@@ -151,6 +208,7 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
   readonly type: OfficialSystemType;
   readonly name: string;
   readonly principles: readonly SocialSystemPrinciple[];
+  readonly emblemDataUrl: string | null;
 } {
   if (input === null || typeof input !== 'object') {
     throw new CountrySetupValidationError('Social system payload must be an object');
@@ -159,6 +217,7 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
     throw new CountrySetupValidationError('Social system type must be religion or ideology');
   }
   const name = validateSystemName(input.name);
+  const emblemDataUrl = validateImageDataUrl(input.emblemDataUrl, 'Emblem');
   if (
     !Array.isArray(input.principles) ||
     input.principles.length < 1 ||
@@ -208,11 +267,16 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
       );
     }
     principleNames.add(key);
+    const effect = value['effect'];
+    if (effect !== undefined && (typeof effect !== 'string' || effect.trim().length < 1 || effect.trim().length > 500)) {
+      throw new CountrySetupValidationError('Principle ' + (index + 1) + ' has an invalid game effect');
+    }
     if (polarity === 'positive') positiveCount += 1;
     if (polarity === 'negative') negativeCount += 1;
     principles.push({
       name: principleName,
       description: (value['description'] as string).trim(),
+      ...(typeof effect === 'string' ? { effect: effect.trim() } : {}),
       polarity,
     });
   }
@@ -221,7 +285,7 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
       'Each positive principle after the first two must be balanced by a negative principle',
     );
   }
-  return { type: input.type, name, principles };
+  return { type: input.type, name, principles, emblemDataUrl };
 }
 
 function toSocialSystemView(row: SocialSystemRow): SocialSystemView {
@@ -231,6 +295,7 @@ function toSocialSystemView(row: SocialSystemRow): SocialSystemView {
     type: row.system_type,
     name: row.name,
     principles: row.principles,
+    emblemDataUrl: row.emblem_data_url ?? null,
     approvalStatus: row.approval_status,
     reviewReason: row.review_reason,
     createdAt: row.created_at,
@@ -245,6 +310,7 @@ function toAvailableSocialSystem(row: SocialSystemRow): AvailableSocialSystem {
     originX: row.origin_x,
     originY: row.origin_y,
     principles: row.principles,
+    emblemDataUrl: row.emblem_data_url ?? null,
   };
 }
 
@@ -378,7 +444,7 @@ async function resolveOfficialSystem(
 ): Promise<AvailableSocialSystem> {
   const result = await tx.query<SocialSystemRow & { readonly created_by_user_id: string | null }>(
     `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
-            principles, approval_status, review_reason, created_at, created_by_user_id
+            principles, approval_status, review_reason, created_at, emblem_data_url, created_by_user_id
      FROM social_systems
      WHERE campaign_id = $1 AND id = $2 AND approval_status = 'approved'
        AND lifecycle_status = 'active'`,
@@ -433,6 +499,7 @@ async function buildSnapshot(
     `SELECT c.id AS country_id, c.name AS country_name, c.owner_user_id,
             c.official_system_type, c.official_system_id, ss.name AS system_name,
             ss.principles AS system_principles,
+            c.culture, c.government, c.flag_data_url,
             cell.id AS cell_id, cell.x, cell.y, cc.population,
             building.building_type
      FROM countries AS c
@@ -459,6 +526,9 @@ async function buildSnapshot(
         id: row.country_id,
         ownerUserId: row.owner_user_id,
         name: row.country_name,
+        culture: row.culture,
+        government: row.government,
+        flagDataUrl: row.flag_data_url,
         officialSystem: {
           id: row.official_system_id,
           type: row.official_system_type,
@@ -495,8 +565,123 @@ export function createCountrySetupService(options: {
   const requireAdmin = (userId: string): void => {
     if (!adminUserIds.has(userId)) throw new SocialSystemAdminRequiredError();
   };
+  const availabilityPolicy: SocialSystemAvailabilityPolicy = options.systemAvailabilityPolicy ?? {
+    async listAvailable(tx, query) {
+      const nearby = await tx.query<SocialSystemRow>(
+        `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+                principles, approval_status, review_reason, created_at, emblem_data_url
+         FROM social_systems
+         WHERE campaign_id = $1 AND system_type = $2
+           AND approval_status = 'approved' AND lifecycle_status = 'active'
+           AND creation_kind = 'player_created' AND origin_x IS NOT NULL AND origin_y IS NOT NULL
+         ORDER BY ((origin_x - $3) * (origin_x - $3) + (origin_y - $4) * (origin_y - $4)) ASC, created_at ASC
+         LIMIT 3`,
+        [query.campaignId, query.systemType, query.spawnX, query.spawnY],
+      );
+      return nearby.rows.map(toAvailableSocialSystem);
+    },
+  };
 
   return {
+    async getCampaignMap(userId, campaignId) {
+      const member = await options.pool.query(
+        `SELECT 1 FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+        [campaignId, userId],
+      );
+      if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
+      const dims = await options.pool.query<{ map_width: number | null; map_height: number | null }>(
+        'SELECT map_width, map_height FROM campaigns WHERE id = $1',
+        [campaignId],
+      );
+      const map = dims.rows[0];
+      if (!map || map.map_width === null || map.map_height === null) throw new CampaignSetupNotReadyError();
+      const data = await options.pool.query<{
+        country_id: string; name: string; owner_user_id: string; flag_data_url: string | null;
+        x: number; y: number; building_type: StartBuildingType | null;
+      }>(
+        `SELECT country.id AS country_id, country.name, country.owner_user_id,
+                country.flag_data_url, cell.x, cell.y, building.building_type
+         FROM countries AS country
+         JOIN country_cells AS owned ON owned.campaign_id = country.campaign_id AND owned.country_id = country.id
+         JOIN cells AS cell ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+         LEFT JOIN country_buildings AS building ON building.campaign_id = owned.campaign_id
+           AND building.country_id = owned.country_id AND building.cell_id = owned.cell_id
+         WHERE country.campaign_id = $1 AND country.setup_completed = TRUE
+         ORDER BY country.name, cell.y, cell.x`,
+        [campaignId],
+      );
+      const groups = new Map<string, {
+        id: string; name: string; ownerUserId: string; flagDataUrl: string | null;
+        cells: Array<{ x: number; y: number; buildingType: StartBuildingType | null }>;
+      }>();
+      for (const row of data.rows) {
+        let country = groups.get(row.country_id);
+        if (!country) {
+          country = { id: row.country_id, name: row.name, ownerUserId: row.owner_user_id, flagDataUrl: row.flag_data_url, cells: [] };
+          groups.set(row.country_id, country);
+        }
+        country.cells.push({ x: row.x, y: row.y, buildingType: row.building_type });
+      }
+      const reservations = await options.pool.query<{ user_id: string; center_x: number; center_y: number }>(
+        'SELECT user_id, center_x, center_y FROM campaign_spawn_reservations WHERE campaign_id = $1 ORDER BY updated_at',
+        [campaignId],
+      );
+      return {
+        width: map.map_width, height: map.map_height, countries: [...groups.values()],
+        reservations: reservations.rows.map((row) => ({
+          userId: row.user_id, centerX: row.center_x, centerY: row.center_y, isMine: row.user_id === userId,
+        })),
+      };
+    },
+
+    async reserveSpawn(userId, campaignId, centerX, centerY) {
+      validateInteger(centerX, 'centerX');
+      validateInteger(centerY, 'centerY');
+      const client = await options.pool.connect();
+      try {
+        await client.query('BEGIN');
+        const dims = await client.query<{ map_width: number | null; map_height: number | null }>(
+          'SELECT map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
+          [campaignId],
+        );
+        const map = dims.rows[0];
+        if (!map || map.map_width === null || map.map_height === null) throw new CampaignSetupNotReadyError();
+        const member = await client.query<MembershipRow>(
+          'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
+          [campaignId, userId],
+        );
+        if (!member.rows[0] || member.rows[0].status !== 'active') throw new NotActiveCampaignMemberError();
+        if (member.rows[0].country_id !== null) throw new CountryAlreadyRegisteredError();
+        if (centerX < 2 || centerY < 2 || centerX + 2 >= map.map_width || centerY + 2 >= map.map_height) {
+          throw new CountrySetupValidationError('The selected 5x5 starting area is outside the campaign map');
+        }
+        validateSpawnLand(centerX, centerY, map.map_width, map.map_height);
+        const occupied = await client.query(
+          'SELECT 1 FROM cells WHERE campaign_id = $1 AND x BETWEEN $2 AND $3 AND y BETWEEN $4 AND $5 LIMIT 1',
+          [campaignId, centerX - 2, centerX + 2, centerY - 2, centerY + 2],
+        );
+        const reserved = await client.query(
+          'SELECT 1 FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id <> $2 AND center_x BETWEEN $3 AND $4 AND center_y BETWEEN $5 AND $6 LIMIT 1',
+          [campaignId, userId, centerX - 4, centerX + 4, centerY - 4, centerY + 4],
+        );
+        if (occupied.rows.length || reserved.rows.length) throw new SpawnAreaUnavailableError();
+        await client.query(
+          `INSERT INTO campaign_spawn_reservations (campaign_id, user_id, center_x, center_y)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (campaign_id, user_id) DO UPDATE SET
+             center_x = EXCLUDED.center_x, center_y = EXCLUDED.center_y, updated_at = NOW()`,
+          [campaignId, userId, centerX, centerY],
+        );
+        await client.query('COMMIT');
+        return { userId, centerX, centerY, isMine: true };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async createSocialSystem(userId, campaignId, input) {
       const validated = validateSocialSystemInput(input);
       const client = await options.pool.connect();
@@ -547,17 +732,22 @@ export function createCountrySetupService(options: {
         const inserted = await client.query<SocialSystemRow>(
           `INSERT INTO social_systems (
              campaign_id, system_type, name, origin_x, origin_y, traits,
-             created_by_user_id, approval_status, principles, creation_kind, lifecycle_status
-           ) VALUES ($1, $2, $3, NULL, NULL, '[]'::jsonb, $4, 'pending', $5::jsonb,
-                     'player_created', 'active')
+             created_by_user_id, approval_status, principles, emblem_data_url, creation_kind, lifecycle_status
+           ) VALUES (
+             $1, $2, $3,
+             (SELECT center_x FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $4),
+             (SELECT center_y FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $4),
+             '[]'::jsonb, $4, 'approved', $5::jsonb, $6, 'player_created', 'active'
+           )
            RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
-                     principles, approval_status, review_reason, created_at`,
+                     principles, approval_status, review_reason, created_at, emblem_data_url`,
           [
             campaignId,
             validated.type,
             validated.name,
             userId,
             JSON.stringify(validated.principles),
+            validated.emblemDataUrl,
           ],
         );
         const row = inserted.rows[0];
@@ -586,7 +776,7 @@ export function createCountrySetupService(options: {
       if (membership.rows.length === 0) throw new NotActiveCampaignMemberError();
       const result = await options.pool.query<SocialSystemRow>(
         `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
-                principles, approval_status, review_reason, created_at
+                principles, approval_status, review_reason, created_at, emblem_data_url
          FROM social_systems
          WHERE campaign_id = $1 AND created_by_user_id = $2
            AND creation_kind = 'player_created'
@@ -606,7 +796,7 @@ export function createCountrySetupService(options: {
         await lockInitialSetupCampaign(client, campaignId);
         const result = await client.query<SocialSystemRow>(
           `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
-                  principles, approval_status, review_reason, created_at
+                  principles, approval_status, review_reason, created_at, emblem_data_url
            FROM social_systems
            WHERE campaign_id = $1 AND approval_status = 'pending'
              AND creation_kind = 'player_created'
@@ -649,7 +839,7 @@ export function createCountrySetupService(options: {
         await lockInitialSetupCampaign(client, campaignId);
         const pending = await client.query<SocialSystemRow>(
           `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
-                  principles, approval_status, review_reason, created_at
+                  principles, approval_status, review_reason, created_at, emblem_data_url
            FROM social_systems
            WHERE campaign_id = $1 AND id = $2 AND approval_status = 'pending'
              AND creation_kind = 'player_created'
@@ -664,7 +854,7 @@ export function createCountrySetupService(options: {
                reviewed_at = clock_timestamp(), review_reason = $5
            WHERE campaign_id = $1 AND id = $2
            RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
-                     principles, approval_status, review_reason, created_at`,
+                     principles, approval_status, review_reason, created_at, emblem_data_url`,
           [
             campaignId,
             systemId,
@@ -725,7 +915,7 @@ export function createCountrySetupService(options: {
 
         const owned = await result.query<SocialSystemRow>(
           `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
-                  principles, approval_status, review_reason, created_at
+                  principles, approval_status, review_reason, created_at, emblem_data_url
            FROM social_systems
            WHERE campaign_id = $1 AND created_by_user_id = $2
              AND system_type = $3 AND approval_status = 'approved'
@@ -735,8 +925,8 @@ export function createCountrySetupService(options: {
         const systems = new Map<string, AvailableSocialSystem>(
           owned.rows.map((system) => [system.id, toAvailableSocialSystem(system)]),
         );
-        if (options.systemAvailabilityPolicy !== undefined) {
-          const nearby = await options.systemAvailabilityPolicy.listAvailable(result, {
+        if (availabilityPolicy !== undefined) {
+          const nearby = await availabilityPolicy.listAvailable(result, {
             campaignId,
             systemType,
             spawnX,
@@ -745,7 +935,7 @@ export function createCountrySetupService(options: {
           if (nearby.length > 0) {
             const eligible = await result.query<SocialSystemRow>(
               `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
-                      principles, approval_status, review_reason, created_at
+                      principles, approval_status, review_reason, created_at, emblem_data_url
                FROM social_systems
                WHERE campaign_id = $1 AND id = ANY($2::uuid[])
                  AND system_type = $3 AND approval_status = 'approved'
@@ -774,6 +964,9 @@ export function createCountrySetupService(options: {
         throw new CountrySetupValidationError('Country setup payload must be an object');
       }
       const name = validateCountryName(input.name);
+      const culture = validateCulture(input.culture);
+      const government = validateGovernment(input.government);
+      const flagDataUrl = validateImageDataUrl(input.flagDataUrl, 'Country flag');
       validateInteger(input.spawnX, 'spawnX');
       validateInteger(input.spawnY, 'spawnY');
       if (
@@ -846,24 +1039,27 @@ export function createCountrySetupService(options: {
           throw new CountryAlreadyRegisteredError();
         }
 
+        validateSpawnLand(input.spawnX, input.spawnY, campaign.map_width, campaign.map_height);
+        const reservedByOther = await client.query(
+          `SELECT 1 FROM campaign_spawn_reservations
+           WHERE campaign_id = $1 AND user_id <> $2
+             AND center_x BETWEEN $3 AND $4 AND center_y BETWEEN $5 AND $6 LIMIT 1`,
+          [campaignId, userId, input.spawnX - 4, input.spawnX + 4, input.spawnY - 4, input.spawnY + 4],
+        );
+        if (reservedByOther.rows.length > 0) throw new SpawnAreaUnavailableError();
         const system = await resolveOfficialSystem(
-          client,
-          campaignId,
-          userId,
-          input.spawnX,
-          input.spawnY,
-          officialSystemId,
-          options.systemAvailabilityPolicy,
+          client, campaignId, userId, input.spawnX, input.spawnY, officialSystemId, availabilityPolicy,
         );
         validateBuildingPlacements(input.buildings, system.type);
 
         const countryResult = await client.query<{ id: string }>(
           `INSERT INTO countries (
              campaign_id, owner_user_id, name, status,
-             official_system_type, official_system_id, setup_completed
-           ) VALUES ($1, $2, $3, 'active', $4, $5, FALSE)
+             official_system_type, official_system_id, setup_completed,
+             culture, government, flag_data_url
+           ) VALUES ($1, $2, $3, 'active', $4, $5, FALSE, $6::text[], $7, $8)
            RETURNING id`,
-          [campaignId, userId, name, system.type, system.id],
+          [campaignId, userId, name, system.type, system.id, culture, government, flagDataUrl],
         );
         const countryId = countryResult.rows[0]?.id;
         if (countryId === undefined) {
@@ -945,6 +1141,10 @@ export function createCountrySetupService(options: {
           'UPDATE countries SET setup_completed = TRUE WHERE id = $1 AND campaign_id = $2',
           [countryId, campaignId],
         );
+        await client.query(
+          'DELETE FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $2',
+          [campaignId, userId],
+        );
 
         await client.query(
           `INSERT INTO game_events (
@@ -1006,7 +1206,8 @@ export function createCountrySetupService(options: {
         if (pendingMembers.rows.length === 0) {
           await client.query(
             `UPDATE campaigns
-             SET orders_locked = FALSE, orders_locked_at = NULL
+             SET orders_locked = FALSE, orders_locked_at = NULL,
+                 deadline_at = NOW() + (turn_duration_hours * INTERVAL '1 hour')
              WHERE id = $1
                AND status = 'active'
                AND current_turn = 1
@@ -1022,6 +1223,9 @@ export function createCountrySetupService(options: {
           id: countryId,
           campaignId,
           name,
+          culture,
+          government,
+          flagDataUrl,
           officialSystem: system,
           territory: {
             centerX: input.spawnX,
