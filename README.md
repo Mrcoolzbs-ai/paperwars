@@ -4,21 +4,22 @@
 
 ## Текущий статус
 
-- **Documentation Baseline v1.0** зафиксирован в `main`.
-- **Stage 1.1** — monorepo bootstrap, API health-check и базовый CI: merged (PR #3).
-- **Stage 1.2** — PostgreSQL 18, Drizzle schema, миграции и integration tests: merged (PR #4).
-- **Stage 1.3** — deterministic RNG, commit-reveal seed service, AES-256-GCM, versioned keys и random draw audit log: merged (PR #5).
-- **Stage 1.4** — scrypt auth, HS256 access JWT, rotating refresh sessions/replay detection и атомарное campaign + first seed create: merged (PR #6).
-- **Stage 1.5** — branded domain entities, snapshot/order/event/turn contracts, ruleset compatibility и schema-version migrations: merged (PR #7).
-- Последний чистый CI: build, typecheck, lint, format-check и 55/55 тестов прошли на PostgreSQL 18.7.
+- Documentation Baseline v1.0 и базовые инфраструктурные этапы зафиксированы в `main`.
+- **Stage 1** — monorepo, PostgreSQL persistence, deterministic RNG, authentication, campaign API и контракты симуляции.
+- **Stage 2** — создание религий/идеологий до регистрации государства, модерация, лимиты систем, территория 5×5 и стартовые постройки.
+- **Stage 3 — browser client (MVP)** — вход и регистрация, список/создание кампаний, создание социальных систем, панель модерации и форма основания государства.
+- Клиент работает как статические HTML/CSS/JS-файлы и отдаётся тем же Fastify-сервером. Отдельный frontend build и Docker для запуска не нужны.
+- **Полный игровой цикл ещё не реализован**: приказы, дипломатия, армия, исполнение ходов и отображение настоящего world snapshot остаются следующими этапами.
 
-Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
+Спецификация и код не означают, что игра уже исполняет полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
 ## Структура
 
-- `apps/api` — HTTP API.
+- `apps/api` — HTTP API и раздача браузерного клиента.
+- `apps/web/public` — клиент Paper Wars (vanilla JavaScript, HTML и CSS).
 - `packages/shared` — общие типы и утилиты.
 - `packages/domain` — доменные контракты.
+- `packages/world` — старт государства, территории и социальные системы.
 - `packages/simulation` — оболочка детерминированного Simulation Engine.
 - `packages/persistence` — PostgreSQL/Drizzle persistence и миграции.
 - `tests` — smoke и интеграционные тесты.
@@ -26,24 +27,32 @@
 
 ## Требования
 
-- Node.js 22 или совместимый поддерживаемый LTS-релиз.
-- pnpm 9.15.x.
-- Docker Compose для локальной PostgreSQL.
+- Node.js 22 или новее.
+- Corepack и pnpm 9.15.x.
+- PostgreSQL 18 или новее.
+- Docker Desktop не обязателен: PostgreSQL можно установить как обычную службу Windows.
 
-## Установка и запуск PostgreSQL
+## Windows: запуск без Docker
+
+1. Обнови файлы клиента скриптом `update-paperwars-web-client.bat` (нужно только для уже скачанной старой копии проекта).
+2. Убедись, что PostgreSQL запущен и настройки `DATABASE_URL` в `.env` соответствуют локальной базе.
+3. Запусти `start-paperwars-postgresql19.bat` двойным щелчком.
+4. Скрипт установит зависимости, применит миграции, запустит API и откроет браузер на `http://127.0.0.1:3000`.
+
+Первая установка Node.js и PostgreSQL выполняется отдельно. Скрипт запуска не меняет существующий `.env`. Окно `Paper Wars API` должно оставаться открытым, пока используешь игру.
+
+## Ручная установка и запуск
 
 ```bash
 corepack pnpm install
 cp .env.example .env
-docker compose up -d db
-corepack pnpm db:migrate
+corepack pnpm --filter @paper-wars/persistence db:migrate
+corepack pnpm --filter @paper-wars/api dev
 ```
 
-Для тестов с локальной БД:
+Игровой интерфейс: `http://127.0.0.1:3000/`.
 
-```bash
-DATABASE_URL=postgresql://paperwars:change-me-local-only@127.0.0.1:5432/paperwars corepack pnpm test
-```
+Проверка API: `http://127.0.0.1:3000/health`.
 
 ## Проверки
 
@@ -57,22 +66,19 @@ corepack pnpm build
 
 GitHub Actions поднимает отдельный PostgreSQL service и выполняет миграционные integration tests автоматически.
 
-## Запуск API
+## Социальные системы и модерация
 
-```bash
-corepack pnpm dev:api
-```
+Игрок отправляет религию или идеологию на проверку до регистрации государства. Одобрять и отклонять заявки могут только UUID, перечисленные в `SOCIAL_SYSTEM_ADMIN_USER_IDS` через запятую в `.env`. Не добавляй туда случайные или публичные UUID.
 
-Health-check: `GET http://127.0.0.1:3000/health`.
+Доступность чужих социальных систем зависит от ruleset policy. Конкретный географический радиус и метрика расстояния исходными правилами не определены, поэтому сервер не выдумывает их.
 
-## Текущие ограничения
+## Текущие ограничения клиента
 
-- Participant invitations/roles, audit trail и rate limiting для публичных auth endpoints пока не реализованы.
-- Полный country setup (official system, стартовые здания/население, world snapshot) ещё не реализован; это Stage 2.
-- Domain contracts и pure TurnResolver interface уже есть, но Simulation Engine пока не исполняет игровые ходы.
-- PostgreSQL Worker, закрытие приказов, lease/fencing и atomic turn finalization ещё не реализованы.
-- Публичный API seed reveal и Web-клиент ещё не реализованы.
-- Stage 1 DoD не достигнут: полного end-to-end цикла «приказ → worker → симуляция → snapshot → API» пока нет.
+- Карта на обзорном экране пока схематическая; настоящий рельеф, реки и сохранённое состояние мира ещё не визуализируются из world snapshot.
+- Стартовая территория 5×5 и размещение семи построек отправляются в API.
+- Системы других игроков не становятся автоматически доступными без настроенной ruleset policy.
+- Полный цикл «приказ → worker → симуляция → snapshot → API» ещё не достигнут.
+- Invitations/roles, audit trail и rate limiting для публичных auth endpoints остаются отдельными задачами.
 
 ## Seed encryption configuration
 
