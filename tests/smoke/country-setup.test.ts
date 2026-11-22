@@ -103,9 +103,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           }
           const buildingsOnLand = buildings.every(
             (building) =>
-              map.terrain[
-                (y - 2 + building.y) * map.width + x - 2 + building.x
-              ] === 'l',
+              map.terrain[(y - 2 + building.y) * map.width + x - 2 + building.x] === 'l',
           );
           if (!free || land < 7 || !buildingsOnLand) continue;
           if (
@@ -278,7 +276,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       // The second participant may create an immediately available system
       // after reserving a separate starting location, while turn one remains locked.
-      const secondSpawn = await findAvailableSpawn(countrySetup, secondUser.user.id, campaign.id, IDEOLOGY_BUILDINGS);
+      const secondSpawn = await findAvailableSpawn(
+        countrySetup,
+        secondUser.user.id,
+        campaign.id,
+        IDEOLOGY_BUILDINGS,
+      );
       const secondSystem = await createApprovedSocialSystem(
         countrySetup,
         secondUser.user.id,

@@ -1190,7 +1190,9 @@ export function createCountrySetupService(options: {
           const globalX = input.spawnX - TERRITORY_HALF + building.x;
           const globalY = input.spawnY - TERRITORY_HALF + building.y;
           if (spawnMap.terrain[globalY * campaign.map_width + globalX] !== 'l') {
-            throw new CountrySetupValidationError('All seven starting buildings must be placed on land cells');
+            throw new CountrySetupValidationError(
+              'All seven starting buildings must be placed on land cells',
+            );
           }
         }
 
