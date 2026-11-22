@@ -714,7 +714,7 @@
     const title = faithType === 'religion' ? 'Верования' : 'Принципы';
     const metrics = faithType === 'religion'
       ? [['Адепты', '—'], ['Святые места', '—'], ['Храмы', String((country.buildings || []).find((x) => x.type === 'religious_building')?.count || 0)]]
-      : [['Последователи', '—'], ['Ответвления', '—'], ['Центры', '—']];
+      : [['Адепты', '—'], ['Крылья', '—'], ['Центры', '—']];
     $('#faith-card-host').innerHTML = `
       <article class="archive-card social-profile-card">
         <header class="archive-card-header">
