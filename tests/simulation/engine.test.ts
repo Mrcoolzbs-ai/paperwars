@@ -104,8 +104,14 @@ describe('pure simulation engine', () => {
   });
 
   it('resolves finalized orders and attaches its own auditable uniform/weighted draw journal', () => {
-    const weighted = vi.fn(createRandomSource().weighted);
-    const random = createRandomSource({ weighted });
+    let weightedCalls = 0;
+    const random: RandomSource = {
+      uniform: createRandomSource().uniform,
+      weighted<T>() {
+        weightedCalls += 1;
+        throw new Error('The engine must record weighted draws through uniform targets') as unknown as T;
+      },
+    };
 
     const result = engine.resolveTurn({
       snapshot,
@@ -139,7 +145,7 @@ describe('pure simulation engine', () => {
         },
       ],
     });
-    expect(weighted).not.toHaveBeenCalled();
+    expect(weightedCalls).toBe(0);
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.randomDraws)).toBe(true);
   });
