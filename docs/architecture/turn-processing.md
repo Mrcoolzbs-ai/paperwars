@@ -15,7 +15,8 @@
 3. Передаёт snapshot, список приказов, ruleset и переданный вызывающей стороной `RandomSource` в ruleset resolver. `createDeterministicRandomSource(RNGContext)` связывает production source с committed turn seed через существующий HMAC-SHA-256 RNG-пакет.
 4. Перехватывает uniform draws, проверяет безопасные целочисленные диапазоны/значения и запрещает повторное использование пары domain/drawId.
 5. Реализует weighted selection через uniform integer target в диапазоне `0..totalWeight-1`. Это сохраняет точное выпавшее значение в существующем формате `random_draws`; порядок outcomes является входом resolver и должен задаваться нормативной таблицей.
-6. Сам формирует авторитетный `randomDraws` и проверяет campaign, turn, source snapshot version и однозначное соответствие каждого входного приказа одному order result.
+6. Проверяет, что RNG source привязан к тому же campaignId, turnNumber и rngVersion, что и snapshot; чужой seed отклоняется до вызова resolver.
+7. Сам формирует авторитетный `randomDraws` и проверяет campaign, turn, source snapshot version и однозначное соответствие каждого входного приказа одному order result.
 
 Ruleset resolver возвращает `TurnSimulationResult` без RNG-журнала: журнал принадлежит orchestration engine и не может быть подменён resolver. Engine не реализует игровые эффекты автоматически: конкретные фазы, проверки приказов и переходы состояния добавляются отдельными правилами с tests. Успешные unit-тесты текущего pure core проверяют контракт и повторяемость на фиксированном RNG, но не закрывают игровой цикл.
 
