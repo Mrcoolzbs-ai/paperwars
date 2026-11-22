@@ -78,14 +78,22 @@
   }
 
   async function restoreSession() {
-    try {
-      if (!state.token) {
-        const refreshed = await fetch('/auth/refresh', { method: 'POST', credentials: 'same-origin' });
-        if (!refreshed.ok) return false;
-        const data = await refreshed.json();
-        state.token = data.accessToken;
-        sessionStorage.setItem('pw_access_token', state.token);
+    if (state.token) {
+      try {
+        const me = await request('/auth/me');
+        state.user = me.user;
+        return true;
+      } catch {
+        state.token = '';
+        sessionStorage.removeItem('pw_access_token');
       }
+    }
+    try {
+      const refreshed = await fetch('/auth/refresh', { method: 'POST', credentials: 'same-origin' });
+      if (!refreshed.ok) return false;
+      const data = await refreshed.json();
+      state.token = data.accessToken;
+      sessionStorage.setItem('pw_access_token', state.token);
       const me = await request('/auth/me');
       state.user = me.user;
       return true;
