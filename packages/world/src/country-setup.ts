@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { generateWorldMap } from './map-generation.js';
 import {
   CampaignSetupNotReadyError,
   CountryAlreadyRegisteredError,
@@ -34,6 +35,7 @@ interface CampaignSetupRow {
   readonly orders_locked: boolean;
   readonly map_width: number | null;
   readonly map_height: number | null;
+  readonly map_seed: string;
   readonly ruleset_version: string;
 }
 
@@ -201,11 +203,15 @@ function isLandCell(x: number, y: number, width: number, height: number): boolea
   return regions.some(([cx, cy, rx, ry]) => ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1);
 }
 
-function validateSpawnLand(cx: number, cy: number, width: number, height: number): void {
-  for (let y = cy - 2; y <= cy + 2; y += 1)
+function validateSpawnLand(seed: string, cx: number, cy: number, width: number, height: number): void {
+  const world = generateWorldMap(seed, width, height);
+  let landCells = 0;
+  for (let y = cy - 2; y <= cy + 2; y += 1) {
     for (let x = cx - 2; x <= cx + 2; x += 1) {
-      if (!isLandCell(x, y, width, height)) throw new SpawnAreaUnavailableError();
+      if (world.terrain[y * width + x] === 'l') landCells += 1;
     }
+  }
+  if (landCells < 7) throw new SpawnAreaUnavailableError();
 }
 
 function validateCountryName(value: unknown): string {
@@ -627,7 +633,8 @@ export function createCountrySetupService(options: {
       const dims = await options.pool.query<{
         map_width: number | null;
         map_height: number | null;
-      }>('SELECT map_width, map_height FROM campaigns WHERE id = $1', [campaignId]);
+        map_seed: string;
+      }>('SELECT map_width, map_height, map_seed FROM campaigns WHERE id = $1', [campaignId]);
       const map = dims.rows[0];
       if (!map || map.map_width === null || map.map_height === null)
         throw new CampaignSetupNotReadyError();
@@ -683,9 +690,12 @@ export function createCountrySetupService(options: {
         'SELECT user_id, center_x, center_y FROM campaign_spawn_reservations WHERE campaign_id = $1 ORDER BY updated_at',
         [campaignId],
       );
+      const generatedMap = generateWorldMap(map.map_seed, map.map_width, map.map_height);
       return {
         width: map.map_width,
         height: map.map_height,
+        seed: generatedMap.seed,
+        terrain: generatedMap.terrain,
         countries: [...groups.values()],
         reservations: reservations.rows.map((row) => ({
           userId: row.user_id,
@@ -702,8 +712,12 @@ export function createCountrySetupService(options: {
       const client = await options.pool.connect();
       try {
         await client.query('BEGIN');
-        const dims = await client.query<{ map_width: number | null; map_height: number | null }>(
-          'SELECT map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
+        const dims = await client.query<{
+          map_width: number | null;
+          map_height: number | null;
+          map_seed: string;
+        }>(
+          'SELECT map_width, map_height, map_seed FROM campaigns WHERE id = $1 FOR UPDATE',
           [campaignId],
         );
         const map = dims.rows[0];
@@ -726,7 +740,7 @@ export function createCountrySetupService(options: {
             'The selected 5x5 starting area is outside the campaign map',
           );
         }
-        validateSpawnLand(centerX, centerY, map.map_width, map.map_height);
+        validateSpawnLand(map.map_seed, centerX, centerY, map.map_width, map.map_height);
         const occupied = await client.query(
           'SELECT 1 FROM cells WHERE campaign_id = $1 AND x BETWEEN $2 AND $3 AND y BETWEEN $4 AND $5 LIMIT 1',
           [campaignId, centerX - 2, centerX + 2, centerY - 2, centerY + 2],
@@ -1068,7 +1082,7 @@ export function createCountrySetupService(options: {
 
         // Global row-lock order: campaigns -> world_snapshots -> turn_jobs -> other tables.
         const campaignResult = await client.query<CampaignSetupRow>(
-          `SELECT id, status, current_turn, orders_locked, map_width, map_height, ruleset_version
+          `SELECT id, status, current_turn, orders_locked, map_width, map_height, map_seed, ruleset_version
            FROM campaigns WHERE id = $1 FOR UPDATE`,
           [campaignId],
         );
@@ -1137,7 +1151,7 @@ export function createCountrySetupService(options: {
           );
         }
 
-        validateSpawnLand(input.spawnX, input.spawnY, campaign.map_width, campaign.map_height);
+        validateSpawnLand(campaign.map_seed, input.spawnX, input.spawnY, campaign.map_width, campaign.map_height);
         const reservedByOther = await client.query(
           `SELECT 1 FROM campaign_spawn_reservations
            WHERE campaign_id = $1 AND user_id <> $2
