@@ -136,33 +136,25 @@
     ctx.rect(x + 0.25, y + 0.25, Math.max(0.5, size - 0.5), Math.max(0.5, size - 0.5));
     ctx.clip();
 
-    if (size < 5.5) {
-      const markerSize = Math.max(1.3, size * 0.72);
-      ctx.fillStyle = type === 'gold_mine' ? '#efc900' : '#16251c';
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(0.35, size * 0.08);
-      ctx.fillRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
-      ctx.strokeRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
-      ctx.fillStyle = type === 'gold_mine' ? '#342800' : '#fff';
-      ctx.font = '900 ' + Math.max(3, size * 0.7) + 'px Arial,sans-serif';
+    if (type === 'gold_mine') {
+      ctx.fillStyle = '#d6a323';
+      ctx.font = '900 ' + Math.max(3, size * 0.82) + 'px Georgia,serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(marker, x + size / 2, y + size / 2 + 0.2);
+      ctx.fillText('З', x + size / 2, y + size / 2 + 0.3);
       ctx.restore();
       return;
     }
 
-    if (type === 'gold_mine') {
-      ctx.fillStyle = '#f1ce24';
-      ctx.strokeStyle = '#765f00';
-      ctx.lineWidth = Math.max(0.45, size * 0.045);
-      ctx.fillRect(left, top, inner, inner);
-      ctx.strokeRect(left, top, inner, inner);
-      ctx.fillStyle = '#302700';
-      ctx.font = '900 ' + Math.max(5, inner * 0.78) + 'px Georgia,serif';
+    if (size < 5.5) {
+      const markerSize = Math.max(1.3, size * 0.72);
+      ctx.fillStyle = '#16251c';
+      ctx.fillRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
+      ctx.fillStyle = '#fff';
+      ctx.font = '900 ' + Math.max(3, size * 0.7) + 'px Arial,sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('З', x + size / 2, y + size / 2 + 0.3);
+      ctx.fillText(marker, x + size / 2, y + size / 2 + 0.2);
       ctx.restore();
       return;
     }
@@ -219,9 +211,6 @@
       ctx.textBaseline = 'middle';
       ctx.fillText(marker, x + size / 2, y + size / 2 + 0.3);
     }
-    ctx.strokeStyle = '#202820';
-    ctx.lineWidth = Math.max(0.35, size * 0.035);
-    ctx.strokeRect(left, top, inner, inner);
     ctx.restore();
   }
   async function request(url, options = {}) {
@@ -495,8 +484,11 @@
           (maxX - minX + 1) * cellSize - 2, (maxY - minY + 1) * cellSize - 2);
         ctx.fillStyle = '#101820';
         ctx.font = 'bold ' + Math.max(10, Math.min(15, cellSize)) + 'px sans-serif';
-        ctx.fillText(country.name, left + ((minX + maxX + 1) / 2) * cellSize,
-          top + ((minY + maxY + 1) / 2) * cellSize);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const countryLabelX = left + ((minX + maxX + 1) / 2) * cellSize;
+        const countryBorderTop = top + minY * cellSize;
+        ctx.fillText(country.name, countryLabelX, Math.max(12, countryBorderTop - 4));
       }
     }
     // Building symbols are rendered after country labels and borders so map text
@@ -820,9 +812,13 @@
     const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
-      '<span>' + escapeHtml(principle.description) + '</span>' +
-      '<small>' + (principle.polarity === 'positive' ? 'Положительное' :
-        principle.polarity === 'negative' ? 'Отрицательное' : 'Нейтральное') + '</small></li>'
+      '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
+      '<small class="principle-effect">Эффект: ' +
+        escapeHtml(principle.effect || 'Игровой эффект не указан.') + '</small>' +
+      '<small class="principle-polarity">' +
+        (principle.polarity === 'positive' ? 'Положительное' :
+          principle.polarity === 'negative' ? 'Отрицательное' : 'Нейтральное') +
+      '</small></li>'
     ).join('');
     const faithMetrics = faithType === 'religion'
       ? [['♟', 'Последователи', '—'], ['★', 'Святые места', '—'], ['⌂', 'Храмы', String(counts.get('religious_building') || 0)]]
@@ -864,8 +860,8 @@
       '</article>';
 
     const countryStats = [
-      ['♟♟', 'Люди', String(country.residentCount)],
-      ['⚗', 'Наука', String(counts.get('science') || 0)],
+      ['♟', 'Люди', String(country.residentCount)],
+      ['⚛', 'Наука', String(counts.get('science') || 0)],
       ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
       ['♛', 'Правитель', 'Не назначен'],
     ];
