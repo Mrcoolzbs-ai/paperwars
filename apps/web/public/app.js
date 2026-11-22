@@ -927,23 +927,27 @@
       state.mapTransform.zoom = Math.max(0.35, Math.min(5, state.mapTransform.zoom * (event.deltaY < 0 ? 1.12 : 0.89)));
       drawMapCanvas($('#map-canvas'), false);
     }, { passive: false });
+    const cultureOpposites = [
+      ['militaristic','pacifist'], ['xenophobic','xenophilic'],
+      ['hierarchical','egalitarian'], ['spiritual','rationalist'],
+      ['collectivist','individualistic'], ['expansionist','isolationist'],
+    ];
+    const syncCultureOptions = () => {
+      const chosen = new Set($('#culture-list input:checked').map((input) => input.value));
+      $('#culture-list input').forEach((input) => {
+        const opposite = cultureOpposites.find((pair) => pair.includes(input.value))?.find((value) => value !== input.value);
+        input.disabled = (!input.checked && chosen.size >= 5) || Boolean(opposite && chosen.has(opposite));
+      });
+    };
     $('#culture-list').addEventListener('change', (event) => {
       const selected = $('#culture-list input:checked');
       if (selected.length > 5 && event.target.checked) {
         event.target.checked = false;
         showToast('Можно выбрать не более пяти культурных характеристик.', true);
       }
-      const opposites = [
-        ['militaristic','pacifist'], ['xenophobic','xenophilic'],
-        ['hierarchical','egalitarian'], ['spiritual','rationalist'],
-        ['collectivist','individualistic'], ['expansionist','isolationist'],
-      ];
-      const chosen = new Set($('#culture-list input:checked').map((input) => input.value));
-      $('#culture-list input').forEach((input) => {
-        const opposite = opposites.find((pair) => pair.includes(input.value))?.find((value) => value !== input.value);
-        input.disabled = (!input.checked && chosen.size >= 5) || Boolean(opposite && chosen.has(opposite));
-      });
+      syncCultureOptions();
     });
+    syncCultureOptions();
     $('#official-system-type').addEventListener('change', () => {
       updateBuildingChoices();
       refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
