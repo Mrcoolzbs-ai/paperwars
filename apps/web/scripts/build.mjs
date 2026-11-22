@@ -7,12 +7,16 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = resolve(root, 'src');
 const output = resolve(root, 'dist');
 const html = await readFile(resolve(source, 'index.html'), 'utf8');
-const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+const scriptStart = html.indexOf('<script>');
+const scriptEnd = html.indexOf('</script>', scriptStart + 8);
+const hasExtraScript = html.indexOf('<script>', scriptStart + 8) !== -1;
 
-if (scripts.length !== 1 || scripts[0]?.[1] === undefined) {
+if (scriptStart === -1 || scriptEnd === -1 || hasExtraScript) {
   throw new Error('The graphical client must contain exactly one inline application script.');
 }
-new Script(scripts[0][1], { filename: 'apps/web/src/index.html' });
+new Script(html.slice(scriptStart + 8, scriptEnd), {
+  filename: 'apps/web/src/index.html',
+});
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
