@@ -6,10 +6,7 @@ import {
   createCampaignService,
 } from '@paper-wars/auth';
 import { createApp } from '@paper-wars/api';
-import {
-  createCampaignGameService,
-  createCampaignInvitationService,
-} from '@paper-wars/gameplay';
+import { createCampaignGameService, createCampaignInvitationService } from '@paper-wars/gameplay';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 
