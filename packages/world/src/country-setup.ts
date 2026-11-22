@@ -843,10 +843,11 @@ export function createCountrySetupService(options: {
         flag_data_url: string | null;
         x: number;
         y: number;
+        population: number;
         building_type: StartBuildingType | null;
       }>(
         `SELECT country.id AS country_id, country.name, country.owner_user_id,
-                country.flag_data_url, cell.x, cell.y, building.building_type
+                country.flag_data_url, cell.x, cell.y, owned.population, building.building_type
          FROM countries AS country
          JOIN country_cells AS owned ON owned.campaign_id = country.campaign_id AND owned.country_id = country.id
          JOIN cells AS cell ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
@@ -863,7 +864,12 @@ export function createCountrySetupService(options: {
           name: string;
           ownerUserId: string;
           flagDataUrl: string | null;
-          cells: Array<{ x: number; y: number; buildingType: StartBuildingType | null }>;
+          cells: Array<{
+            x: number;
+            y: number;
+            population: number;
+            buildingType: StartBuildingType | null;
+          }>;
         }
       >();
       for (const row of data.rows) {
@@ -878,7 +884,12 @@ export function createCountrySetupService(options: {
           };
           groups.set(row.country_id, country);
         }
-        country.cells.push({ x: row.x, y: row.y, buildingType: row.building_type });
+        country.cells.push({
+          x: row.x,
+          y: row.y,
+          population: row.population,
+          buildingType: row.building_type,
+        });
       }
       const reservations = await options.pool.query<{
         user_id: string;
@@ -937,7 +948,6 @@ export function createCountrySetupService(options: {
             'The selected 5x5 starting area is outside the campaign map',
           );
         }
-        validateSpawnLand(map.map_seed, centerX, centerY, map.map_width, map.map_height);
         const occupied = await client.query(
           'SELECT 1 FROM cells WHERE campaign_id = $1 AND x BETWEEN $2 AND $3 AND y BETWEEN $4 AND $5 LIMIT 1',
           [campaignId, centerX - 2, centerX + 2, centerY - 2, centerY + 2],
@@ -947,6 +957,7 @@ export function createCountrySetupService(options: {
           [campaignId, userId, centerX - 4, centerX + 4, centerY - 4, centerY + 4],
         );
         if (occupied.rows.length || reserved.rows.length) throw new SpawnAreaUnavailableError();
+        validateSpawnLand(map.map_seed, centerX, centerY, map.map_width, map.map_height);
         await client.query(
           `INSERT INTO campaign_spawn_reservations (campaign_id, user_id, center_x, center_y)
            VALUES ($1, $2, $3, $4)

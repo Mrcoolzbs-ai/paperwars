@@ -130,6 +130,7 @@ export interface CampaignMapCountry {
   readonly cells: ReadonlyArray<{
     readonly x: number;
     readonly y: number;
+    readonly population: number;
     readonly buildingType: StartBuildingType | null;
   }>;
 }
