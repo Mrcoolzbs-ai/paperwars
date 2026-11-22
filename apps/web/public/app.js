@@ -574,7 +574,14 @@
           if (state.placements[key]) delete state.placements[key];
           else {
             if (Object.keys(state.placements).length >= 7) {
-              showToast('На территории должно быть ровно семь построек.', true);
+              showToast('На территории доступно ровно семь стартовых построек.', true);
+              return;
+            }
+            const usedOfType = Object.values(state.placements).filter((type) => type === state.selectedBuilding).length;
+            const specialTypes = activeExtraTypes();
+            const usedSpecial = Object.values(state.placements).filter((type) => specialTypes.includes(type)).length;
+            if (usedOfType >= buildingMeta[state.selectedBuilding].required || (specialTypes.includes(state.selectedBuilding) && usedSpecial >= 1)) {
+              showToast('Больше построек этого типа в стартовом наборе не предусмотрено.', true);
               return;
             }
             state.placements[key] = state.selectedBuilding;
