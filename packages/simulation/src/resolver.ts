@@ -166,9 +166,7 @@ function createRecordedRandomSource(source: RandomSource): {
     }
 
     const key = `${domain.length}:${domain}${drawId.length}:${drawId}`;
-    const tableSignature = JSON.stringify(
-      outcomes.map((outcome) => [outcome.id, outcome.weight]),
-    );
+    const tableSignature = JSON.stringify(outcomes.map((outcome) => [outcome.id, outcome.weight]));
     const previousSignature = weightedTableSignatures.get(key);
     if (previousSignature !== undefined && previousSignature !== tableSignature) {
       throw new SimulationRandomDrawConflictError(domain, drawId);
