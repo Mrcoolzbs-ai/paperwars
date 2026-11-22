@@ -60,6 +60,25 @@ describe('browser client', () => {
     expect(script.headers['content-type']).toContain('javascript');
     expect(() => new Script(script.body, { filename: 'apps/web/public/app.js' })).not.toThrow();
     expect(script.body).toContain('/campaigns');
+    const mapRenderer = script.body.slice(
+      script.body.indexOf('function drawBuildingMapIcon'),
+      script.body.indexOf('async function request', script.body.indexOf('function drawBuildingMapIcon')),
+    );
+    const countryCardRenderer = script.body.slice(
+      script.body.indexOf('function renderFoundedCards'),
+      script.body.indexOf('function addPrincipleRow', script.body.indexOf('function renderFoundedCards')),
+    );
+    expect(mapRenderer).toContain("ctx.fillText('З'");
+    expect(mapRenderer).not.toContain('strokeRect');
+    expect(mapRenderer).not.toContain("'#302700'");
+    expect(script.body).toContain('countryLabelX');
+    expect(script.body).toContain('countryBorderTop - 4');
+    expect(countryCardRenderer).toContain("['♟', 'Люди'");
+    expect(countryCardRenderer).toContain("['⚛', 'Наука'");
+    expect(countryCardRenderer).not.toContain("'♟♟'");
+    expect(countryCardRenderer).toContain('principle.effect');
+    expect(countryCardRenderer).toContain('Эффект: ');
+    expect(countryCardRenderer).toContain('principle-effect');
     expect(script.body).toContain('Сессия активна, но список кампаний не загрузился');
     expect(script.body).toContain('Авторизация прошла успешно, но список кампаний не загрузился');
     expect(script.body).toContain('Building symbols are rendered after country labels');
