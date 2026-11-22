@@ -1,3 +1,4 @@
+import { drawUniform, drawWeighted, type RNGContext } from '@paper-wars/randomness';
 import {
   assertRulesetCompatible,
   assertSnapshotCompatible,
@@ -10,7 +11,6 @@ import {
   type RulesetDefinition,
   type TurnResolution,
   type TurnResolver,
-  type WeightedOutcome,
   type WeightedOutcome,
   type WorldSnapshot,
 } from '@paper-wars/domain';
