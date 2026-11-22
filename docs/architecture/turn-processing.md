@@ -12,7 +12,7 @@
 
 1. Проверяет совместимость manifest, engine/ruleset/RNG versions и snapshot schema.
 2. Допускает в resolver только finalized orders, принадлежащие тому же campaign и turn; дублирующиеся ID не допускаются.
-3. Передаёт snapshot, список приказов, ruleset и переданный вызывающей стороной `RandomSource` в ruleset resolver.
+3. Передаёт snapshot, список приказов, ruleset и переданный вызывающей стороной `RandomSource` в ruleset resolver. `createDeterministicRandomSource(RNGContext)` связывает production source с committed turn seed через существующий HMAC-SHA-256 RNG-пакет.
 4. Перехватывает uniform draws, проверяет безопасные целочисленные диапазоны/значения и запрещает повторное использование пары domain/drawId.
 5. Реализует weighted selection через uniform integer target в диапазоне `0..totalWeight-1`. Это сохраняет точное выпавшее значение в существующем формате `random_draws`; порядок outcomes является входом resolver и должен задаваться нормативной таблицей.
 6. Сам формирует авторитетный `randomDraws` и проверяет campaign, turn, source snapshot version и однозначное соответствие каждого входного приказа одному order result.
