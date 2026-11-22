@@ -181,6 +181,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         firstSpawn.x,
         firstSpawn.y,
       );
+      await expect(
+        countrySetup.createCountry(firstUser.user.id, campaign.id, {
+          name: 'Contradictory Culture',
+          spawnX: firstSpawn.x,
+          spawnY: firstSpawn.y,
+          officialSystemId: firstSystem.id,
+          culture: ['militaristic', 'pacifist'],
+          buildings: RELIGION_BUILDINGS,
+        }),
+      ).rejects.toBeInstanceOf(CountrySetupValidationError);
+
       const firstCountry = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
         name: 'Republic of the Dawn',
         spawnX: firstSpawn.x,
