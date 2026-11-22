@@ -53,6 +53,7 @@ export interface CampaignService {
     nameInput: unknown,
     mapSize: CampaignMapSize,
   ): Promise<CreatedCampaign>;
+  joinCampaign(userId: string, campaignId: string): Promise<void>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
 
@@ -173,6 +174,38 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           await client.query('ROLLBACK');
           transactionOpen = false;
         }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async joinCampaign(userId, campaignId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(campaignId)) {
+        throw new AuthValidationError('Campaign ID is invalid');
+      }
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const campaign = await client.query<{ id: string; status: string }>(
+          'SELECT id, status FROM campaigns WHERE id = $1 FOR UPDATE',
+          [campaignId],
+        );
+        if (campaign.rows[0]?.status !== 'active') {
+          throw new AuthValidationError('Campaign does not exist or is not accepting players');
+        }
+        await client.query(
+          `INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed)
+           VALUES ($1, $2, 'active', FALSE)
+           ON CONFLICT (campaign_id, user_id) DO UPDATE SET status = 'active'`,
+          [campaignId, userId],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
         throw error;
       } finally {
         client.release();
