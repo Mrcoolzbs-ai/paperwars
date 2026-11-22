@@ -16,7 +16,8 @@
     "@paper-wars/persistence": "workspace:*",
     "@paper-wars/shared": "workspace:*",
     "@paper-wars/simulation": "workspace:*",
-    "@paper-wars/worker": "workspace:*"
+    "@paper-wars/worker": "workspace:*",
+    "@paper-wars/gameplay": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^2.1.9"

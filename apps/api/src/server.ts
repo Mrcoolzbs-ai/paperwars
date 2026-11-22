@@ -4,6 +4,7 @@ import {
   createCampaignService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence } from '@paper-wars/persistence';
+import { createCampaignGameService } from '@paper-wars/gameplay';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createApp } from './app.js';
 
@@ -72,6 +73,7 @@ try {
     accessTokens,
     refreshTokenTtlSeconds: integerEnv('REFRESH_TOKEN_TTL_SECONDS', 2_592_000),
   });
+  const campaignGameService = createCampaignGameService({ pool: persistence.pool });
   const campaignService = createCampaignService({
     pool: persistence.pool,
     keyProvider: seedKeyProvider,
@@ -85,6 +87,7 @@ try {
     rngVersion,
     authService,
     campaignService,
+    campaignGameService,
     secureCookies: process.env['NODE_ENV'] === 'production',
   });
 

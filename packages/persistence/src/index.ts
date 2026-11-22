@@ -25,6 +25,8 @@ export {
   TurnProcessingError,
   claimNextTurnJob,
   closeOrders,
+  closeOrdersForMember,
+  ActiveCampaignMembershipRequiredError,
   finalizeTurnJob,
   lockCampaignForMembershipWrite,
   lockCampaignForOrderWrite,

@@ -163,84 +163,136 @@ export async function lockCampaignForMembershipWrite(
 }
 
 /** Atomically freezes current-turn orders and inserts the unique worker job. */
+interface CloseCampaignRow {
+  readonly status: string;
+  readonly current_turn: number;
+  readonly orders_locked: boolean;
+  readonly ruleset_version: string;
+  readonly deadline_passed: boolean;
+}
+
+export class ActiveCampaignMembershipRequiredError extends TurnProcessingError {
+  constructor() {
+    super('An active campaign membership is required to close this turn');
+    this.name = 'ActiveCampaignMembershipRequiredError';
+  }
+}
+
+async function lockCampaignForClosing(
+  tx: PoolClient,
+  campaignId: string,
+): Promise<CloseCampaignRow> {
+  const result = await tx.query<CloseCampaignRow>(
+    'SELECT status, current_turn, orders_locked, ruleset_version, ' +
+      '(deadline_at IS NOT NULL AND deadline_at <= clock_timestamp()) AS deadline_passed ' +
+      'FROM campaigns WHERE id = $1 FOR UPDATE',
+    [campaignId],
+  );
+  const campaign = result.rows[0];
+  if (!campaign) throw new TurnProcessingError('Campaign not found');
+  return campaign;
+}
+
+async function closeOrdersInTransaction(
+  tx: PoolClient,
+  campaignId: string,
+  campaign: CloseCampaignRow,
+  requestingUserId?: string,
+): Promise<CloseOrdersResult> {
+  if (campaign.status !== 'active') throw new TurnProcessingError('Campaign is not active');
+  if (campaign.orders_locked) throw new OrdersAlreadyLockedError('Orders are already locked');
+
+  const snapshotResult = await tx.query<SnapshotRow>(
+    'SELECT version, state_schema_version, ruleset_version FROM world_snapshots ' +
+      'WHERE campaign_id = $1 AND turn_number = $2 FOR SHARE',
+    [campaignId, campaign.current_turn],
+  );
+  const snapshot = snapshotResult.rows[0];
+  if (!snapshot) throw new TurnProcessingError('Current-turn snapshot is missing');
+  if (snapshot.ruleset_version !== campaign.ruleset_version) {
+    throw new TurnProcessingError('Snapshot ruleset does not match campaign ruleset');
+  }
+
+  if (requestingUserId !== undefined) {
+    const requesterMembership = await tx.query<{ user_id: string }>(
+      'SELECT user_id FROM campaign_memberships ' +
+        "WHERE campaign_id = $1 AND user_id = $2 AND status = 'active' FOR SHARE",
+      [campaignId, requestingUserId],
+    );
+    if (requesterMembership.rows[0] === undefined) {
+      throw new ActiveCampaignMembershipRequiredError();
+    }
+  }
+
+  const membershipResult = await tx.query<{ orders_confirmed: boolean }>(
+    'SELECT orders_confirmed FROM campaign_memberships ' +
+      "WHERE campaign_id = $1 AND status = 'active' ORDER BY user_id FOR SHARE",
+    [campaignId],
+  );
+  if (membershipResult.rows.length === 0) {
+    throw new NoActiveParticipantsError('No active participants');
+  }
+  const allConfirmed = membershipResult.rows.every((member) => member.orders_confirmed);
+  if (!allConfirmed && !campaign.deadline_passed) {
+    throw new OrdersNotConfirmedError('Not all active participants confirmed orders');
+  }
+
+  const finalized = await tx.query(
+    "UPDATE orders SET status = 'finalized', finalized_at = clock_timestamp(), updated_at = clock_timestamp() " +
+      "WHERE campaign_id = $1 AND turn_number = $2 AND status = 'confirmed'",
+    [campaignId, campaign.current_turn],
+  );
+  const discarded = await tx.query(
+    "UPDATE orders SET status = 'discarded', finalized_at = NULL, updated_at = clock_timestamp() " +
+      "WHERE campaign_id = $1 AND turn_number = $2 AND status IN ('draft', 'unconfirmed')",
+    [campaignId, campaign.current_turn],
+  );
+  await tx.query(
+    'UPDATE campaigns SET orders_locked = TRUE, orders_locked_at = clock_timestamp() WHERE id = $1',
+    [campaignId],
+  );
+
+  const inserted = await tx.query<{ id: string }>(
+    'INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status, generation, retry_count) ' +
+      "VALUES ($1, $2, $3, $4, 'pending', 0, 0) RETURNING id",
+    [
+      'turn:' + campaignId + ':' + campaign.current_turn,
+      campaignId,
+      campaign.current_turn,
+      snapshot.version,
+    ],
+  );
+  const job = inserted.rows[0];
+  if (!job) throw new TurnProcessingError('Turn-job insert returned no row');
+  return {
+    jobId: job.id,
+    campaignId,
+    turnNumber: campaign.current_turn,
+    snapshotVersion: snapshot.version,
+    finalizedOrderCount: finalized.rowCount ?? 0,
+    discardedOrderCount: discarded.rowCount ?? 0,
+  };
+}
+
+/** Atomically freezes all active participants' orders and creates the unique job. */
 export async function closeOrders(pool: Pool, campaignId: string): Promise<CloseOrdersResult> {
   return inTransaction(pool, async (tx) => {
-    // Normative lock order starts with campaigns.
-    const campaignResult = await tx.query<{
-      status: string;
-      current_turn: number;
-      orders_locked: boolean;
-      ruleset_version: string;
-      deadline_passed: boolean;
-    }>(
-      'SELECT status, current_turn, orders_locked, ruleset_version, ' +
-        '(deadline_at IS NOT NULL AND deadline_at <= clock_timestamp()) AS deadline_passed ' +
-        'FROM campaigns WHERE id = $1 FOR UPDATE',
-      [campaignId],
-    );
-    const campaign = campaignResult.rows[0];
-    if (!campaign) throw new TurnProcessingError('Campaign not found');
-    if (campaign.status !== 'active') throw new TurnProcessingError('Campaign is not active');
-    if (campaign.orders_locked) throw new OrdersAlreadyLockedError('Orders are already locked');
+    const campaign = await lockCampaignForClosing(tx, campaignId);
+    return closeOrdersInTransaction(tx, campaignId, campaign);
+  });
+}
 
-    const snapshotResult = await tx.query<SnapshotRow>(
-      'SELECT version, state_schema_version, ruleset_version FROM world_snapshots ' +
-        'WHERE campaign_id = $1 AND turn_number = $2 FOR SHARE',
-      [campaignId, campaign.current_turn],
-    );
-    const snapshot = snapshotResult.rows[0];
-    if (!snapshot) throw new TurnProcessingError('Current-turn snapshot is missing');
-    if (snapshot.ruleset_version !== campaign.ruleset_version) {
-      throw new TurnProcessingError('Snapshot ruleset does not match campaign ruleset');
-    }
-
-    const membershipResult = await tx.query<{ orders_confirmed: boolean }>(
-      'SELECT orders_confirmed FROM campaign_memberships ' +
-        "WHERE campaign_id = $1 AND status = 'active' ORDER BY user_id FOR SHARE",
-      [campaignId],
-    );
-    if (membershipResult.rows.length === 0)
-      throw new NoActiveParticipantsError('No active participants');
-    const allConfirmed = membershipResult.rows.every((member) => member.orders_confirmed);
-    if (!allConfirmed && !campaign.deadline_passed) {
-      throw new OrdersNotConfirmedError('Not all active participants confirmed orders');
-    }
-
-    const finalized = await tx.query(
-      "UPDATE orders SET status = 'finalized', finalized_at = clock_timestamp(), updated_at = clock_timestamp() " +
-        "WHERE campaign_id = $1 AND turn_number = $2 AND status = 'confirmed'",
-      [campaignId, campaign.current_turn],
-    );
-    const discarded = await tx.query(
-      "UPDATE orders SET status = 'discarded', finalized_at = NULL, updated_at = clock_timestamp() " +
-        "WHERE campaign_id = $1 AND turn_number = $2 AND status IN ('draft', 'unconfirmed')",
-      [campaignId, campaign.current_turn],
-    );
-    await tx.query(
-      'UPDATE campaigns SET orders_locked = TRUE, orders_locked_at = clock_timestamp() WHERE id = $1',
-      [campaignId],
-    );
-
-    const inserted = await tx.query<{ id: string }>(
-      'INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status, generation, retry_count) ' +
-        "VALUES ($1, $2, $3, $4, 'pending', 0, 0) RETURNING id",
-      [
-        'turn:' + campaignId + ':' + campaign.current_turn,
-        campaignId,
-        campaign.current_turn,
-        snapshot.version,
-      ],
-    );
-    const job = inserted.rows[0];
-    if (!job) throw new TurnProcessingError('Turn-job insert returned no row');
-    return {
-      jobId: job.id,
-      campaignId,
-      turnNumber: campaign.current_turn,
-      snapshotVersion: snapshot.version,
-      finalizedOrderCount: finalized.rowCount ?? 0,
-      discardedOrderCount: discarded.rowCount ?? 0,
-    };
+/** Same close operation, with membership authorization checked under the campaign lock. */
+export async function closeOrdersForMember(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+): Promise<CloseOrdersResult> {
+  if (userId.trim().length === 0) throw new RangeError('userId must not be empty');
+  return inTransaction(pool, async (tx) => {
+    // The campaign row is always the first lock, before membership authorization.
+    const campaign = await lockCampaignForClosing(tx, campaignId);
+    return closeOrdersInTransaction(tx, campaignId, campaign, userId);
   });
 }
 
