@@ -258,7 +258,9 @@ describe('Simulation Engine phase runner', () => {
     let selected: string | undefined;
     const handlers = {
       ...createHandlers(),
-      RESEARCH: (context: TurnPhaseContext<TestState, TestOrderPayload, RulesetManifest, TestEvent>) => {
+      RESEARCH: (
+        context: TurnPhaseContext<TestState, TestOrderPayload, RulesetManifest, TestEvent>,
+      ) => {
         selected = context.random.weighted('test', 'research:choice', [
           { id: 'common', weight: 2, value: 'common' },
           { id: 'rare', weight: 1, value: 'rare' },
