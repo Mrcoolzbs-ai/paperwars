@@ -271,6 +271,16 @@ function registerCampaignRoutes(
     }
   });
 
+  app.delete('/campaigns/:campaignId/leave', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await campaignService.leaveCampaign(user.id, getCampaignId(request));
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.get('/campaigns', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
