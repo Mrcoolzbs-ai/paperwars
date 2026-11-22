@@ -9,6 +9,9 @@ import { createPostgresPersistence, runMigrations } from '@paper-wars/persistenc
 import {
   createCountrySetupService,
   CountrySetupValidationError,
+  OfficialSystemNotAvailableError,
+  SocialSystemAdminRequiredError,
+  SocialSystemLimitReachedError,
   SpawnAreaUnavailableError,
   type StartBuildingPlacement,
 } from '@paper-wars/world';
@@ -290,6 +293,112 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         population: '36',
         buildings: '14',
       });
+    });
+
+    it('enforces social system principles, the seven-system limit and administrator approval', async () => {
+      const current = getPersistence();
+      const { auth, campaigns } = createServices();
+      const admin = await auth.register(
+        `social-admin-${randomUUID()}@example.test`,
+        'social system admin test password',
+      );
+      const player = await auth.register(
+        `social-player-${randomUUID()}@example.test`,
+        'social system player test password',
+      );
+      const campaign = await campaigns.createCampaign(
+        admin.user.id,
+        `social-systems-${randomUUID()}`,
+        { mapWidth: 20, mapHeight: 20 },
+      );
+      await current.pool.query(
+        `INSERT INTO campaign_memberships (
+           campaign_id, user_id, status, orders_confirmed
+         ) VALUES ($1, $2, 'active', FALSE)`,
+        [campaign.id, player.user.id],
+      );
+      const countrySetup = createCountrySetupService({
+        pool: current.pool,
+        socialSystemAdminUserIds: [admin.user.id],
+      });
+
+      await expect(
+        countrySetup.createSocialSystem(player.user.id, campaign.id, {
+          type: 'religion',
+          name: 'Unbalanced Faith',
+          principles: [
+            { name: 'One', description: 'First positive principle.', polarity: 'positive' },
+            { name: 'Two', description: 'Second positive principle.', polarity: 'positive' },
+            { name: 'Three', description: 'Third positive principle.', polarity: 'positive' },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(CountrySetupValidationError);
+
+      const principles = [
+        { name: 'Principle One', description: 'A positive principle.', polarity: 'positive' },
+        { name: 'Principle Two', description: 'Another positive principle.', polarity: 'positive' },
+        { name: 'Principle Three', description: 'A third positive principle.', polarity: 'positive' },
+        { name: 'Necessary drawback', description: 'A balancing negative principle.', polarity: 'negative' },
+        { name: 'Neutral custom', description: 'A neutral practice.', polarity: 'neutral' },
+      ];
+      const submitted = [];
+      for (let index = 1; index <= 7; index += 1) {
+        submitted.push(
+          await countrySetup.createSocialSystem(player.user.id, campaign.id, {
+            type: 'religion',
+            name: `Submitted Faith ${index}`,
+            principles,
+          }),
+        );
+      }
+      expect(submitted.every((system) => system.approvalStatus === 'pending')).toBe(true);
+
+      await expect(
+        countrySetup.reviewSocialSystem(player.user.id, campaign.id, submitted[0]!.id, {
+          decision: 'approve',
+        }),
+      ).rejects.toBeInstanceOf(SocialSystemAdminRequiredError);
+
+      const pending = await countrySetup.listPendingSocialSystems(admin.user.id, campaign.id);
+      expect(pending).toHaveLength(7);
+
+      await expect(
+        countrySetup.createSocialSystem(player.user.id, campaign.id, {
+          type: 'religion',
+          name: 'Eighth Faith',
+          principles: [
+            { name: 'A principle', description: 'A description.', polarity: 'neutral' },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(SocialSystemLimitReachedError);
+
+      await expect(
+        countrySetup.createCountry(player.user.id, campaign.id, {
+          name: 'Pending Faith Country',
+          spawnX: 5,
+          spawnY: 5,
+          officialSystemId: submitted[0]!.id,
+          buildings: RELIGION_BUILDINGS,
+        }),
+      ).rejects.toBeInstanceOf(OfficialSystemNotAvailableError);
+
+      const rejected = await countrySetup.reviewSocialSystem(
+        admin.user.id,
+        campaign.id,
+        submitted[0]!.id,
+        { decision: 'reject', reason: 'Please revise the submitted belief card.' },
+      );
+      expect(rejected.approvalStatus).toBe('rejected');
+      expect(rejected.reviewReason).toBe('Please revise the submitted belief card.');
+
+      const replacement = await countrySetup.createSocialSystem(player.user.id, campaign.id, {
+        type: 'religion',
+        name: 'Replacement Faith',
+        principles: [
+          { name: 'A neutral principle', description: 'A description.', polarity: 'neutral' },
+        ],
+      });
+      expect(replacement.approvalStatus).toBe('pending');
     });
 
     it('unlocks turn one when the only active member completes country setup', async () => {
