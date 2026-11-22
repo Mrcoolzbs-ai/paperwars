@@ -717,8 +717,25 @@ export function createCountrySetupService(options: {
             spawnX,
             spawnY,
           });
-          for (const system of nearby) {
-            if (!systems.has(system.id)) systems.set(system.id, system);
+          if (nearby.length > 0) {
+            const eligible = await result.query<SocialSystemRow>(
+              `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+                      principles, approval_status, review_reason, created_at
+               FROM social_systems
+               WHERE campaign_id = $1 AND id = ANY($2::uuid[])
+                 AND system_type = $3 AND approval_status = 'approved'
+                 AND lifecycle_status = 'active'`,
+              [campaignId, nearby.map((system) => system.id), systemType],
+            );
+            const eligibleById = new Map(
+              eligible.rows.map((system) => [system.id, toAvailableSocialSystem(system)]),
+            );
+            for (const system of nearby) {
+              const approved = eligibleById.get(system.id);
+              if (approved !== undefined && !systems.has(approved.id)) {
+                systems.set(approved.id, approved);
+              }
+            }
           }
         }
         return [...systems.values()];
@@ -780,6 +797,12 @@ export function createCountrySetupService(options: {
           [campaignId],
         );
 
+        const turnJob = await client.query(
+          'SELECT id FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
+          [campaignId],
+        );
+        if (turnJob.rows.length > 0) throw new CampaignSetupNotReadyError();
+
         const memberResult = await client.query<MembershipRow>(
           `SELECT status, country_id
            FROM campaign_memberships
@@ -794,12 +817,6 @@ export function createCountrySetupService(options: {
         if (member.country_id !== null) {
           throw new CountryAlreadyRegisteredError();
         }
-
-        const turnJob = await client.query(
-          'SELECT id FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
-          [campaignId],
-        );
-        if (turnJob.rows.length > 0) throw new CampaignSetupNotReadyError();
 
         const system = await resolveOfficialSystem(
           client,
