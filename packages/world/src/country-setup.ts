@@ -207,7 +207,7 @@ function validateSpawnLand(
   cy: number,
   width: number,
   height: number,
-): void {
+): ReturnType<typeof generateWorldMap> {
   const world = generateWorldMap(seed, width, height);
   let landCells = 0;
   for (let y = cy - 2; y <= cy + 2; y += 1) {
@@ -216,6 +216,7 @@ function validateSpawnLand(
     }
   }
   if (landCells < 7) throw new SpawnAreaUnavailableError();
+  return world;
 }
 
 function validateCountryName(value: unknown): string {
@@ -1154,7 +1155,7 @@ export function createCountrySetupService(options: {
           );
         }
 
-        validateSpawnLand(
+        const spawnMap = validateSpawnLand(
           campaign.map_seed,
           input.spawnX,
           input.spawnY,
@@ -1185,6 +1186,13 @@ export function createCountrySetupService(options: {
           availabilityPolicy,
         );
         validateBuildingPlacements(input.buildings, system.type);
+        for (const building of input.buildings) {
+          const globalX = input.spawnX - TERRITORY_HALF + building.x;
+          const globalY = input.spawnY - TERRITORY_HALF + building.y;
+          if (spawnMap.terrain[globalY * campaign.map_width + globalX] !== 'l') {
+            throw new CountrySetupValidationError('All seven starting buildings must be placed on land cells');
+          }
+        }
 
         const countryResult = await client.query<{ id: string }>(
           `INSERT INTO countries (
