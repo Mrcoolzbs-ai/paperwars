@@ -294,7 +294,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
     it('unlocks turn one when the only active member completes country setup', async () => {
       const current = getPersistence();
-      const { auth, campaigns, countrySetup } = createServices();
+      const { auth, campaigns } = createServices();
       const user = await auth.register(
         `country-solo-${randomUUID()}@example.test`,
         'country solo test password',
@@ -334,7 +334,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
       const current = getPersistence();
-      const { auth, campaigns, countrySetup } = createServices();
+      const { auth, campaigns } = createServices();
       const firstUser = await auth.register(
         `country-collision-one-${randomUUID()}@example.test`,
         'country collision test password',
