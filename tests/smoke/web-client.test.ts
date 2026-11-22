@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Script } from 'node:vm';
@@ -18,6 +18,18 @@ describe('browser client', () => {
     expect(response.headers['content-type']).toContain('text/html');
     expect(response.body).toContain('Paper Wars: Rebirth');
     expect(response.body).toContain('auth-screen');
+  });
+
+  it('builds the current public browser client into the distribution folder', async () => {
+    const [html, script] = await Promise.all([
+      readFile(new URL('../../apps/web/dist/index.html', import.meta.url), 'utf8'),
+      readFile(new URL('../../apps/web/dist/app.js', import.meta.url), 'utf8'),
+    ]);
+
+    expect(html).toContain('id="auth-screen"');
+    expect(html).toContain('src="/app.js"');
+    expect(script).toContain('#auth-screen');
+    expect(() => new Script(script, { filename: 'apps/web/dist/app.js' })).not.toThrow();
   });
 
   it('serves a configured production entry through the shared root route', async () => {
