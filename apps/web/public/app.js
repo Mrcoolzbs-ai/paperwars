@@ -713,7 +713,7 @@
     const system = country.officialSystem;
     const title = faithType === 'religion' ? 'Верования' : 'Принципы';
     const metrics = faithType === 'religion'
-      ? [['Адепты', '—'], ['Святые места', '—'], ['Храмы', String((country.buildings || []).find((x) => x.type === 'religious_building')?.count || 0)]]
+      ? [['Адепты', '—'], ['Святые места', '—'], ['Церкви', String((country.buildings || []).find((x) => x.type === 'religious_building')?.count || 0)]]
       : [['Адепты', '—'], ['Крылья', '—'], ['Центры', '—']];
     $('#faith-card-host').innerHTML = `
       <article class="archive-card social-profile-card">
