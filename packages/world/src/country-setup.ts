@@ -180,6 +180,17 @@ function validateCulture(value: unknown): string[] {
   });
   if (new Set(items).size !== items.length)
     throw new CountrySetupValidationError('Cultural traits must be unique');
+  const opposingPairs = [
+    ['militaristic', 'pacifist'],
+    ['xenophobic', 'xenophilic'],
+    ['hierarchical', 'egalitarian'],
+    ['spiritual', 'rationalist'],
+    ['collectivist', 'individualistic'],
+    ['expansionist', 'isolationist'],
+  ] as const;
+  if (opposingPairs.some(([first, second]) => items.includes(first) && items.includes(second))) {
+    throw new CountrySetupValidationError('Opposing cultural traits cannot be selected together');
+  }
   return items;
 }
 
