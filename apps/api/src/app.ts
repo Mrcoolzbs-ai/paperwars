@@ -249,10 +249,11 @@ function registerCampaignRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
+      const turnDurationHours = body['turnDurationHours'];
       const campaign = await campaignService.createCampaign(user.id, body['name'], {
         mapWidth: body['mapWidth'] as number,
         mapHeight: body['mapHeight'] as number,
-        turnDurationHours: body['turnDurationHours'] as number | undefined,
+        ...(typeof turnDurationHours === 'number' ? { turnDurationHours } : {}),
       });
       return reply.code(201).send({ campaign });
     } catch (error) {
