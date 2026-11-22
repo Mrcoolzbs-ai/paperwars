@@ -11,6 +11,7 @@ import {
   type TurnResolution,
   type TurnResolver,
   type WeightedOutcome,
+  type WeightedOutcome,
   type WorldSnapshot,
 } from '@paper-wars/domain';
 
@@ -53,6 +54,16 @@ export interface SimulationEngine extends SimulationEngineDescriptor {
 
 const ENGINE_VERSION = '0.1.0';
 const MAX_UNIFORM_RANGE = 0x1_0000_0000;
+
+/** Creates the production RandomSource from the committed seed for one campaign turn. */
+export function createDeterministicRandomSource(context: RNGContext): RandomSource {
+  return Object.freeze({
+    uniform: (domain: string, drawId: string, min: number, max: number) =>
+      drawUniform(context, domain, drawId, min, max),
+    weighted: <T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]) =>
+      drawWeighted(context, domain, drawId, outcomes),
+  });
+}
 
 function assertFinalizedOrders<TPayload>(
   snapshot: WorldSnapshot<unknown>,
