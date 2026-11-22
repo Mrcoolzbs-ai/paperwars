@@ -17,6 +17,7 @@
 - [Разведка, руины, золото и доступ к находкам](architecture/discovery.md).
 - [Информационная видимость и DTO-проекции](architecture/information-visibility.md).
 - [Аутентификация и lifecycle кампании](architecture/authentication.md).
+- [Графический Web-клиент](architecture/web-client.md) — карта мира, редактор стартовой территории и подключение к API.
 
 ## Лор
 
@@ -44,7 +45,7 @@
 - Stage 1.5 branded domain entities, order/event/snapshot/resolution contracts, versioned RulesetManifest и state compatibility migration merged (PR #7).
 - Чистый GitHub Actions CI: build, typecheck, lint, format-check и 55 тестов прошли на PostgreSQL 18.7.
 
-Ещё не реализованы: participant/role management, auth rate limiting/audit, исполняемый Simulation Engine, turn Worker, closeOrders/finalization, Stage 2 country setup (Q24, карта и старт 7/18), игровые world DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
+В Draft PR #8 реализованы pre-country social systems, начальная регистрация страны (территория 5×5, стартовые здания и население), предварительный Web-клиент и HTTP-интеграция. PR ещё не влит в main. Ещё не реализованы: participant/role management, auth rate limiting/audit, исполняемый Simulation Engine, turn Worker, closeOrders/finalization, полноценные игровые world DTO и продолжение игрового цикла. Q18–Q20 остаются PROPOSAL и не входят в канон.
 
 Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
 
