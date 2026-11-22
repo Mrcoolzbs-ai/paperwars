@@ -343,7 +343,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           map: {
             countries: Array<{
               id: string;
-              cells: Array<{ x: number; y: number; population: number; buildingType: string | null }>;
+              cells: Array<{
+                x: number;
+                y: number;
+                population: number;
+                buildingType: string | null;
+              }>;
             }>;
           };
         }>().map;
@@ -351,10 +356,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           (item) => item.id === createdCountry.json<{ country: { id: string } }>().country.id,
         );
         expect(ownedCountry?.cells).toHaveLength(25);
-        const buildingCounts = (ownedCountry?.cells || []).reduce<Record<string, number>>((counts, cell) => {
+        const buildingCounts = (ownedCountry?.cells || []).reduce<Record<string, number>>(
+          (counts, cell) => {
           if (cell.buildingType) counts[cell.buildingType] = (counts[cell.buildingType] || 0) + 1;
-          return counts;
-        }, {});
+            return counts;
+          },
+          {},
+        );
         expect(buildingCounts).toEqual({
           religious_building: 1,
           capital: 1,
