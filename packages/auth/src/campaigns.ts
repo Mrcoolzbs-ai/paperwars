@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import { createCommittedSeed, type CreateCommittedSeedOptions } from '@paper-wars/persistence';
+import {
+  CampaignTurnProcessingError,
+  closeOrders,
+  confirmCampaignOrders,
+  createCommittedSeed,
+  type ClosedTurnJob,
+  type CreateCommittedSeedOptions,
+} from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { AuthValidationError, UnauthenticatedError } from './errors.js';
 
@@ -62,6 +69,7 @@ export interface CampaignService {
   ): Promise<CreatedCampaign>;
   joinCampaign(userId: string, campaignId: string): Promise<void>;
   leaveCampaign(userId: string, campaignId: string): Promise<void>;
+  confirmOrders(userId: string, campaignId: string): Promise<ClosedTurnJob | null>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
 
@@ -77,6 +85,21 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
   const clock = options.clock ?? (() => new Date());
 
   return {
+    async confirmOrders(userId, campaignId) {
+      await confirmCampaignOrders(options.pool, campaignId, userId);
+      try {
+        return await closeOrders(options.pool, campaignId);
+      } catch (error) {
+        if (
+          error instanceof CampaignTurnProcessingError &&
+          (error.code === 'ORDERS_NOT_READY' || error.code === 'ORDERS_ALREADY_LOCKED')
+        ) {
+          return null;
+        }
+        throw error;
+      }
+    },
+
     async createCampaign(ownerUserId, nameInput, mapSize) {
       const turnDurationHours = mapSize?.turnDurationHours ?? 24;
       if (![1, 2, 4, 8, 12, 24, 48, 72, 168].includes(turnDurationHours)) {
