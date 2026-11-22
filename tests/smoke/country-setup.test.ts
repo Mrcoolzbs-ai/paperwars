@@ -409,7 +409,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const system = await createApprovedSocialSystem(
         countrySetup,
         user.user.id,
-        user.user.id,
         campaign.id,
         'religion',
         'One Dawn',
