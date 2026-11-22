@@ -216,11 +216,37 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { token: invitation.token },
       });
       expect(acceptRevoked.statusCode).toBe(409);
+
+      const pending = await app.inject({
+        method: 'POST',
+        url: '/campaigns/' + campaignId + '/invitations',
+        headers: { authorization: 'Bearer ' + ownerToken },
+        payload: { email: otherEmail },
+      });
+      expect(pending.statusCode).toBe(201);
+      const pendingToken = pending.json<{ invitation: { token: string } }>().invitation.token;
+
       await persistence!.pool.query(
         'INSERT INTO world_snapshots (campaign_id, turn_number, version, state_schema_version, ruleset_version, state) ' +
           'VALUES ($1, 1, 1, 1, $2, $3::jsonb)',
         [campaignId, 'baseline-v1', JSON.stringify({ setupComplete: true })],
       );
+      // Country setup opens turn one after its snapshot is committed. Invitation
+      // eligibility must depend on initial setup, not orders_locked alone.
+      await persistence!.pool.query(
+        'UPDATE campaigns SET orders_locked = FALSE, orders_locked_at = NULL WHERE id = $1',
+        [campaignId],
+      );
+
+      const acceptAfterSetup = await app.inject({
+        method: 'POST',
+        url: '/invitations/accept',
+        headers: { authorization: 'Bearer ' + otherToken },
+        payload: { token: pendingToken },
+      });
+      expect(acceptAfterSetup.statusCode).toBe(409);
+      expect(acceptAfterSetup.json<{ error: string }>().error).toBe('ORDERS_LOCKED');
+
       const afterSetup = await app.inject({
         method: 'POST',
         url: '/campaigns/' + campaignId + '/invitations',
@@ -229,6 +255,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       expect(afterSetup.statusCode).toBe(409);
       expect(afterSetup.json<{ error: string }>().error).toBe('ORDERS_LOCKED');
+
+      const membership = await persistence!.pool.query<{ status: string }>(
+        'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+        [campaignId, otherId],
+      );
+      expect(membership.rows).toHaveLength(0);
     });
   },
 );
