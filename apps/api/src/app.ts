@@ -260,6 +260,16 @@ function registerCampaignRoutes(
     }
   });
 
+  app.post('/campaigns/:campaignId/join', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await campaignService.joinCampaign(user.id, getCampaignId(request));
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.get('/campaigns', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
