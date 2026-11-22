@@ -5,6 +5,11 @@ import {
   CountrySetupValidationError,
   NotActiveCampaignMemberError,
   OfficialSystemNotAvailableError,
+  SocialSystemAdminRequiredError,
+  SocialSystemLimitReachedError,
+  SocialSystemNameConflictError,
+  SocialSystemNotFoundError,
+  SocialSystemReviewConflictError,
   SpawnAreaUnavailableError,
   SystemAvailabilityNotConfiguredError,
 } from './errors.js';
@@ -12,8 +17,13 @@ import type {
   AvailableSocialSystem,
   CountrySetupService,
   CreateCountryInput,
+  CreateSocialSystemInput,
   OfficialSystemType,
+  SocialSystemApprovalStatus,
   SocialSystemAvailabilityPolicy,
+  SocialSystemPrinciple,
+  SocialSystemReviewInput,
+  SocialSystemView,
   StartBuildingPlacement,
   StartBuildingType,
 } from './types.js';
@@ -50,11 +60,25 @@ interface SnapshotCellRow {
   readonly official_system_type: OfficialSystemType;
   readonly official_system_id: string;
   readonly system_name: string;
+  readonly system_principles: readonly SocialSystemPrinciple[];
   readonly cell_id: string;
   readonly x: number;
   readonly y: number;
   readonly population: number;
   readonly building_type: StartBuildingType | null;
+}
+
+interface SocialSystemRow {
+  readonly id: string;
+  readonly campaign_id: string;
+  readonly system_type: OfficialSystemType;
+  readonly name: string;
+  readonly origin_x: number | null;
+  readonly origin_y: number | null;
+  readonly principles: readonly SocialSystemPrinciple[];
+  readonly approval_status: SocialSystemApprovalStatus;
+  readonly review_reason: string | null;
+  readonly created_at: Date;
 }
 
 interface SnapshotCountry {
@@ -65,6 +89,7 @@ interface SnapshotCountry {
     readonly id: string;
     readonly type: OfficialSystemType;
     readonly name: string;
+    readonly principles: readonly SocialSystemPrinciple[];
   };
   readonly cells: Array<{
     readonly id: string;
@@ -108,38 +133,127 @@ function validateCountryName(value: unknown): string {
   return name;
 }
 
-function validateOfficialSystemChoice(choice: CreateCountryInput['officialSystem']): {
+const MAX_PLAYER_SYSTEMS_PER_TYPE = 7;
+const MAX_SOCIAL_SYSTEM_PRINCIPLES = 10;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validateSystemName(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new CountrySetupValidationError('Social system name must be a string');
+  }
+  const name = value.trim();
+  if (name.length < 2 || name.length > 60) {
+    throw new CountrySetupValidationError('Social system name must contain 2 to 60 characters');
+  }
+  return name;
+}
+
+function validateSocialSystemInput(input: CreateSocialSystemInput): {
   readonly type: OfficialSystemType;
-  readonly existingSystemId?: string;
-  readonly newSystemName?: string;
+  readonly name: string;
+  readonly principles: readonly SocialSystemPrinciple[];
 } {
-  if (choice === null || typeof choice !== 'object') {
-    throw new CountrySetupValidationError('An official religion or ideology is required');
+  if (input === null || typeof input !== 'object') {
+    throw new CountrySetupValidationError('Social system payload must be an object');
   }
-  if (choice.type !== 'religion' && choice.type !== 'ideology') {
-    throw new CountrySetupValidationError('Official system type must be religion or ideology');
+  if (input.type !== 'religion' && input.type !== 'ideology') {
+    throw new CountrySetupValidationError('Social system type must be religion or ideology');
+  }
+  const name = validateSystemName(input.name);
+  if (!Array.isArray(input.principles) || input.principles.length < 1 ||
+      input.principles.length > MAX_SOCIAL_SYSTEM_PRINCIPLES) {
+    throw new CountrySetupValidationError('A social system must contain between 1 and 10 principles');
   }
 
-  const hasExisting =
-    typeof choice.existingSystemId === 'string' && choice.existingSystemId.trim().length > 0;
-  const hasNew = typeof choice.newSystemName === 'string' && choice.newSystemName.trim().length > 0;
-  if (hasExisting === hasNew) {
+  const principles: SocialSystemPrinciple[] = [];
+  const principleNames = new Set<string>();
+  let positiveCount = 0;
+  let negativeCount = 0;
+  for (const [index, raw] of input.principles.entries()) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new CountrySetupValidationError(`Principle ${index + 1} must be an object`);
+    }
+    const value = raw as Record<string, unknown>;
+    if (typeof value['name'] !== 'string' || value['name'].trim().length < 2 ||
+        value['name'].trim().length > 80) {
+      throw new CountrySetupValidationError(`Principle ${index + 1} needs a name of 2 to 80 characters`);
+    }
+    if (typeof value['description'] !== 'string' || value['description'].trim().length < 1 ||
+        value['description'].trim().length > 2000) {
+      throw new CountrySetupValidationError(`Principle ${index + 1} needs a description of up to 2000 characters`);
+    }
+    const polarity = value['polarity'];
+    if (polarity !== 'positive' && polarity !== 'negative' && polarity !== 'neutral') {
+      throw new CountrySetupValidationError(`Principle ${index + 1} has an invalid polarity`);
+    }
+    const principleName = (value['name'] as string).trim();
+    const key = principleName.toLocaleLowerCase('ru-RU');
+    if (principleNames.has(key)) {
+      throw new CountrySetupValidationError('Principle names must be unique within a social system');
+    }
+    principleNames.add(key);
+    if (polarity === 'positive') positiveCount += 1;
+    if (polarity === 'negative') negativeCount += 1;
+    principles.push({
+      name: principleName,
+      description: (value['description'] as string).trim(),
+      polarity,
+    });
+  }
+  if (positiveCount > 2 && negativeCount < positiveCount - 2) {
     throw new CountrySetupValidationError(
-      'Choose exactly one existing official system or a new system name',
+      'Each positive principle after the first two must be balanced by a negative principle',
     );
   }
+  return { type: input.type, name, principles };
+}
 
-  if (hasExisting) {
-    return { type: choice.type, existingSystemId: choice.existingSystemId };
-  }
+function toSocialSystemView(row: SocialSystemRow): SocialSystemView {
+  return {
+    id: row.id,
+    campaignId: row.campaign_id,
+    type: row.system_type,
+    name: row.name,
+    principles: row.principles,
+    approvalStatus: row.approval_status,
+    reviewReason: row.review_reason,
+    createdAt: row.created_at,
+  };
+}
 
-  const newSystemName = choice.newSystemName?.trim();
-  if (newSystemName === undefined || newSystemName.length < 2 || newSystemName.length > 60) {
-    throw new CountrySetupValidationError(
-      'New official system name must contain 2 to 60 characters',
-    );
+function toAvailableSocialSystem(row: SocialSystemRow): AvailableSocialSystem {
+  return {
+    id: row.id,
+    type: row.system_type,
+    name: row.name,
+    originX: row.origin_x,
+    originY: row.origin_y,
+    principles: row.principles,
+  };
+}
+
+async function lockInitialSetupCampaign(
+  tx: PoolClient,
+  campaignId: string,
+): Promise<void> {
+  const campaign = await tx.query<{
+    id: string;
+    status: string;
+    current_turn: number;
+    orders_locked: boolean;
+  }>(
+    'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
+    [campaignId],
+  );
+  const row = campaign.rows[0];
+  if (!row || row.status !== 'active' || row.current_turn !== 1 || !row.orders_locked) {
+    throw new CampaignSetupNotReadyError();
   }
-  return { type: choice.type, newSystemName };
+  const job = await tx.query(
+    'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 LIMIT 1',
+    [campaignId],
+  );
+  if (job.rows.length > 0) throw new SocialSystemReviewConflictError();
 }
 
 function validateBuildingPlacements(
@@ -240,82 +354,59 @@ function makeValues(rows: ReadonlyArray<ReadonlyArray<unknown>>): {
 async function resolveOfficialSystem(
   tx: PoolClient,
   campaignId: string,
+  userId: string,
   spawnX: number,
   spawnY: number,
-  choice: ReturnType<typeof validateOfficialSystemChoice>,
+  officialSystemId: string,
   policy?: SocialSystemAvailabilityPolicy,
 ): Promise<AvailableSocialSystem> {
-  if (choice.newSystemName !== undefined) {
-    const inserted = await tx.query<{
-      id: string;
-      system_type: OfficialSystemType;
-      name: string;
-      origin_x: number;
-      origin_y: number;
-    }>(
-      `INSERT INTO social_systems (
-         campaign_id, system_type, name, origin_x, origin_y, traits
-       ) VALUES ($1, $2, $3, $4, $5, '[]'::jsonb)
-       RETURNING id, system_type, name, origin_x, origin_y`,
-      [campaignId, choice.type, choice.newSystemName, spawnX, spawnY],
-    );
-    const row = inserted.rows[0];
-    if (row === undefined) {
-      throw new Error('New official system insert did not return a row');
+  const result = await tx.query<SocialSystemRow & { readonly created_by_user_id: string | null }>(
+    `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+            principles, approval_status, review_reason, created_at, created_by_user_id
+     FROM social_systems
+     WHERE campaign_id = $1 AND id = $2 AND approval_status = 'approved'
+       AND lifecycle_status = 'active'`,
+    [campaignId, officialSystemId],
+  );
+  const row = result.rows[0];
+  if (row === undefined) throw new OfficialSystemNotAvailableError();
+
+  if (row.created_by_user_id !== userId) {
+    if (policy === undefined) throw new SystemAvailabilityNotConfiguredError();
+    const available = await policy.listAvailable(tx, {
+      campaignId,
+      systemType: row.system_type,
+      spawnX,
+      spawnY,
+    });
+    if (!available.some((system) => system.id === row.id && system.type === row.system_type)) {
+      throw new OfficialSystemNotAvailableError();
     }
+  }
+
+  if (row.origin_x === null || row.origin_y === null) {
+    await tx.query(
+      'UPDATE social_systems SET origin_x = $3, origin_y = $4 WHERE campaign_id = $1 AND id = $2',
+      [campaignId, row.id, spawnX, spawnY],
+    );
     return {
       id: row.id,
       type: row.system_type,
       name: row.name,
-      originX: row.origin_x,
-      originY: row.origin_y,
+      originX: spawnX,
+      originY: spawnY,
+      principles: row.principles,
     };
   }
-
-  if (choice.existingSystemId === undefined) {
-    throw new CountrySetupValidationError('An official system is required');
-  }
-  if (policy === undefined) {
-    throw new SystemAvailabilityNotConfiguredError();
-  }
-
-  const available = await policy.listAvailable(tx, {
-    campaignId,
-    systemType: choice.type,
-    spawnX,
-    spawnY,
-  });
-  const selected = available.find((system) => system.id === choice.existingSystemId);
-  if (selected === undefined || selected.type !== choice.type) {
-    throw new OfficialSystemNotAvailableError();
-  }
-
-  const persisted = await tx.query<{
-    id: string;
-    system_type: OfficialSystemType;
-    name: string;
-    origin_x: number;
-    origin_y: number;
-  }>(
-    `SELECT id, system_type, name, origin_x, origin_y
-     FROM social_systems
-     WHERE campaign_id = $1 AND id = $2 AND system_type = $3`,
-    [campaignId, selected.id, choice.type],
-  );
-  const row = persisted.rows[0];
-  if (row === undefined) {
-    throw new OfficialSystemNotAvailableError();
-  }
-
   return {
     id: row.id,
     type: row.system_type,
     name: row.name,
     originX: row.origin_x,
     originY: row.origin_y,
+    principles: row.principles,
   };
 }
-
 async function buildSnapshot(
   tx: PoolClient,
   campaignId: string,
@@ -325,6 +416,7 @@ async function buildSnapshot(
   const result = await tx.query<SnapshotCellRow>(
     `SELECT c.id AS country_id, c.name AS country_name, c.owner_user_id,
             c.official_system_type, c.official_system_id, ss.name AS system_name,
+            ss.principles AS system_principles,
             cell.id AS cell_id, cell.x, cell.y, cc.population,
             building.building_type
      FROM countries AS c
@@ -355,6 +447,7 @@ async function buildSnapshot(
           id: row.official_system_id,
           type: row.official_system_type,
           name: row.system_name,
+          principles: row.system_principles,
         },
         cells: [],
       };
