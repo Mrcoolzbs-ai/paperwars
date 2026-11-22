@@ -4,3 +4,5 @@ coverage
 .pnpm-store
 pnpm-lock.yaml
 *.docx
+# Standalone, no-build browser client asset.
+apps/web/public/app.js
