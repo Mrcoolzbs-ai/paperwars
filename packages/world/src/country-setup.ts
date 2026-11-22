@@ -26,8 +26,6 @@ import type {
   SocialSystemView,
   PlayerSocialSystemTemplateView,
   CountryProfileView,
-  BuildCountryBuildingInput,
-  MoveCountryCapitalInput,
   StartBuildingPlacement,
   StartBuildingType,
 } from './types.js';
