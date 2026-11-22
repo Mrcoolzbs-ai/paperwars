@@ -33,6 +33,40 @@ export interface SocialSystemReviewInput {
   readonly reason?: unknown;
 }
 
+export interface PlayerSocialSystemTemplateView {
+  readonly id: string;
+  readonly type: OfficialSystemType;
+  readonly name: string;
+  readonly principles: readonly SocialSystemPrinciple[];
+  readonly emblemDataUrl: string | null;
+  readonly sourceCampaignId: string | null;
+  readonly updatedAt: Date;
+}
+
+export interface CountryProfileView {
+  readonly id: string;
+  readonly campaignId: string;
+  readonly name: string;
+  readonly culture: readonly string[];
+  readonly government: string;
+  readonly flagDataUrl: string | null;
+  readonly officialSystem: {
+    readonly id: string;
+    readonly type: OfficialSystemType;
+    readonly name: string;
+    readonly principles: readonly SocialSystemPrinciple[];
+    readonly emblemDataUrl: string | null;
+  };
+  readonly territory: {
+    readonly centerX: number | null;
+    readonly centerY: number | null;
+    readonly width: 5;
+    readonly height: 5;
+  };
+  readonly buildings: readonly { readonly type: StartBuildingType; readonly count: number }[];
+  readonly residentCount: number;
+}
+
 export interface SocialSystemView {
   readonly id: string;
   readonly campaignId: string;
@@ -165,6 +199,8 @@ export interface CountrySetupService {
     input: CreateSocialSystemInput,
   ): Promise<SocialSystemView>;
   listMySocialSystems(userId: string, campaignId: string): Promise<readonly SocialSystemView[]>;
+  listMySocialSystemLibrary(userId: string): Promise<readonly PlayerSocialSystemTemplateView[]>;
+  getMyCountry(userId: string, campaignId: string): Promise<CountryProfileView | null>;
   listPendingSocialSystems(
     adminUserId: string,
     campaignId: string,

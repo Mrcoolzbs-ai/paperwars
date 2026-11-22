@@ -24,6 +24,8 @@ import type {
   SocialSystemPrinciple,
   SocialSystemReviewInput,
   SocialSystemView,
+  PlayerSocialSystemTemplateView,
+  CountryProfileView,
   StartBuildingPlacement,
   StartBuildingType,
 } from './types.js';
@@ -84,6 +86,32 @@ interface SocialSystemRow {
   readonly review_reason: string | null;
   readonly created_at: Date;
   readonly emblem_data_url?: string | null;
+}
+
+interface PlayerSocialSystemLibraryRow {
+  readonly id: string;
+  readonly system_type: OfficialSystemType;
+  readonly name: string;
+  readonly principles: readonly SocialSystemPrinciple[];
+  readonly emblem_data_url: string | null;
+  readonly source_campaign_id: string | null;
+  readonly updated_at: Date;
+}
+
+interface CountryProfileRow {
+  readonly country_id: string;
+  readonly campaign_id: string;
+  readonly country_name: string;
+  readonly culture: readonly string[];
+  readonly government: string;
+  readonly flag_data_url: string | null;
+  readonly system_id: string;
+  readonly system_type: OfficialSystemType;
+  readonly system_name: string;
+  readonly system_principles: readonly SocialSystemPrinciple[];
+  readonly system_emblem_data_url: string | null;
+  readonly center_x: number | null;
+  readonly center_y: number | null;
 }
 
 interface SnapshotCountry {
@@ -345,6 +373,13 @@ function toSocialSystemView(row: SocialSystemRow): SocialSystemView {
     approvalStatus: row.approval_status,
     reviewReason: row.review_reason,
     createdAt: row.created_at,
+  };
+}
+
+function toPlayerSocialSystemTemplateView(row: PlayerSocialSystemLibraryRow): PlayerSocialSystemTemplateView {
+  return {
+    id: row.id, type: row.system_type, name: row.name, principles: row.principles,
+    emblemDataUrl: row.emblem_data_url, sourceCampaignId: row.source_campaign_id, updatedAt: row.updated_at,
   };
 }
 
@@ -779,93 +814,95 @@ export function createCountrySetupService(options: {
         await client.query('BEGIN');
         transactionOpen = true;
         await lockInitialSetupCampaign(client, campaignId);
-
         const memberResult = await client.query<MembershipRow>(
-          `SELECT status, country_id
-           FROM campaign_memberships
-           WHERE campaign_id = $1 AND user_id = $2
-           FOR UPDATE`,
-          [campaignId, userId],
+          `SELECT status, country_id FROM campaign_memberships
+           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`, [campaignId, userId],
         );
         const member = memberResult.rows[0];
-        if (member === undefined || member.status !== 'active') {
-          throw new NotActiveCampaignMemberError();
-        }
+        if (member === undefined || member.status !== 'active') throw new NotActiveCampaignMemberError();
         if (member.country_id !== null) throw new CountryAlreadyRegisteredError();
 
-        const spawnReservation = await client.query<{ center_x: number; center_y: number }>(
+        const reservationResult = await client.query<{ center_x: number; center_y: number }>(
           `SELECT center_x, center_y FROM campaign_spawn_reservations
-           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`,
-          [campaignId, userId],
+           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`, [campaignId, userId],
         );
-        const reservedCenter = spawnReservation.rows[0];
-        if (!reservedCenter) {
-          throw new CountrySetupValidationError(
-            'Select and reserve a starting place on the map before creating a belief system',
-          );
-        }
+        const reservation = reservationResult.rows[0];
+        if (!reservation) throw new CountrySetupValidationError('Reserve a starting place before creating a belief system');
+
+        const duplicateResult = await client.query<{
+          id: string; created_by_user_id: string | null; is_referenced: boolean;
+        }>(
+          `SELECT system.id, system.created_by_user_id,
+                  EXISTS (SELECT 1 FROM countries
+                          WHERE campaign_id = system.campaign_id AND official_system_id = system.id) AS is_referenced
+           FROM social_systems AS system
+           WHERE system.campaign_id = $1 AND lower(btrim(system.name)) = lower($2)
+             AND system.creation_kind = 'player_created' AND system.lifecycle_status = 'active'
+           LIMIT 1 FOR UPDATE`, [campaignId, validated.name],
+        );
+        const duplicate = duplicateResult.rows[0];
+        if (duplicate && duplicate.created_by_user_id !== userId) throw new SocialSystemNameConflictError();
 
         const count = await client.query<{ count: number }>(
-          `SELECT count(*)::integer AS count
-           FROM social_systems
-           WHERE campaign_id = $1 AND system_type = $2
-             AND creation_kind = 'player_created'
-             AND lifecycle_status = 'active'
-             AND approval_status IN ('pending', 'approved')`,
-          [campaignId, validated.type],
+          `SELECT count(*)::integer AS count FROM social_systems
+           WHERE campaign_id = $1 AND system_type = $2 AND creation_kind = 'player_created'
+             AND lifecycle_status = 'active' AND approval_status IN ('pending', 'approved')
+             AND ($3::uuid IS NULL OR id <> $3)`,
+          [campaignId, validated.type, duplicate?.id ?? null],
         );
-        if ((count.rows[0]?.count ?? 0) >= MAX_PLAYER_SYSTEMS_PER_TYPE) {
-          throw new SocialSystemLimitReachedError();
+        if ((count.rows[0]?.count ?? 0) >= MAX_PLAYER_SYSTEMS_PER_TYPE) throw new SocialSystemLimitReachedError();
+
+        await client.query(
+          `INSERT INTO player_social_system_library (
+             owner_user_id, system_type, name, principles, emblem_data_url, source_campaign_id
+           ) VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+           ON CONFLICT (owner_user_id, (lower(btrim(name))))
+           DO UPDATE SET system_type = EXCLUDED.system_type, name = EXCLUDED.name,
+             principles = EXCLUDED.principles, emblem_data_url = EXCLUDED.emblem_data_url,
+             source_campaign_id = EXCLUDED.source_campaign_id, updated_at = clock_timestamp()`,
+          [userId, validated.type, validated.name, JSON.stringify(validated.principles), validated.emblemDataUrl, campaignId],
+        );
+
+        let saved: SocialSystemRow | undefined;
+        if (duplicate && !duplicate.is_referenced) {
+          const updated = await client.query<SocialSystemRow>(
+            `UPDATE social_systems
+             SET system_type = $3, name = $4, origin_x = $5, origin_y = $6,
+                 principles = $7::jsonb, emblem_data_url = $8, approval_status = 'approved',
+                 review_reason = NULL, reviewed_by_user_id = NULL, reviewed_at = NULL
+             WHERE campaign_id = $1 AND id = $2
+             RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
+                       principles, approval_status, review_reason, created_at, emblem_data_url`,
+            [campaignId, duplicate.id, validated.type, validated.name, reservation.center_x, reservation.center_y,
+             JSON.stringify(validated.principles), validated.emblemDataUrl],
+          );
+          saved = updated.rows[0];
+        } else {
+          if (duplicate) await client.query(
+            `UPDATE social_systems SET lifecycle_status = 'destroyed' WHERE campaign_id = $1 AND id = $2`,
+            [campaignId, duplicate.id],
+          );
+          const inserted = await client.query<SocialSystemRow>(
+            `INSERT INTO social_systems (
+               campaign_id, system_type, name, origin_x, origin_y, traits, created_by_user_id,
+               approval_status, principles, emblem_data_url, creation_kind, lifecycle_status
+             ) VALUES ($1, $2, $3, $4, $5, '[]'::jsonb, $6, 'approved', $7::jsonb, $8,
+                       'player_created', 'active')
+             RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
+                       principles, approval_status, review_reason, created_at, emblem_data_url`,
+            [campaignId, validated.type, validated.name, reservation.center_x, reservation.center_y,
+             userId, JSON.stringify(validated.principles), validated.emblemDataUrl],
+          );
+          saved = inserted.rows[0];
         }
-
-        const duplicate = await client.query(
-          `SELECT 1 FROM social_systems
-           WHERE campaign_id = $1 AND system_type = $2
-             AND lower(btrim(name)) = lower($3)
-             AND creation_kind = 'player_created'
-             AND lifecycle_status = 'active'
-             AND approval_status IN ('pending', 'approved')
-           LIMIT 1`,
-          [campaignId, validated.type, validated.name],
-        );
-        if (duplicate.rows.length > 0) throw new SocialSystemNameConflictError();
-
-        const inserted = await client.query<SocialSystemRow>(
-          `INSERT INTO social_systems (
-             campaign_id, system_type, name, origin_x, origin_y, traits,
-             created_by_user_id, approval_status, principles, emblem_data_url, creation_kind, lifecycle_status
-           ) VALUES (
-             $1, $2, $3, $4, $5, '[]'::jsonb, $6, 'approved', $7::jsonb, $8,
-             'player_created', 'active'
-           )
-           RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
-                     principles, approval_status, review_reason, created_at, emblem_data_url`,
-          [
-            campaignId,
-            validated.type,
-            validated.name,
-            reservedCenter.center_x,
-            reservedCenter.center_y,
-            userId,
-            JSON.stringify(validated.principles),
-            validated.emblemDataUrl,
-          ],
-        );
-        const row = inserted.rows[0];
-        if (row === undefined) throw new Error('Social system insert did not return a row');
-
+        if (!saved) throw new Error('Social system save did not return a row');
         await client.query('COMMIT');
         transactionOpen = false;
-        return toSocialSystemView(row);
+        return toSocialSystemView(saved);
       } catch (error) {
-        if (transactionOpen) {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-        }
+        if (transactionOpen) { await client.query('ROLLBACK'); transactionOpen = false; }
         throw error;
-      } finally {
-        client.release();
-      }
+      } finally { client.release(); }
     },
 
     async listMySocialSystems(userId, campaignId) {
@@ -885,6 +922,15 @@ export function createCountrySetupService(options: {
         [campaignId, userId],
       );
       return result.rows.map(toSocialSystemView);
+    },
+
+    async listMySocialSystemLibrary(userId) {
+      const result = await options.pool.query<PlayerSocialSystemLibraryRow>(
+        `SELECT id, system_type, name, principles, emblem_data_url, source_campaign_id, updated_at
+         FROM player_social_system_library WHERE owner_user_id = $1 ORDER BY updated_at DESC, name`,
+        [userId],
+      );
+      return result.rows.map(toPlayerSocialSystemTemplateView);
     },
 
     async listPendingSocialSystems(adminUserId, campaignId) {
@@ -1058,6 +1104,57 @@ export function createCountrySetupService(options: {
       } finally {
         result.release();
       }
+    },
+
+    async getMyCountry(userId, campaignId) {
+      const member = await options.pool.query(
+        `SELECT 1 FROM campaign_memberships
+         WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`, [campaignId, userId],
+      );
+      if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
+
+      const result = await options.pool.query<CountryProfileRow>(
+        `SELECT country.id AS country_id, country.campaign_id, country.name AS country_name,
+                country.culture, country.government, country.flag_data_url,
+                system.id AS system_id, system.system_type, system.name AS system_name,
+                system.principles AS system_principles, system.emblem_data_url AS system_emblem_data_url,
+                reservation.center_x, reservation.center_y
+         FROM campaign_memberships AS membership
+         JOIN countries AS country
+           ON country.campaign_id = membership.campaign_id AND country.id = membership.country_id
+         JOIN social_systems AS system
+           ON system.campaign_id = country.campaign_id AND system.id = country.official_system_id
+         LEFT JOIN campaign_spawn_reservations AS reservation
+           ON reservation.campaign_id = country.campaign_id AND reservation.user_id = country.owner_user_id
+         WHERE membership.campaign_id = $1 AND membership.user_id = $2 AND membership.status = 'active'`,
+        [campaignId, userId],
+      );
+      const country = result.rows[0];
+      if (!country) return null;
+
+      const [population, buildings] = await Promise.all([
+        options.pool.query<{ resident_count: number }>(
+          `SELECT COALESCE(sum(population), 0)::integer AS resident_count
+           FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
+          [campaignId, country.country_id],
+        ),
+        options.pool.query<{ type: StartBuildingType; count: number }>(
+          `SELECT building_type AS type, count(*)::integer AS count
+           FROM country_buildings WHERE campaign_id = $1 AND country_id = $2
+           GROUP BY building_type ORDER BY building_type`,
+          [campaignId, country.country_id],
+        ),
+      ]);
+      return {
+        id: country.country_id, campaignId: country.campaign_id, name: country.country_name,
+        culture: country.culture, government: country.government, flagDataUrl: country.flag_data_url,
+        officialSystem: {
+          id: country.system_id, type: country.system_type, name: country.system_name,
+          principles: country.system_principles, emblemDataUrl: country.system_emblem_data_url,
+        },
+        territory: { centerX: country.center_x, centerY: country.center_y, width: 5 as const, height: 5 as const },
+        buildings: buildings.rows, residentCount: population.rows[0]?.resident_count ?? 0,
+      } satisfies CountryProfileView;
     },
 
     async createCountry(userId, campaignId, input) {
