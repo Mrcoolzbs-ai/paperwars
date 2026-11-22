@@ -44,3 +44,39 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .map-legend .legend-land{background:#fff;border:1px solid #111}
 .map-legend .legend-water{background:#0876b9;border:1px solid #111}
 @media(max-width:900px){.principle-columns{grid-template-columns:1fr}.map-modal-toolbar{align-items:flex-start;flex-direction:column}.map-modal-actions{width:100%}.map-modal-actions .button{flex:1}.map-modal-footer{flex-wrap:wrap}.culture-list{grid-template-columns:1fr}}
+
+/* Campaign slots and leave controls */
+.campaign-card{display:block;padding:0;min-width:0}
+.campaign-open{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 18px 11px;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer}
+.campaign-open:hover{background:#ffffff08}
+.campaign-card-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 18px 13px;border-top:1px solid #33443a;color:#9da99b;font:10px "DM Mono",monospace}
+.campaign-card-meta code{color:#d9c18b;font-size:10px}
+.campaign-leave{margin-left:auto;border:1px solid #66534a;background:#241e1a;color:#d6a79a;padding:6px 10px;font:10px "DM Mono",monospace;cursor:pointer}
+.campaign-leave:hover{border-color:#d77b6e;color:#f1c3b8}
+.workspace-header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+.player-count-chip{padding:7px 10px;border:1px solid #405344;color:#d4c49a;background:#17221b;font:10px "DM Mono",monospace;white-space:nowrap}
+.workspace-header-actions .button{white-space:nowrap}
+.campaign-card-meta strong{color:#f0eee5}
+.map-modal{overflow:hidden}
+.map-modal-toolbar{position:relative;z-index:4;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;flex:0 0 auto;min-height:76px;padding:10px 14px;overflow:visible}
+.map-modal-toolbar>div:first-child{min-width:0;max-width:none}
+.map-modal-toolbar span{display:block;line-height:1.45;overflow-wrap:anywhere}
+.map-modal-actions{position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-shrink:0}
+.map-modal-actions .button{position:relative;z-index:6;white-space:nowrap;min-height:40px}
+.map-canvas{position:relative;z-index:1;flex:1 1 auto;background:#0876b9}
+.map-modal-footer{position:relative;z-index:2;flex:0 0 auto}
+@media(max-width:900px){
+  .workspace-header-actions{align-items:flex-start;width:100%;flex-direction:row;justify-content:space-between;flex-wrap:wrap}
+  .map-modal-toolbar{grid-template-columns:1fr;gap:9px}
+  .map-modal-actions{width:100%;justify-content:stretch;flex-wrap:wrap}
+  .map-modal-actions .button{flex:1 1 180px}
+}
+@media(max-width:520px){
+  .campaign-card-meta{gap:8px}
+  .campaign-leave{margin-left:0}
+  .map-modal{padding:7px}
+  .map-modal-toolbar{padding:8px}
+  .map-modal-toolbar span{font-size:11px}
+  .map-modal-actions{display:grid;grid-template-columns:1fr}
+  .map-modal-actions .button{width:100%}
+}
