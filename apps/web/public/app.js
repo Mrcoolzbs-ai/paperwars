@@ -235,6 +235,7 @@
     if (!response.ok) {
       const error = new Error(data?.message || data?.error || `HTTP ${response.status}`);
       error.status = response.status;
+      error.code = data?.error;
       throw error;
     }
     return data;
@@ -280,25 +281,39 @@
         const me = await request('/auth/me');
         state.user = me.user;
         return true;
-      } catch {
+      } catch (error) {
+        if (error.status !== 401) throw error;
         state.token = '';
         sessionStorage.removeItem('pw_access_token');
       }
     }
+
+    let refreshed;
     try {
-      const refreshed = await fetch('/auth/refresh', { method: 'POST', credentials: 'same-origin' });
-      if (!refreshed.ok) return false;
-      const data = await refreshed.json();
-      state.token = data.accessToken;
-      sessionStorage.setItem('pw_access_token', state.token);
-      const me = await request('/auth/me');
-      state.user = me.user;
-      return true;
+      refreshed = await fetch('/auth/refresh', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
     } catch {
-      state.token = '';
-      sessionStorage.removeItem('pw_access_token');
-      return false;
+      throw new Error('Не удалось связаться с сервером. Проверь, запущено ли окно «Paper Wars API».');
     }
+
+    if (refreshed.status === 401) return false;
+    if (!refreshed.ok) {
+      let details = null;
+      try { details = await refreshed.json(); } catch { /* Response did not contain JSON. */ }
+      throw new Error(details?.message || details?.error || `Сервер вернул HTTP ${refreshed.status} при восстановлении сессии.`);
+    }
+
+    const data = await refreshed.json();
+    if (!data || typeof data.accessToken !== 'string') {
+      throw new Error('Сервер вернул неполный ответ при восстановлении сессии.');
+    }
+    state.token = data.accessToken;
+    sessionStorage.setItem('pw_access_token', state.token);
+    const me = await request('/auth/me');
+    state.user = me.user;
+    return true;
   }
 
   async function loadCampaigns() {
@@ -1154,19 +1169,45 @@
       event.preventDefault();
       const email = $('#auth-email').value.trim();
       const password = $('#auth-password').value;
+      const mode = state.authMode;
+      const submit = $('#auth-submit');
+      submit.disabled = true;
+      setMessage('#auth-message', '');
+
       try {
-        const data = await request(state.authMode === 'login' ? '/auth/login' : '/auth/register', {
+        const data = await request(mode === 'login' ? '/auth/login' : '/auth/register', {
           method: 'POST',
           body: JSON.stringify({ email, password }),
         });
+        if (!data || typeof data.accessToken !== 'string' || !data.user) {
+          throw new Error('Сервер вернул неполный ответ авторизации.');
+        }
+
         state.token = data.accessToken;
         sessionStorage.setItem('pw_access_token', state.token);
         state.user = data.user;
-        await loadCampaigns();
         showScreen('game');
-        showToast(state.authMode === 'login' ? 'С возвращением.' : 'Аккаунт создан.');
+
+        try {
+          await loadCampaigns();
+        } catch (error) {
+          showToast('Авторизация прошла успешно, но список кампаний не загрузился: ' + error.message, true);
+        }
+        showToast(mode === 'login' ? 'С возвращением.' : 'Аккаунт создан.');
       } catch (error) {
-        setMessage('#auth-message', error.message === 'UNAUTHENTICATED' ? 'Неверная почта или пароль.' : error.message);
+        let message = error.message || 'Не удалось выполнить авторизацию.';
+        if (error.code === 'UNAUTHENTICATED') {
+          message = 'Неверная почта или пароль.';
+        } else if (error.code === 'EMAIL_ALREADY_REGISTERED') {
+          message = 'Аккаунт с этой почтой уже существует. Переключись на вкладку «Войти».';
+        } else if (error.code === 'INTERNAL_SERVER_ERROR') {
+          message = 'Внутренняя ошибка сервера. Проверь сообщения в окне «Paper Wars API».';
+        } else if (error instanceof TypeError) {
+          message = 'Не удалось связаться с сервером. Проверь, запущено ли окно «Paper Wars API».';
+        }
+        setMessage('#auth-message', message);
+      } finally {
+        submit.disabled = false;
       }
     });
 
@@ -1343,20 +1384,25 @@
     resetTerritoryGrid();
     updateBuildingChoices();
 
-    const authenticated = await restoreSession();
-    if (authenticated) {
+    try {
+      const authenticated = await restoreSession();
+      if (!authenticated) {
+        showScreen('auth');
+        return;
+      }
+
+      // Authentication is already valid. A campaign-listing failure must not
+      // erase the session or send the player back to the welcome screen.
+      showScreen('game');
       try {
         await loadCampaigns();
-        showScreen('game');
-      } catch {
-        state.token = '';
-        sessionStorage.removeItem('pw_access_token');
-        showScreen('auth');
+      } catch (error) {
+        showToast('Сессия активна, но список кампаний не загрузился: ' + error.message, true);
       }
-    } else {
+    } catch (error) {
       showScreen('auth');
+      setMessage('#auth-message', 'Не удалось восстановить сессию: ' + error.message);
     }
   }
-
   init();
 })();
