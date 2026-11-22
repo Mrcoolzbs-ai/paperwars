@@ -423,6 +423,35 @@ function registerCountryRoutes(
     },
   );
 
+  app.post('/campaigns/:campaignId/countries/mine/buildings', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      await countrySetupService.buildCountryBuilding(user.id, getCampaignId(request), {
+        type: body['type'],
+        x: parseCoordinate(body['x'], 'x'),
+        y: parseCoordinate(body['y'], 'y'),
+      });
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.put('/campaigns/:campaignId/countries/mine/capital', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      await countrySetupService.moveCountryCapital(user.id, getCampaignId(request), {
+        x: parseCoordinate(body['x'], 'x'),
+        y: parseCoordinate(body['y'], 'y'),
+      });
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.post('/campaigns/:campaignId/countries', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
@@ -487,6 +516,18 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
       .type('text/javascript; charset=utf-8')
       .header('Cache-Control', 'no-cache')
       .send(script);
+  });
+
+  app.get('/assets/buildings/:file', async (request, reply) => {
+    const params = request.params as { readonly file?: unknown };
+    const allowed = new Set([
+      'factory.jpg', 'field.jpg', 'tower.jpg', 'barracks.jpg', 'capital.jpg', 'science.jpg', 'gold-mark.jpg',
+    ]);
+    if (typeof params.file !== 'string' || !allowed.has(params.file)) {
+      return reply.code(404).send({ error: 'BUILDING_ASSET_NOT_FOUND' });
+    }
+    const asset = await readFile(new URL('../../web/public/assets/buildings/' + params.file, import.meta.url));
+    return reply.type('image/jpeg').header('Cache-Control', 'public, max-age=86400').send(asset);
   });
 
   app.get('/favicon.svg', async (_request, reply) => {

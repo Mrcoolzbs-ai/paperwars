@@ -26,6 +26,8 @@ import type {
   SocialSystemView,
   PlayerSocialSystemTemplateView,
   CountryProfileView,
+  BuildCountryBuildingInput,
+  MoveCountryCapitalInput,
   StartBuildingPlacement,
   StartBuildingType,
 } from './types.js';
@@ -96,6 +98,30 @@ interface PlayerSocialSystemLibraryRow {
   readonly emblem_data_url: string | null;
   readonly source_campaign_id: string | null;
   readonly updated_at: Date;
+}
+
+interface CountryActionCampaignRow {
+  readonly status: string;
+  readonly current_turn: number;
+  readonly orders_locked: boolean;
+  readonly map_width: number | null;
+  readonly map_height: number | null;
+  readonly map_seed: string;
+  readonly ruleset_version: string;
+}
+
+interface CountryActionCellRow {
+  readonly cell_id: string;
+  readonly population: number;
+  readonly x: number;
+  readonly y: number;
+  readonly building_type: StartBuildingType | null;
+}
+
+interface CountryActionBuildingRow {
+  readonly cell_id: string;
+  readonly x: number;
+  readonly y: number;
 }
 
 interface CountryProfileRow {
@@ -577,6 +603,133 @@ async function resolveOfficialSystem(
     principles: row.principles,
   };
 }
+const ADDITIONAL_BUILDING_TYPES = new Set<StartBuildingType>([
+  'factory',
+  'field',
+  'religious_building',
+  'science',
+  'barracks',
+  'tower',
+]);
+
+function validateCountryActionCoordinates(input: { readonly x: unknown; readonly y: unknown }): {
+  readonly x: number;
+  readonly y: number;
+} {
+  if (typeof input.x !== 'number' || typeof input.y !== 'number') {
+    throw new CountrySetupValidationError('Coordinates must be numbers');
+  }
+  validateInteger(input.x, 'x');
+  validateInteger(input.y, 'y');
+  return { x: input.x, y: input.y };
+}
+
+async function lockCountryActionContext(
+  client: PoolClient,
+  userId: string,
+  campaignId: string,
+): Promise<{
+  readonly countryId: string;
+  readonly campaign: CountryActionCampaignRow;
+  readonly snapshotVersion: number;
+}> {
+  const campaignResult = await client.query<CountryActionCampaignRow>(
+    `SELECT status, current_turn, orders_locked, map_width, map_height, map_seed, ruleset_version
+     FROM campaigns WHERE id = $1 FOR UPDATE`,
+    [campaignId],
+  );
+  const campaign = campaignResult.rows[0];
+  if (
+    !campaign ||
+    campaign.status !== 'active' ||
+    campaign.current_turn !== 1 ||
+    campaign.orders_locked ||
+    campaign.map_width === null ||
+    campaign.map_height === null
+  ) {
+    throw new CampaignSetupNotReadyError();
+  }
+  const snapshot = await client.query<{ version: number }>(
+    'SELECT version FROM world_snapshots WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
+    [campaignId],
+  );
+  const snapshotVersion = snapshot.rows[0]?.version;
+  if (snapshotVersion === undefined) throw new CampaignSetupNotReadyError();
+  const job = await client.query(
+    'SELECT id FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
+    [campaignId],
+  );
+  if (job.rows.length > 0) throw new CampaignSetupNotReadyError();
+
+  const membership = await client.query<MembershipRow>(
+    `SELECT status, country_id FROM campaign_memberships
+     WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`,
+    [campaignId, userId],
+  );
+  const member = membership.rows[0];
+  if (!member || member.status !== 'active') throw new NotActiveCampaignMemberError();
+  if (!member.country_id) {
+    throw new CountrySetupValidationError('Found a country before using country actions');
+  }
+  return { countryId: member.country_id, campaign, snapshotVersion };
+}
+
+async function validateFreeLandActionCell(
+  client: PoolClient,
+  campaignId: string,
+  countryId: string,
+  campaign: CountryActionCampaignRow,
+  x: number,
+  y: number,
+): Promise<CountryActionCellRow> {
+  const result = await client.query<CountryActionCellRow>(
+    `SELECT cc.cell_id, cc.population, cell.x, cell.y, building.building_type
+     FROM country_cells AS cc
+     JOIN cells AS cell
+       ON cell.campaign_id = cc.campaign_id AND cell.id = cc.cell_id
+     LEFT JOIN country_buildings AS building
+       ON building.campaign_id = cc.campaign_id
+      AND building.country_id = cc.country_id
+      AND building.cell_id = cc.cell_id
+     WHERE cc.campaign_id = $1 AND cc.country_id = $2 AND cell.x = $3 AND cell.y = $4
+     FOR UPDATE OF cc, cell`,
+    [campaignId, countryId, x, y],
+  );
+  const cell = result.rows[0];
+  if (!cell || cell.population < 1 || cell.building_type !== null) {
+    throw new CountrySetupValidationError('Select an unoccupied land cell with a resident');
+  }
+  const terrain = generateWorldMap(
+    campaign.map_seed,
+    campaign.map_width!,
+    campaign.map_height!,
+  ).terrain;
+  if (terrain[y * campaign.map_width! + x] !== 'l') {
+    throw new CountrySetupValidationError('Buildings and the capital can only occupy land cells');
+  }
+  return cell;
+}
+
+async function saveUpdatedTurnOneSnapshot(
+  client: PoolClient,
+  campaignId: string,
+  mapWidth: number,
+  mapHeight: number,
+  rulesetVersion: string,
+  previousVersion: number,
+): Promise<number> {
+  const state = await buildSnapshot(client, campaignId, mapWidth, mapHeight);
+  const version = previousVersion + 1;
+  const updated = await client.query(
+    `UPDATE world_snapshots
+     SET version = $3, state_schema_version = 1, ruleset_version = $4, state = $5
+     WHERE campaign_id = $1 AND turn_number = $2`,
+    [campaignId, 1, version, rulesetVersion, state],
+  );
+  if (updated.rowCount !== 1) throw new CampaignSetupNotReadyError();
+  return version;
+}
+
 async function buildSnapshot(
   tx: PoolClient,
   campaignId: string,
@@ -1166,14 +1319,19 @@ export function createCountrySetupService(options: {
                 country.culture, country.government, country.flag_data_url,
                 system.id AS system_id, system.system_type, system.name AS system_name,
                 system.principles AS system_principles, system.emblem_data_url AS system_emblem_data_url,
-                reservation.center_x, reservation.center_y
+                territory.center_x, territory.center_y
          FROM campaign_memberships AS membership
          JOIN countries AS country
            ON country.campaign_id = membership.campaign_id AND country.id = membership.country_id
          JOIN social_systems AS system
            ON system.campaign_id = country.campaign_id AND system.id = country.official_system_id
-         LEFT JOIN campaign_spawn_reservations AS reservation
-           ON reservation.campaign_id = country.campaign_id AND reservation.user_id = country.owner_user_id
+         LEFT JOIN LATERAL (
+           SELECT min(cell.x) + 2 AS center_x, min(cell.y) + 2 AS center_y
+           FROM country_cells AS owned
+           JOIN cells AS cell
+             ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+           WHERE owned.campaign_id = country.campaign_id AND owned.country_id = country.id
+         ) AS territory ON TRUE
          WHERE membership.campaign_id = $1 AND membership.user_id = $2 AND membership.status = 'active'`,
         [campaignId, userId],
       );
@@ -1216,6 +1374,125 @@ export function createCountrySetupService(options: {
         buildings: buildings.rows,
         residentCount: population.rows[0]?.resident_count ?? 0,
       } satisfies CountryProfileView;
+    },
+
+    async buildCountryBuilding(userId, campaignId, input) {
+      if (input === null || typeof input !== 'object') {
+        throw new CountrySetupValidationError('Building action payload must be an object');
+      }
+      if (
+        typeof input.type !== 'string' ||
+        !ADDITIONAL_BUILDING_TYPES.has(input.type as StartBuildingType)
+      ) {
+        throw new CountrySetupValidationError(
+          'Choose a factory, field, religious building, laboratory, barracks or tower',
+        );
+      }
+      const type = input.type as StartBuildingType;
+      const coordinates = validateCountryActionCoordinates(input);
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const context = await lockCountryActionContext(client, userId, campaignId);
+        const cell = await validateFreeLandActionCell(
+          client, campaignId, context.countryId, context.campaign, coordinates.x, coordinates.y,
+        );
+        const population = await client.query(
+          `UPDATE country_cells SET population = population - 1
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND population >= 1`,
+          [campaignId, context.countryId, cell.cell_id],
+        );
+        if (population.rowCount !== 1) {
+          throw new CountrySetupValidationError('The selected cell no longer has an available resident');
+        }
+        await client.query(
+          `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
+           VALUES ($1, $2, $3, $4)`,
+          [campaignId, context.countryId, cell.cell_id, type],
+        );
+        await client.query(
+          `INSERT INTO game_events (campaign_id, turn_number, event_type, payload, visibility)
+           VALUES ($1, 1, 'building_constructed', $2, 'public')`,
+          [campaignId, { countryId: context.countryId, buildingType: type, x: coordinates.x, y: coordinates.y }],
+        );
+        await saveUpdatedTurnOneSnapshot(
+          client, campaignId, context.campaign.map_width!, context.campaign.map_height!,
+          context.campaign.ruleset_version, context.snapshotVersion,
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) { await client.query('ROLLBACK'); transactionOpen = false; }
+        throw error;
+      } finally { client.release(); }
+    },
+
+    async moveCountryCapital(userId, campaignId, input) {
+      if (input === null || typeof input !== 'object') {
+        throw new CountrySetupValidationError('Capital relocation payload must be an object');
+      }
+      const coordinates = validateCountryActionCoordinates(input);
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const context = await lockCountryActionContext(client, userId, campaignId);
+        const target = await validateFreeLandActionCell(
+          client, campaignId, context.countryId, context.campaign, coordinates.x, coordinates.y,
+        );
+        const result = await client.query<CountryActionBuildingRow>(
+          `SELECT cc.cell_id, cell.x, cell.y
+           FROM country_buildings AS building
+           JOIN country_cells AS cc ON cc.campaign_id = building.campaign_id
+             AND cc.country_id = building.country_id AND cc.cell_id = building.cell_id
+           JOIN cells AS cell ON cell.campaign_id = cc.campaign_id AND cell.id = cc.cell_id
+           WHERE building.campaign_id = $1 AND building.country_id = $2
+             AND building.building_type = 'capital'
+           FOR UPDATE OF building, cc, cell`,
+          [campaignId, context.countryId],
+        );
+        const capital = result.rows[0];
+        if (!capital) throw new CountrySetupValidationError('The country has no registered capital');
+        if (capital.cell_id === target.cell_id) {
+          throw new CountrySetupValidationError('Choose another cell to relocate the capital');
+        }
+        const freed = await client.query(
+          `UPDATE country_cells SET population = population + 1
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+          [campaignId, context.countryId, capital.cell_id],
+        );
+        const occupied = await client.query(
+          `UPDATE country_cells SET population = population - 1
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND population >= 1`,
+          [campaignId, context.countryId, target.cell_id],
+        );
+        if (freed.rowCount !== 1 || occupied.rowCount !== 1) {
+          throw new CountrySetupValidationError('The selected cells changed; refresh the country map');
+        }
+        const moved = await client.query(
+          `UPDATE country_buildings SET cell_id = $4
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = 'capital'`,
+          [campaignId, context.countryId, capital.cell_id, target.cell_id],
+        );
+        if (moved.rowCount !== 1) throw new CountrySetupValidationError('Capital relocation could not be completed');
+        await client.query(
+          `INSERT INTO game_events (campaign_id, turn_number, event_type, payload, visibility)
+           VALUES ($1, 1, 'capital_relocated', $2, 'public')`,
+          [campaignId, { countryId: context.countryId, from: { x: capital.x, y: capital.y }, to: coordinates }],
+        );
+        await saveUpdatedTurnOneSnapshot(
+          client, campaignId, context.campaign.map_width!, context.campaign.map_height!,
+          context.campaign.ruleset_version, context.snapshotVersion,
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) { await client.query('ROLLBACK'); transactionOpen = false; }
+        throw error;
+      } finally { client.release(); }
     },
 
     async createCountry(userId, campaignId, input) {

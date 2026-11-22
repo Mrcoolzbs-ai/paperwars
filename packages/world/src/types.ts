@@ -43,6 +43,17 @@ export interface PlayerSocialSystemTemplateView {
   readonly updatedAt: Date;
 }
 
+export interface BuildCountryBuildingInput {
+  readonly type: unknown;
+  readonly x: unknown;
+  readonly y: unknown;
+}
+
+export interface MoveCountryCapitalInput {
+  readonly x: unknown;
+  readonly y: unknown;
+}
+
 export interface CountryProfileView {
   readonly id: string;
   readonly campaignId: string;
@@ -201,6 +212,16 @@ export interface CountrySetupService {
   listMySocialSystems(userId: string, campaignId: string): Promise<readonly SocialSystemView[]>;
   listMySocialSystemLibrary(userId: string): Promise<readonly PlayerSocialSystemTemplateView[]>;
   getMyCountry(userId: string, campaignId: string): Promise<CountryProfileView | null>;
+  buildCountryBuilding(
+    userId: string,
+    campaignId: string,
+    input: BuildCountryBuildingInput,
+  ): Promise<void>;
+  moveCountryCapital(
+    userId: string,
+    campaignId: string,
+    input: MoveCountryCapitalInput,
+  ): Promise<void>;
   listPendingSocialSystems(
     adminUserId: string,
     campaignId: string,
