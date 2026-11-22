@@ -423,35 +423,6 @@ function registerCountryRoutes(
     },
   );
 
-  app.post('/campaigns/:campaignId/countries/mine/buildings', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const body = asRecord(request.body);
-      await countrySetupService.buildCountryBuilding(user.id, getCampaignId(request), {
-        type: body['type'],
-        x: parseCoordinate(body['x'], 'x'),
-        y: parseCoordinate(body['y'], 'y'),
-      });
-      return reply.code(204).send();
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
-
-  app.put('/campaigns/:campaignId/countries/mine/capital', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const body = asRecord(request.body);
-      await countrySetupService.moveCountryCapital(user.id, getCampaignId(request), {
-        x: parseCoordinate(body['x'], 'x'),
-        y: parseCoordinate(body['y'], 'y'),
-      });
-      return reply.code(204).send();
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
-
   app.post('/campaigns/:campaignId/countries', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
