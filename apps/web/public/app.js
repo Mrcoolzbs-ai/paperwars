@@ -230,8 +230,8 @@
     $('#country-status').textContent = campaign.countryId ? 'Основано' : 'Не основано';
     state.mapView = null;
     await loadCampaignMap();
-    buildWorldPreview();
     showScreen('workspace');
+    requestAnimationFrame(buildWorldPreview);
     activateTab('overview');
     await loadSystems();
   }
@@ -305,20 +305,27 @@
       }
     }
     for (const country of (state.mapView.countries || [])) {
-      ctx.fillStyle = countryColor(country.id);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const cell of country.cells) {
+        minX = Math.min(minX, cell.x); minY = Math.min(minY, cell.y);
+        maxX = Math.max(maxX, cell.x); maxY = Math.max(maxY, cell.y);
         const px = left + cell.x * cellSize;
         const py = top + cell.y * cellSize;
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(px, py, cellSize, cellSize);
         ctx.strokeStyle = '#111111';
-        ctx.lineWidth = miniature ? 0.45 : 1.4;
+        ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
       }
       if (!miniature && country.cells.length) {
-        const center = country.cells.reduce((acc, cell) => ({ x: acc.x + cell.x, y: acc.y + cell.y }), { x: 0, y: 0 });
-        ctx.fillStyle = '#111111';
+        ctx.strokeStyle = '#050505';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(left + minX * cellSize + 1, top + minY * cellSize + 1,
+          (maxX - minX + 1) * cellSize - 2, (maxY - minY + 1) * cellSize - 2);
+        ctx.fillStyle = '#101820';
         ctx.font = 'bold ' + Math.max(10, Math.min(15, cellSize)) + 'px sans-serif';
-        ctx.fillText(country.name, left + center.x / country.cells.length * cellSize, top + center.y / country.cells.length * cellSize);
+        ctx.fillText(country.name, left + ((minX + maxX + 1) / 2) * cellSize,
+          top + ((minY + maxY + 1) / 2) * cellSize);
       }
     }
     for (const reservation of (state.mapView.reservations || [])) {
