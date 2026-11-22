@@ -103,57 +103,54 @@ describe('pure simulation engine', () => {
     rngVersion: 'rng-v1',
   });
 
-  it(
-    'resolves finalized orders and attaches its own auditable uniform/weighted draw journal',
-    () => {
-      let weightedCalls = 0;
-      const random: RandomSource = {
-        uniform: createRandomSource().uniform,
-        weighted<T>() {
-          weightedCalls += 1;
-          throw new Error(
-            'The engine must record weighted draws through uniform targets',
-          ) as unknown as T;
+  it('resolves finalized orders and attaches its own auditable uniform/weighted draw journal', () => {
+    let weightedCalls = 0;
+    const random: RandomSource = {
+      uniform: createRandomSource().uniform,
+      weighted<T>() {
+        weightedCalls += 1;
+        throw new Error(
+          'The engine must record weighted draws through uniform targets',
+        ) as unknown as T;
+      },
+    };
+
+    const result = engine.resolveTurn({
+      snapshot,
+      orders: [order],
+      ruleset,
+      random,
+      resolver: createResolver(),
+    });
+
+    expect(result).toMatchObject({
+      campaignId: snapshot.campaignId,
+      turnNumber: snapshot.turnNumber,
+      sourceSnapshotVersion: snapshot.version,
+      nextState: { value: 52 },
+      orderResults: [{ orderId: order.id, status: 'accepted', resultCode: 'ORDER_APPLIED' }],
+      campaignEnded: false,
+      randomDraws: [
+        {
+          domain: 'economy',
+          drawId: 'tax-roll',
+          minValue: 1,
+          maxValue: 100,
+          value: 37,
         },
-      };
-
-      const result = engine.resolveTurn({
-        snapshot,
-        orders: [order],
-        ruleset,
-        random,
-        resolver: createResolver(),
-      });
-
-      expect(result).toMatchObject({
-        campaignId: snapshot.campaignId,
-        turnNumber: snapshot.turnNumber,
-        sourceSnapshotVersion: snapshot.version,
-        nextState: { value: 52 },
-        orderResults: [{ orderId: order.id, status: 'accepted', resultCode: 'ORDER_APPLIED' }],
-        campaignEnded: false,
-        randomDraws: [
-          {
-            domain: 'economy',
-            drawId: 'tax-roll',
-            minValue: 1,
-            maxValue: 100,
-            value: 37,
-          },
-          {
-            domain: 'events',
-            drawId: 'incident',
-            minValue: 0,
-            maxValue: 6,
-            value: 2,
-          },
-        ],
-      });
-      expect(weightedCalls).toBe(0);
-      expect(Object.isFrozen(result)).toBe(true);
-      expect(Object.isFrozen(result.randomDraws)).toBe(true);
-    },
-  );
+        {
+          domain: 'events',
+          drawId: 'incident',
+          minValue: 0,
+          maxValue: 6,
+          value: 2,
+        },
+      ],
+    });
+    expect(weightedCalls).toBe(0);
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.randomDraws)).toBe(true);
+  });
 
   it('adapts the committed turn seed to deterministic uniform and weighted draws', () => {
     const random = createDeterministicRandomSource({
