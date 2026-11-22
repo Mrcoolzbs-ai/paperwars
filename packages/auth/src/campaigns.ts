@@ -15,6 +15,7 @@ export interface CampaignServiceOptions {
 export interface CampaignMapSize {
   readonly mapWidth: number;
   readonly mapHeight: number;
+  readonly turnDurationHours?: number;
 }
 
 export interface CreatedCampaign {
@@ -27,6 +28,7 @@ export interface CreatedCampaign {
   readonly rngVersion: string;
   readonly mapWidth: number;
   readonly mapHeight: number;
+  readonly turnDurationHours: number;
   readonly firstTurnCommitment: string;
 }
 
@@ -42,6 +44,7 @@ export interface CampaignSummary {
   readonly createdAt: Date;
   readonly mapWidth: number | null;
   readonly mapHeight: number | null;
+  readonly turnDurationHours: number;
 }
 
 export interface CampaignService {
@@ -66,6 +69,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
 
   return {
     async createCampaign(ownerUserId, nameInput, mapSize) {
+      const turnDurationHours = mapSize?.turnDurationHours ?? 24;
+      if (![1, 2, 4, 8, 12, 24, 48, 72, 168].includes(turnDurationHours)) {
+        throw new AuthValidationError('Turn duration must be one of 1, 2, 4, 8, 12, 24, 48, 72 or 168 hours');
+      }
       if (
         !Number.isSafeInteger(mapSize?.mapWidth) ||
         !Number.isSafeInteger(mapSize?.mapHeight) ||
@@ -109,8 +116,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         }>(
           `INSERT INTO campaigns (
              name, status, current_turn, orders_locked, orders_locked_at,
-             ruleset_version, rng_version, map_width, map_height
-           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6)
+             ruleset_version, rng_version, map_width, map_height, turn_duration_hours
+           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6, $7)
            RETURNING id, name, status, current_turn, orders_locked, map_width, map_height`,
           [
             name,
@@ -119,6 +126,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
             options.rngVersion,
             mapSize.mapWidth,
             mapSize.mapHeight,
+            turnDurationHours,
           ],
         );
         const campaign = created.rows[0];
@@ -157,6 +165,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           rngVersion: options.rngVersion,
           mapWidth: mapSize.mapWidth,
           mapHeight: mapSize.mapHeight,
+          turnDurationHours,
           firstTurnCommitment: seed.commitment,
         };
       } catch (error) {
@@ -183,11 +192,12 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         created_at: Date;
         map_width: number | null;
         map_height: number | null;
+        turn_duration_hours: number;
       }>(
         `SELECT c.id, c.name, c.status, c.current_turn, c.orders_locked,
                 m.status AS member_status, m.country_id,
                 seed.commitment AS first_turn_commitment, c.created_at,
-                c.map_width, c.map_height
+                c.map_width, c.map_height, c.turn_duration_hours
          FROM campaign_memberships AS m
          JOIN campaigns AS c ON c.id = m.campaign_id
          LEFT JOIN random_seeds AS seed
@@ -208,6 +218,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         createdAt: row.created_at,
         mapWidth: row.map_width,
         mapHeight: row.map_height,
+        turnDurationHours: row.turn_duration_hours,
       }));
     },
   };
