@@ -46,3 +46,38 @@ export class OfficialSystemNotAvailableError extends Error {
     this.name = 'OfficialSystemNotAvailableError';
   }
 }
+
+export class SocialSystemLimitReachedError extends Error {
+  constructor() {
+    super('The campaign already has the maximum number of player-created systems of this type');
+    this.name = 'SocialSystemLimitReachedError';
+  }
+}
+
+export class SocialSystemNameConflictError extends Error {
+  constructor() {
+    super('A social system with this name already exists in the campaign');
+    this.name = 'SocialSystemNameConflictError';
+  }
+}
+
+export class SocialSystemNotFoundError extends Error {
+  constructor() {
+    super('Social system was not found in this campaign');
+    this.name = 'SocialSystemNotFoundError';
+  }
+}
+
+export class SocialSystemAdminRequiredError extends Error {
+  constructor() {
+    super('Administrator privileges are required to review social systems');
+    this.name = 'SocialSystemAdminRequiredError';
+  }
+}
+
+export class SocialSystemReviewConflictError extends Error {
+  constructor() {
+    super('Only pending social systems can be reviewed during initial setup');
+    this.name = 'SocialSystemReviewConflictError';
+  }
+}
