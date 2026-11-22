@@ -286,7 +286,8 @@ Commit-reveal подтверждает неизменность seed после 
 - в симуляцию принимаются только finalized orders того же campaign и turn;
 - resolver остаётся чистой функцией без БД/HTTP и возвращает результат без RNG-журнала;
 - `createDeterministicRandomSource(RNGContext)` адаптирует committed turn seed к HMAC-SHA-256 `drawUniform`/`drawWeighted`; engine оборачивает источник проверяющим `RandomSource` и записывает uniform/weighted draws в авторитетный `randomDraws`; weighted выбор журналируется целочисленным target, совместимым со схемой `random_draws`;
-- результат сверяется с campaign/turn/snapshot version и полным набором order results.
+- результат сверяется с campaign/turn/snapshot version и полным набором order results;
+- RNG source дополнительно привязан к campaignId, turnNumber и rngVersion snapshot; передача seed другого хода/кампании/версии отклоняется до вызова resolver.
 
 Это исполняемая техническая оболочка, а не готовые игровые фазы. Concrete ruleset resolver, применение приказов, economy/battle/discovery и persistence finalization остаются незавершёнными. Детерминированные unit-тесты orchestration не доказывают полноту игровых механик.
 
