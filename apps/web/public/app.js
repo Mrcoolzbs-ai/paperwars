@@ -1188,12 +1188,17 @@
         state.user = data.user;
         showScreen('game');
 
+        let campaignLoadError = null;
         try {
           await loadCampaigns();
         } catch (error) {
-          showToast('Авторизация прошла успешно, но список кампаний не загрузился: ' + error.message, true);
+          campaignLoadError = error;
         }
-        showToast(mode === 'login' ? 'С возвращением.' : 'Аккаунт создан.');
+        if (campaignLoadError) {
+          showToast('Авторизация прошла успешно, но список кампаний не загрузился: ' + campaignLoadError.message, true);
+        } else {
+          showToast(mode === 'login' ? 'С возвращением.' : 'Аккаунт создан.');
+        }
       } catch (error) {
         let message = error.message || 'Не удалось выполнить авторизацию.';
         if (error.code === 'UNAUTHENTICATED') {
