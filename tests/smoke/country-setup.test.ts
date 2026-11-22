@@ -135,6 +135,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(firstCountry.snapshotVersion).toBe(1);
       expect(firstCountry.officialSystem.type).toBe('religion');
 
+      const lockAfterFirstCountry = await current.pool.query<{ orders_locked: boolean }>(
+        'SELECT orders_locked FROM campaigns WHERE id = $1',
+        [campaign.id],
+      );
+      expect(lockAfterFirstCountry.rows[0]?.orders_locked).toBe(true);
+
       const firstPopulation = await current.pool.query<{
         cell_count: string;
         resident_count: string;
@@ -196,6 +202,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(secondCountry.officialSystem.type).toBe('ideology');
       expect(secondCountry.snapshotVersion).toBe(2);
 
+      const lockAfterAllCountries = await current.pool.query<{ orders_locked: boolean }>(
+        'SELECT orders_locked FROM campaigns WHERE id = $1',
+        [campaign.id],
+      );
+      expect(lockAfterAllCountries.rows[0]?.orders_locked).toBe(false);
+
       const snapshot = await current.pool.query<{
         version: number;
         state_schema_version: number;
@@ -236,6 +248,34 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         population: '36',
         buildings: '14',
       });
+    });
+
+    it('unlocks turn one when the only active member completes country setup', async () => {
+      const current = getPersistence();
+      const { auth, campaigns, countrySetup } = createServices();
+      const user = await auth.register(
+        `country-solo-${randomUUID()}@example.test`,
+        'country solo test password',
+      );
+      const campaign = await campaigns.createCampaign(
+        user.user.id,
+        `country-solo-${randomUUID()}`,
+        { mapWidth: 20, mapHeight: 20 },
+      );
+
+      await countrySetup.createCountry(user.user.id, campaign.id, {
+        name: 'Solitary Republic',
+        spawnX: 5,
+        spawnY: 5,
+        officialSystem: { type: 'religion', newSystemName: 'One Dawn' },
+        buildings: RELIGION_BUILDINGS,
+      });
+
+      const result = await current.pool.query<{ orders_locked: boolean }>(
+        'SELECT orders_locked FROM campaigns WHERE id = $1',
+        [campaign.id],
+      );
+      expect(result.rows[0]?.orders_locked).toBe(false);
     });
 
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
