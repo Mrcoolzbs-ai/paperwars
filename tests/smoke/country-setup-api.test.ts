@@ -363,11 +363,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           gold_mine: 1,
         });
 
+        const firstOwnedCell = ownedCountry?.cells[0];
+        if (!firstOwnedCell) throw new Error('The created country has no owned cells');
+
         const construction = await app.inject({
           method: 'POST',
           url: `/campaigns/${campaign.id}/countries/mine/buildings`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
-          payload: { type: 'factory', x: ownedCountry!.cells[0]!.x, y: ownedCountry!.cells[0]!.y },
+          payload: { type: 'factory', x: firstOwnedCell.x, y: firstOwnedCell.y },
         });
         expect(construction.statusCode).toBe(404);
 
@@ -375,7 +378,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           method: 'PUT',
           url: `/campaigns/${campaign.id}/countries/mine/capital`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
-          payload: { x: ownedCountry!.cells[0]!.x, y: ownedCountry!.cells[0]!.y },
+          payload: { x: firstOwnedCell.x, y: firstOwnedCell.y },
         });
         expect(capitalMove.statusCode).toBe(404);
       } finally {
