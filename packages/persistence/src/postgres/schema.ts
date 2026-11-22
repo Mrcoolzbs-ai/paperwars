@@ -201,6 +201,35 @@ export const socialSystems = pgTable(
   ],
 );
 
+export const campaignSpawnReservations = pgTable(
+  'campaign_spawn_reservations',
+  {
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    centerX: integer('center_x').notNull(),
+    centerY: integer('center_y').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.campaignId, table.userId] }),
+    index('campaign_spawn_reservations_campaign_center_idx').on(
+      table.campaignId,
+      table.centerX,
+      table.centerY,
+    ),
+    check(
+      'campaign_spawn_reservations_centers_nonnegative',
+      sql`${table.centerX} >= 2 and ${table.centerY} >= 2`,
+    ),
+  ],
+);
+
 export const countries = pgTable(
   'countries',
   {
