@@ -161,9 +161,7 @@ function createRecordedRandomSource(
           throw new TurnResolutionInvariantError('Weighted outcome id must not be empty');
         }
         if (outcomeIds.has(outcome.id)) {
-          throw new TurnResolutionInvariantError(
-            `Weighted outcome id ${outcome.id} is duplicated`,
-          );
+          throw new TurnResolutionInvariantError(`Weighted outcome id ${outcome.id} is duplicated`);
         }
         if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
           throw new TurnResolutionInvariantError(
