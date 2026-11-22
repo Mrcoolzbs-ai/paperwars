@@ -26,6 +26,11 @@ describe('browser client', () => {
     expect(script.statusCode).toBe(200);
     expect(script.headers['content-type']).toContain('javascript');
     expect(script.body).toContain('/campaigns');
+    expect(script.body).toContain('Building symbols are rendered after country labels');
+    expect(script.body).toContain("ctx.fillText('З'");
+    expect(script.body).toContain('Эффект: ');
+    expect(script.body).toContain('Игровые действия пока недоступны');
+    expect(script.body).not.toContain('build-country-building');
     expect(stylesheet.statusCode).toBe(200);
     expect(stylesheet.headers['content-type']).toContain('text/css');
     expect(icon.statusCode).toBe(200);
