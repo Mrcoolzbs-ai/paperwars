@@ -102,7 +102,10 @@ function assertFinalizedOrders<TPayload>(
   }
 }
 
-function createRecordedRandomSource(source: RandomSource, journal: RandomDrawRecord[]): RandomSource {
+function createRecordedRandomSource(
+  source: RandomSource,
+  journal: RandomDrawRecord[],
+): RandomSource {
   const usedDraws = new Set<string>();
 
   const uniform = (domain: string, drawId: string, min: number, max: number): number => {
@@ -207,11 +210,15 @@ export function createSimulationEngine(config: SimulationEngineConfig): Simulati
       TPayload,
       TParameters extends object,
       TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
-    >(input: SimulationTurnRequest<TState, TPayload, TParameters, TEvent>): TurnResolution<TState, TEvent> {
+    >(
+      input: SimulationTurnRequest<TState, TPayload, TParameters, TEvent>,
+    ): TurnResolution<TState, TEvent> {
       assertRulesetCompatible(input.ruleset, descriptor);
       assertSnapshotCompatible(input.snapshot, input.ruleset);
       if (!Number.isSafeInteger(input.snapshot.turnNumber) || input.snapshot.turnNumber < 1) {
-        throw new TurnResolutionInvariantError('Snapshot turn number must be a positive safe integer');
+        throw new TurnResolutionInvariantError(
+          'Snapshot turn number must be a positive safe integer',
+        );
       }
       assertFinalizedOrders(input.snapshot, input.orders);
 
