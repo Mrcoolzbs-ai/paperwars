@@ -71,6 +71,10 @@ if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" (
   set "PATH=%PATH%;%ProgramFiles%\Docker\Docker\resources\bin"
   goto docker_cli_ready
 )
+if exist "%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin\docker.exe" (
+  set "PATH=%PATH%;%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin"
+  goto docker_cli_ready
+)
 if exist "%LOCALAPPDATA%\Programs\Docker\Docker\resources\bin\docker.exe" (
   set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Docker\Docker\resources\bin"
   goto docker_cli_ready
@@ -99,6 +103,9 @@ if errorlevel 1 (
 if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" (
   set "PATH=%PATH%;%ProgramFiles%\Docker\Docker\resources\bin"
 )
+if exist "%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin\docker.exe" (
+  set "PATH=%PATH%;%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin"
+)
 where docker >nul 2>&1
 if errorlevel 1 (
   echo [WAIT] Docker установлен, но Windows пока не видит docker.exe.
@@ -118,6 +125,7 @@ docker info >nul 2>&1
 if errorlevel 1 (
   echo [WAIT] Запускаю Docker Desktop, если он установлен...
   if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+  if exist "%LOCALAPPDATA%\Programs\DockerDesktop\Docker Desktop.exe" start "" "%LOCALAPPDATA%\Programs\DockerDesktop\Docker Desktop.exe"
   if exist "%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe" start "" "%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe"
   echo [WAIT] Ожидание готовности Docker (до 90 секунд)...
   set "DOCKER_TRIES=0"
