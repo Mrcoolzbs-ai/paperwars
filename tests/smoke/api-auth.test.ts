@@ -116,6 +116,16 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment,
       ).toMatch(/^[a-f0-9]{64}$/);
 
+      const campaignList = await app.inject({
+        method: 'GET',
+        url: '/campaigns',
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(campaignList.statusCode).toBe(200);
+      expect(campaignList.json<{ campaigns: Array<{ id: string }> }>().campaigns).toContainEqual(
+        expect.objectContaining({ id: campaign.json<{ campaign: { id: string } }>().campaign.id }),
+      );
+
       const refreshed = await app.inject({
         method: 'POST',
         url: '/auth/refresh',
