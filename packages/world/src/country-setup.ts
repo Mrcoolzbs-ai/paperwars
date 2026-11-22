@@ -201,19 +201,6 @@ function validateGovernment(value: unknown): string {
   return selected;
 }
 
-function isLandCell(x: number, y: number, width: number, height: number): boolean {
-  const px = (x + 0.5) / width;
-  const py = (y + 0.5) / height;
-  const regions = [
-    [0.18, 0.3, 0.16, 0.23],
-    [0.39, 0.39, 0.21, 0.28],
-    [0.7, 0.28, 0.18, 0.24],
-    [0.8, 0.69, 0.15, 0.18],
-    [0.39, 0.79, 0.22, 0.16],
-  ] as const;
-  return regions.some(([cx, cy, rx, ry]) => ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1);
-}
-
 function validateSpawnLand(seed: string, cx: number, cy: number, width: number, height: number): void {
   const world = generateWorldMap(seed, width, height);
   let landCells = 0;
