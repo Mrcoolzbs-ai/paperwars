@@ -704,6 +704,16 @@ export function createCountrySetupService(options: {
         }
         if (member.country_id !== null) throw new CountryAlreadyRegisteredError();
 
+        const spawnReservation = await client.query<{ center_x: number; center_y: number }>(
+          `SELECT center_x, center_y FROM campaign_spawn_reservations
+           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`,
+          [campaignId, userId],
+        );
+        const reservedCenter = spawnReservation.rows[0];
+        if (!reservedCenter) {
+          throw new CountrySetupValidationError('Select and reserve a starting place on the map before creating a belief system');
+        }
+
         const count = await client.query<{ count: number }>(
           `SELECT count(*)::integer AS count
            FROM social_systems
@@ -734,10 +744,8 @@ export function createCountrySetupService(options: {
              campaign_id, system_type, name, origin_x, origin_y, traits,
              created_by_user_id, approval_status, principles, emblem_data_url, creation_kind, lifecycle_status
            ) VALUES (
-             $1, $2, $3,
-             (SELECT center_x FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $4),
-             (SELECT center_y FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $4),
-             '[]'::jsonb, $4, 'approved', $5::jsonb, $6, 'player_created', 'active'
+             $1, $2, $3, $4, $5, '[]'::jsonb, $6, 'approved', $7::jsonb, $8,
+             'player_created', 'active'
            )
            RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
                      principles, approval_status, review_reason, created_at, emblem_data_url`,
@@ -745,6 +753,8 @@ export function createCountrySetupService(options: {
             campaignId,
             validated.type,
             validated.name,
+            reservedCenter.center_x,
+            reservedCenter.center_y,
             userId,
             JSON.stringify(validated.principles),
             validated.emblemDataUrl,
@@ -1037,6 +1047,15 @@ export function createCountrySetupService(options: {
         }
         if (member.country_id !== null) {
           throw new CountryAlreadyRegisteredError();
+        }
+        const spawnReservation = await client.query<{ center_x: number; center_y: number }>(
+          `SELECT center_x, center_y FROM campaign_spawn_reservations
+           WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE`,
+          [campaignId, userId],
+        );
+        const reservedCenter = spawnReservation.rows[0];
+        if (!reservedCenter || reservedCenter.center_x !== input.spawnX || reservedCenter.center_y !== input.spawnY) {
+          throw new CountrySetupValidationError('Reserve the selected spawn point on the map before founding your country');
         }
 
         validateSpawnLand(input.spawnX, input.spawnY, campaign.map_width, campaign.map_height);
