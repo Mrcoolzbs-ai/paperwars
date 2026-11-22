@@ -145,7 +145,7 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .faith-doc-beliefs{min-height:275px}
 .faith-doc-beliefs h3,.faith-doc-authority h3,.faith-doc-notes h3,.country-doc-middle h3{margin:0 0 10px;font:400 23px/1.2 Arial,sans-serif;color:#111}
 .faith-doc-beliefs ul{list-style:none;margin:0;padding:0;display:grid;gap:13px}
-.faith-doc-beliefs li{display:grid;gap:3px}.faith-doc-beliefs li strong{font:400 17px Arial,sans-serif}.faith-doc-beliefs li span{font:14px/1.4 Arial,sans-serif;color:#222}.faith-doc-beliefs li small{font:11px Arial,sans-serif;color:#555}
+.faith-doc-beliefs li{display:grid;gap:3px}.faith-doc-beliefs li strong{font:400 17px Arial,sans-serif}.faith-doc-beliefs li span{font:14px/1.4 Arial,sans-serif;color:#222}.faith-doc-beliefs li small{font:11px Arial,sans-serif;color:#555}.faith-doc-beliefs li .principle-effect{font:600 12px/1.4 Arial,sans-serif;color:#285f44}.faith-doc-beliefs li .principle-polarity{font:11px Arial,sans-serif;color:#666}
 .faith-doc-authority{display:flex;flex-direction:column}.authority-levels{display:grid;gap:0;margin-top:6px}.authority-levels>div{display:grid;grid-template-columns:1fr 44px;min-height:52px}
 .authority-levels>div span{display:grid;align-items:center;justify-items:end;padding-right:8px;font:13px Arial,sans-serif}.authority-levels>div i{border:1px solid #333}
 .authority-greatness{background:#4b9b78}.authority-understanding{background:#b0dc15}.authority-indifference{background:#2798cf}.authority-avoidance{background:#813d82}
