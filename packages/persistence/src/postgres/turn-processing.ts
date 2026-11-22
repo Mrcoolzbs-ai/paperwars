@@ -149,6 +149,7 @@ export async function lockCampaignForOrderWrite(
 export async function lockCampaignForInvitationWrite(
   tx: PoolClient,
   campaignId: string,
+  options: { readonly requireInitialSetup?: boolean } = {},
 ): Promise<number> {
   const result = await tx.query<{
     status: string;
@@ -168,7 +169,7 @@ export async function lockCampaignForInvitationWrite(
   const row = result.rows[0];
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
-  if (!row.initial_setup) {
+  if ((options.requireInitialSetup ?? true) && !row.initial_setup) {
     throw new OrdersAlreadyLockedError('Invitations are only allowed during initial campaign setup');
   }
   return row.current_turn;
