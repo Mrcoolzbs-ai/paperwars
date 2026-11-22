@@ -236,8 +236,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
       const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
         name: 'Free Thought Collective',
-        spawnX: 13,
-        spawnY: 13,
+        spawnX: 8,
+        spawnY: 15,
         officialSystemId: secondSystem.id,
         buildings: IDEOLOGY_BUILDINGS,
       });
