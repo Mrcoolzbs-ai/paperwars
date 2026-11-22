@@ -49,6 +49,11 @@ const order: OrderEnvelope<TestPayload> = {
 
 function createRandomSource(overrides: Partial<RandomSource> = {}): RandomSource {
   return {
+    context: {
+      campaignId: snapshot.campaignId,
+      turnNumber: snapshot.turnNumber,
+      rngVersion: 'rng-v1',
+    },
     uniform: (_domain, drawId, min, max) => {
       if (drawId === 'tax-roll') return Math.min(max, Math.max(min, 37));
       return Math.min(max, min + 2);
@@ -232,6 +237,26 @@ describe('pure simulation engine', () => {
       ).toThrow(TurnResolutionInvariantError);
     }
     expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('rejects RNG sources bound to another campaign, turn or RNG version', () => {
+    const mismatchedContexts = [
+      { ...createRandomSource().context, campaignId: 'campaign-foreign' },
+      { ...createRandomSource().context, turnNumber: 2 },
+      { ...createRandomSource().context, rngVersion: 'rng-v2' },
+    ];
+
+    for (const context of mismatchedContexts) {
+      expect(() =>
+        engine.resolveTurn({
+          snapshot,
+          orders: [order],
+          ruleset,
+          random: createRandomSource({ context }),
+          resolver: createResolver(),
+        }),
+      ).toThrow(TurnResolutionInvariantError);
+    }
   });
 
   it('rejects invalid random values and re-use of a draw ID', () => {
