@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
-title Paper Wars - local server
+title Paper Wars - local game client
 
 echo.
 echo ======================================================
@@ -58,18 +58,15 @@ if errorlevel 1 (
 
 echo.
 echo [2/4] Applying PostgreSQL migrations...
-REM Call the workspace package directly. The root db:migrate script invokes
-REM a nested "pnpm" command that may not be on PATH on Windows.
 call corepack pnpm --filter @paper-wars/persistence db:migrate
 if errorlevel 1 (
   echo [ERROR] Database migrations failed.
-  echo Check DATABASE_URL in .env and confirm the PostgreSQL service is running.
+  echo Check DATABASE_URL in .env and confirm PostgreSQL is running.
   goto failed
 )
 
 echo.
 echo [3/4] Building workspace packages...
-REM Run the recursive pnpm command directly instead of the root build script.
 call corepack pnpm -r --workspace-concurrency=1 --if-present build
 if errorlevel 1 (
   echo [ERROR] Project build failed.
@@ -84,34 +81,38 @@ if not errorlevel 1 goto already_running
 echo Starting the Paper Wars API in a separate window...
 start "Paper Wars API" /D "%~dp0" cmd /k "call corepack pnpm --filter @paper-wars/api dev"
 
-echo Waiting for the API to become ready...
+echo Waiting for the API and browser client...
 set "PW_READY="
 for /L %%I in (1,1,30) do (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/' -TimeoutSec 2; if ($r.StatusCode -eq 200 -and $r.Content -match 'auth-screen') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
   if not errorlevel 1 (
     set "PW_READY=1"
-    goto server_ready
+    goto client_ready
   )
   timeout /t 2 /nobreak >nul
 )
 
-echo [ERROR] The API did not become ready within 60 seconds.
+echo [ERROR] The browser client did not become ready within 60 seconds.
 echo Check the separate "Paper Wars API" window for the startup error.
 goto failed
 
 :already_running
-echo [OK] A Paper Wars API is already responding on port 3000.
-goto open_status
+echo [OK] An API is already responding on port 3000.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/' -TimeoutSec 3; if ($r.StatusCode -eq 200 -and $r.Content -match 'auth-screen') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+  echo [ERROR] The server on port 3000 is an older API without the browser client.
+  echo Close the old "Paper Wars API" window, update the project files, and run this file again.
+  goto failed
+)
+goto client_ready
 
-:server_ready
-echo [OK] Paper Wars API is responding.
-
-:open_status
+:client_ready
+echo [OK] Paper Wars browser client is ready.
 echo.
-echo Opening the API health page: http://127.0.0.1:3000/health
-start "" "http://127.0.0.1:3000/health"
+echo Opening the game: http://127.0.0.1:3000
+start "" "http://127.0.0.1:3000"
 echo.
-echo The API window must remain open while you use the server.
+echo The "Paper Wars API" window must remain open while you play.
 echo Press any key to close this launcher window.
 pause >nul
 exit /b 0
