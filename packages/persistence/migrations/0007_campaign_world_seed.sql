@@ -6,7 +6,7 @@ WHERE map_seed IS NULL;
 
 ALTER TABLE campaigns
   ALTER COLUMN map_seed SET NOT NULL,
-  ALTER COLUMN map_seed SET DEFAULT '';
+  ALTER COLUMN map_seed SET DEFAULT SUBSTRING(MD5(random()::text || clock_timestamp()::text), 1, 16);
 
 ALTER TABLE campaigns
   ADD CONSTRAINT campaigns_map_seed_check
