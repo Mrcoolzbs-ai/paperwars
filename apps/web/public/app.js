@@ -224,7 +224,7 @@
     ctx.strokeRect(left, top, inner, inner);
     ctx.restore();
   }
-  async function request(url, options = {}) { {
+  async function request(url, options = {}) {
     const headers = new Headers(options.headers || {});
     if (state.token) headers.set('Authorization', `Bearer ${state.token}`);
     if (options.body !== undefined) headers.set('Content-Type', 'application/json');
