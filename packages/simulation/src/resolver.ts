@@ -164,11 +164,23 @@ function createRecordedRandomSource(source: RandomSource): {
       }
     }
 
+    // The source owns weighted selection. The equivalent uniform draw is
+    // also read so the exact integer target can be persisted in the audit log.
+    // RandomSource is deterministic by (domain, drawId), so both calls must
+    // resolve to the same ticket.
+    const selected = source.weighted(domain, drawId, outcomes);
     const target = uniform(domain, drawId, 0, totalWeight - 1);
     let cumulativeWeight = 0;
     for (const outcome of outcomes) {
       cumulativeWeight += outcome.weight;
-      if (target < cumulativeWeight) return outcome.value;
+      if (target < cumulativeWeight) {
+        if (!Object.is(selected, outcome.value)) {
+          throw new SimulationRandomSourceError(
+            'Weighted random source result does not match its deterministic uniform draw',
+          );
+        }
+        return selected;
+      }
     }
     throw new SimulationRandomSourceError('Weighted outcome selection fell outside its table');
   };
