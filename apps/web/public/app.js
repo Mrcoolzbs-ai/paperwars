@@ -287,6 +287,7 @@
     const data = await request('/campaigns/' + state.campaign.id + '/map');
     state.mapView = data.map;
     buildWorldPreview();
+    renderTerritoryGrid();
     if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
   }
 
@@ -633,6 +634,18 @@
           const key = `${x},${y}`;
           if (state.placements[key]) delete state.placements[key];
           else {
+            const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+            if (!reservation) {
+              showToast('Сначала зарезервируй территорию на карте.', true);
+              openMap();
+              return;
+            }
+            const globalX = reservation.centerX - 2 + x;
+            const globalY = reservation.centerY - 2 + y;
+            if (!mapIsLand(globalX, globalY)) {
+              showToast('Стартовые здания можно размещать только на суше.', true);
+              return;
+            }
             if (Object.keys(state.placements).length >= 7) {
               showToast('На территории доступно ровно семь стартовых построек.', true);
               return;
@@ -657,10 +670,16 @@
   function renderTerritoryGrid() {
     $$('.territory-cell').forEach((button) => {
       const key = `${button.dataset.x},${button.dataset.y}`;
+      const localX = Number(button.dataset.x);
+      const localY = Number(button.dataset.y);
       const type = state.placements[key];
+      const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+      const isWater = Boolean(reservation && !mapIsLand(reservation.centerX - 2 + localX, reservation.centerY - 2 + localY));
       button.classList.toggle('occupied', Boolean(type));
-      button.innerHTML = type ? `${buildingMeta[type].icon}<small>${buildingMeta[type].label.slice(0, 3)}</small>` : (key === '2,2' ? '·' : '');
-      button.title = type ? buildingMeta[type].label : 'Пустая клетка';
+      button.classList.toggle('water-cell', isWater);
+      button.disabled = isWater && !type;
+      button.innerHTML = type ? `${buildingMeta[type].icon}<small>${buildingMeta[type].label.slice(0, 3)}</small>` : (isWater ? '≈' : key === '2,2' ? '·' : '');
+      button.title = type ? buildingMeta[type].label : isWater ? 'Вода — здесь нельзя размещать здания' : 'Суша — свободная клетка';
     });
     const counts = {};
     Object.values(state.placements).forEach((type) => { counts[type] = (counts[type] || 0) + 1; });
