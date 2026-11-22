@@ -21,11 +21,11 @@ if errorlevel 1 (
   goto failed
 )
 
-echo Downloading the browser client and API route from GitHub...
-echo Your .env file and database are not changed.
+echo Downloading the browser client, country setup, map API and database migration from GitHub...
+echo Your .env file and existing database data are not deleted or reset. A new additive migration is included.
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $files=@('apps/api/src/app.ts','apps/web/public/index.html','apps/web/public/styles.css','apps/web/public/app.js','apps/web/public/favicon.svg','start-paperwars-postgresql19.bat'); foreach($file in $files){$directory=Split-Path -Parent $file; New-Item -ItemType Directory -Force -Path $directory | Out-Null; $url='https://raw.githubusercontent.com/Mrcoolzbs-ai/paperwars/stage-3-browser-client/'+$file; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $file; Write-Host ('[OK] '+$file)}"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $files=@('packages/world/src/types.ts','packages/world/src/country-setup.ts','packages/auth/src/campaigns.ts','packages/persistence/src/postgres/schema.ts','packages/persistence/migrations/0006_campaign_setup_enhancements.sql','apps/api/src/app.ts','apps/web/public/index.html','apps/web/public/styles.css','apps/web/public/app.js','apps/web/public/favicon.svg','README.md','start-paperwars-postgresql19.bat'); foreach($file in $files){$directory=Split-Path -Parent $file; if(-not [string]::IsNullOrWhiteSpace($directory)){New-Item -ItemType Directory -Force -Path $directory | Out-Null}; $url='https://raw.githubusercontent.com/Mrcoolzbs-ai/paperwars/stage-3-browser-client/'+$file; $temporary=$file+'.download'; try {Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temporary; Move-Item -Force $temporary $file; Write-Host ('[OK] '+$file)} catch {if(Test-Path $temporary){Remove-Item -Force $temporary}; throw}}"
 if errorlevel 1 (
   echo.
   echo [ERROR] Download failed. Check your internet connection and try again.
