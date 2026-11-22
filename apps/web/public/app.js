@@ -788,7 +788,7 @@
   const governmentLabels={monarchy:'Монархия',democracy:'Демократия',oligarchy:'Олигархия',dictatorship:'Диктатура',technocracy:'Технократия',ideocracy:'Идеократия',theocracy:'Теократия',fascism:'Фашизм'};
   function cultureSymbols(values){
     if(!values?.length)return '<span class="country-culture-empty">Культура не задана</span>';
-    return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
+    return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
   }
   function renderFoundedCards(country) {
     const faithType = country.officialSystem.type;
