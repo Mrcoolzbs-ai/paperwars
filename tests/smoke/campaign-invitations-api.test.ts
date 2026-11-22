@@ -119,7 +119,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('creates a hashed one-time invitation and accepts it only for the matching email', async () => {
+    it('accepts a matching invitation and allows the member to leave during first-turn setup', async () => {
       const unauthenticated = await app.inject({
         method: 'POST',
         url: '/campaigns/' + campaignId + '/invitations',
@@ -177,6 +177,29 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       ]);
       expect(acceptedRow.rows[0]).toEqual({ status: 'accepted', accepted_by_user_id: inviteeId });
 
+      // Simulate the owner registering first: a turn-1 snapshot now exists, but
+      // the campaign remains locked until every active member has a country.
+      await persistence!.pool.query(
+        'INSERT INTO world_snapshots (campaign_id, turn_number, version, state_schema_version, ruleset_version, state) ' +
+          'VALUES ($1, 1, 1, 1, $2, $3::jsonb)',
+        [campaignId, 'baseline-v1', JSON.stringify({ firstCountryRegistered: true })],
+      );
+      const leftDuringSetup = await app.inject({
+        method: 'POST',
+        url: '/campaigns/' + campaignId + '/membership/leave',
+        headers: { authorization: 'Bearer ' + inviteeToken },
+      });
+      expect(leftDuringSetup.statusCode).toBe(200);
+      expect(
+        leftDuringSetup.json<{ membership: { userId: string; status: string } }>().membership,
+      ).toEqual({ userId: inviteeId, status: 'left' });
+
+      const lockDuringSetup = await persistence!.pool.query<{ orders_locked: boolean }>(
+        'SELECT orders_locked FROM campaigns WHERE id = $1',
+        [campaignId],
+      );
+      expect(lockDuringSetup.rows[0]?.orders_locked).toBe(true);
+
       const replay = await app.inject({
         method: 'POST',
         url: '/invitations/accept',
@@ -191,7 +214,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
         [campaignId, inviteeId],
       );
-      expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
+      expect(membership.rows[0]).toEqual({ status: 'left', country_id: null });
     });
 
     it('allows revocation and blocks new invitations after initial setup completes', async () => {
