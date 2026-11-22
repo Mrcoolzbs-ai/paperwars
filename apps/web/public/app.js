@@ -7,8 +7,12 @@
     campaigns: [],
     campaign: null,
     systems: [],
+    librarySystems: [],
     availableSystems: [],
     pending: [],
+    countryProfile: null,
+    loadedSystemEmblemDataUrl: null,
+    buildingIconCache: {},
     principles: [],
     placements: {},
     selectedBuilding: 'factory',
@@ -101,15 +105,49 @@
   };
 
   const buildingMeta = {
-    factory: { label: 'Фабрика', icon: '🏭', required: 2 },
-    field: { label: 'Поле', icon: '🌾', required: 2 },
-    gold_mine: { label: 'Золотой рудник', icon: '⛏', required: 1 },
-    capital: { label: 'Столица', icon: '★', required: 1 },
-    religious_building: { label: 'Храм', icon: '✦', required: 1 },
-    science: { label: 'Научный центр', icon: '⚗', required: 1 },
-    barracks: { label: 'Казармы', icon: '⚔', required: 1 },
-    tower: { label: 'Башня', icon: '♜', required: 1 },
+    factory: { label: 'Фабрика', code: 'FAC', required: 2 },
+    field: { label: 'Поле', code: 'FLD', required: 2 },
+    gold_mine: { label: 'Золотой рудник', code: 'GLD', required: 1 },
+    capital: { label: 'Столица', code: 'CAP', required: 1 },
+    religious_building: { label: 'Храм', code: 'REL', required: 1 },
+    science: { label: 'Научный центр', code: 'SCI', required: 1 },
+    barracks: { label: 'Казармы', code: 'BAR', required: 1 },
+    tower: { label: 'Башня', code: 'TWR', required: 1 },
   };
+
+  // Archive glyphs redrawn as crisp SVGs for the map and 5×5 building editor.
+  function buildingIconSvg(type, className = 'building-icon') {
+    const common = 'fill="none" stroke="#111" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"';
+    const shapes = {
+      factory: '<path d="M8 88V42l24 14V42l24 14V28h12V88Z"/><path d="M64 28V8h12v20M16 72h10v10H16zM38 72h10v10H38zM60 72h10v10H60z"/>',
+      field: '<path d="M8 12L88 92M28 8L92 72M8 40L60 92M52 8L92 48M8 68L32 92"/>',
+      gold_mine: '<path d="M50 8 88 82H12Z"/><path d="M26 64h48M36 42h28"/>',
+      capital: '<path d="M50 5 61 37 94 37 67 57 78 89 50 69 22 89 33 57 6 37 39 37Z" fill="#f0cb3e"/>',
+      religious_building: '<path d="M10 88V40h80v48M5 40 50 8 95 40M32 88V55h36v33M50 8v-6M46 22h8"/>',
+      science: '<path d="M38 8h24M44 8v30L20 82q-5 9 8 9h44q13 0 8-9L56 38V8M30 68h40M38 54h24"/>',
+      barracks: '<path d="M18 84 82 20M18 20l64 64M8 30l16-16M76 82l16-16M8 70l16 16M76 14l16 16"/>',
+      tower: '<path d="M18 88V28h64v60M10 28h80M26 28V8h12v20M44 28V8h12v20M62 28V8h12v20M38 52h24"/>',
+    };
+    return '<svg class="' + className + '" viewBox="0 0 100 100" role="img" aria-label="' +
+      escapeHtml(buildingMeta[type]?.label || 'Постройка') + '" ' + common + '>' +
+      (shapes[type] || shapes.factory) + '</svg>';
+  }
+
+  function drawBuildingMapIcon(ctx, canvas, miniature, type, x, y, size) {
+    if (miniature || size < 8 || !buildingMeta[type]) return;
+    let cached = state.buildingIconCache[type];
+    if (!cached) {
+      const img = new Image();
+      cached = { img, ready: false };
+      img.onload = () => { cached.ready = true; drawMapCanvas(canvas, miniature); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildingIconSvg(type, ''));
+      state.buildingIconCache[type] = cached;
+    }
+    if (cached.ready) {
+      const inset = Math.max(1, size * 0.14);
+      ctx.drawImage(cached.img, x + inset, y + inset, size - inset * 2, size - inset * 2);
+    }
+  }
 
   async function request(url, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -246,8 +284,12 @@
   async function openCampaign(campaign) {
     state.campaign = campaign;
     state.systems = [];
+    state.librarySystems = [];
     state.availableSystems = [];
+    state.countryProfile = null;
+    state.loadedSystemEmblemDataUrl = null;
     state.placements = {};
+    resetFoundedPanels();
     $('#workspace-title').textContent = campaign.name;
     $('#workspace-meta').textContent = `ID ${campaign.id} · ${campaign.mapWidth} × ${campaign.mapHeight} · ${campaign.rulesetVersion || 'baseline-v1'} · SEED ${campaign.mapSeed}`;
     $('#map-size-label').textContent = campaign.mapWidth + ' × ' + campaign.mapHeight;
@@ -262,6 +304,7 @@
     requestAnimationFrame(buildWorldPreview);
     activateTab('overview');
     await loadSystems();
+    if (campaign.countryId) await loadCountryProfile();
     if (!campaign.countryId) {
       const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
       if (reservation) {
@@ -354,6 +397,7 @@
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
+        drawBuildingMapIcon(ctx, canvas, miniature, cell.buildingType, px, py, cellSize);
       }
       if (!miniature && country.cells.length) {
         ctx.strokeStyle = '#050505';
@@ -528,33 +572,194 @@
   async function loadSystems() {
     if (!state.campaign) return;
     try {
-      const data = await request(`/campaigns/${state.campaign.id}/social-systems/mine`);
-      state.systems = data.systems || [];
+      const [campaignData, libraryData] = await Promise.all([
+        request(`/campaigns/${state.campaign.id}/social-systems/mine`),
+        request('/social-systems/mine'),
+      ]);
+      state.systems = campaignData.systems || [];
+      state.librarySystems = libraryData.systems || [];
       renderSystems();
       $('#system-count').textContent = String(state.systems.length);
-      const approved = state.systems.filter((system) => system.approvalStatus === 'approved').length;
-      if (state.campaign) $('#country-status').textContent = state.campaign.countryId ? 'Основано' : (approved ? 'Готово к основанию' : 'Не основано');
-    } catch (error) {
-      setMessage('#system-message', error.message);
-    }
+      $('#country-status').textContent = state.campaign.countryId
+        ? 'Основано' : (state.systems.length ? 'Готово к основанию' : 'Не основано');
+    } catch (error) { setMessage('#system-message', error.message); }
   }
 
   function renderSystems() {
     const host = $('#systems-list');
-    if (!state.systems.length) {
-      host.innerHTML = '<div class="empty-state compact">Системы ещё не созданы. Первая заявка появится здесь.</div>';
+    if (!state.librarySystems.length) {
+      host.innerHTML = '<div class="empty-state compact">Личная библиотека пока пуста. Создай первое учение — оно сохранится и будет доступно в других кампаниях.</div>';
       return;
     }
-    host.innerHTML = state.systems.map((system) => {
-      const status = system.approvalStatus;
-      const statusText = status === 'approved' ? 'ОДОБРЕНО' : status === 'rejected' ? 'ОТКЛОНЕНО' : 'НА ПРОВЕРКЕ';
-      const principles = (system.principles || []).map((item) => `${escapeHtml(item.name)} · ${item.polarity === 'positive' ? '+' : item.polarity === 'negative' ? '−' : '○'}`).join(' / ');
-      return `<article class="system-card">
-        <div class="system-card-top"><div><span class="system-type">${system.type === 'religion' ? 'РЕЛИГИЯ' : 'ИДЕОЛОГИЯ'}</span><h3>${escapeHtml(system.name)}</h3></div><span class="status-pill ${status}">${statusText}</span></div>
-        <div class="principle-summary">${principles}</div>
-        ${system.reviewReason ? `<div class="system-reason">Комментарий: ${escapeHtml(system.reviewReason)}</div>` : ''}
+    const currentNames = new Set(state.systems.map((item) => String(item.name).trim().toLocaleLowerCase()));
+    host.innerHTML = state.librarySystems.map((system) => {
+      const principles = (system.principles || []).map((item) =>
+        `<li><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.description)}</span></li>`).join('');
+      const exists = currentNames.has(String(system.name).trim().toLocaleLowerCase());
+      return `<article class="system-card library-system-card">
+        <div class="system-card-top">
+          <div><span class="system-type">${system.type === 'religion' ? 'РЕЛИГИЯ' : 'ИДЕОЛОГИЯ'}</span><h3>${escapeHtml(system.name)}</h3></div>
+          ${system.emblemDataUrl ? `<img class="system-emblem-thumb" src="${escapeHtml(system.emblemDataUrl)}" alt="">` : ''}
+        </div>
+        <ul class="principle-summary library-principles">${principles || '<li>Принципы не заданы</li>'}</ul>
+        <div class="library-system-meta">${exists ? 'Уже добавлено в эту кампанию' : 'Личная библиотека игрока'}</div>
+        <div class="library-system-actions">
+          <button class="button button-outline load-system" data-id="${escapeHtml(system.id)}" type="button" ${state.campaign.countryId ? 'disabled' : ''}>Загрузить в редактор</button>
+          <button class="button button-primary add-system" data-id="${escapeHtml(system.id)}" type="button" ${state.campaign.countryId ? 'disabled' : ''}>${exists ? 'Перезаписать в кампании' : 'Добавить в кампанию'}</button>
+        </div>
       </article>`;
     }).join('');
+    $$('.load-system', host).forEach((button) => button.addEventListener('click', () => {
+      const system = state.librarySystems.find((item) => item.id === button.dataset.id);
+      if (system) loadSystemIntoEditor(system);
+    }));
+    $$('.add-system', host).forEach((button) => button.addEventListener('click', () => {
+      const system = state.librarySystems.find((item) => item.id === button.dataset.id);
+      if (system) addSystemToCampaign(system);
+    }));
+  }
+
+  function loadSystemIntoEditor(system) {
+    $('#system-type').value = system.type;
+    $('#system-name').value = system.name;
+    $('#system-emblem').value = '';
+    state.loadedSystemEmblemDataUrl = system.emblemDataUrl || null;
+    renderPrincipleCatalog();
+    (system.principles || []).forEach((principle) => {
+      let input = $$('.principle-check').find((item) => item.dataset.name === principle.name);
+      if (!input) {
+        const column = $('#principles-list').querySelector('.principle-column.' + principle.polarity);
+        if (!column) return;
+        const label = document.createElement('label');
+        label.className = 'principle-option';
+        label.innerHTML = '<input class="principle-check" type="checkbox" data-polarity="' +
+          escapeHtml(principle.polarity) + '" data-name="' + escapeHtml(principle.name) +
+          '" data-description="' + escapeHtml(principle.description) + '" data-effect="' +
+          escapeHtml(principle.effect || '') + '"><span><strong>' + escapeHtml(principle.name) +
+          '</strong><small>' + escapeHtml(principle.effect || principle.description) + '</small></span>';
+        column.append(label);
+        input = $('.principle-check', label);
+        input.addEventListener('change', updatePrincipleBalance);
+      }
+      input.checked = true;
+    });
+    updatePrincipleBalance();
+    setMessage('#system-message', 'Система загружена в редактор. Измени её или сохрани без изменений.', true);
+    $('#system-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function addSystemToCampaign(system) {
+    try {
+      await request('/campaigns/' + state.campaign.id + '/social-systems', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: system.type, name: system.name, principles: system.principles,
+          emblemDataUrl: system.emblemDataUrl,
+        }),
+      });
+      await loadSystems();
+      $('#official-system-type').value = system.type;
+      updateBuildingChoices();
+      await refreshAvailableSystems();
+      showToast('Система добавлена в текущую кампанию без изменений.');
+    } catch (error) { showToast(error.message, true); }
+  }
+
+  function resetFoundedPanels() {
+    $('#systems-tab-label').textContent = 'Вера и идеология';
+    $('#country-tab-label').textContent = 'Основание страны';
+    $('#systems-intro').classList.remove('hidden');
+    $('#systems-builder').classList.remove('hidden');
+    $('#faith-card-host').classList.add('hidden');
+    $('#country-intro').classList.remove('hidden');
+    $('#country-builder').classList.remove('hidden');
+    $('#country-card-host').classList.add('hidden');
+  }
+
+  async function loadCountryProfile() {
+    if (!state.campaign || !state.campaign.countryId) return;
+    try {
+      const data = await request('/campaigns/' + state.campaign.id + '/countries/mine');
+      state.countryProfile = data.country || null;
+      if (state.countryProfile) renderFoundedCards(state.countryProfile);
+    } catch (error) { showToast('Не удалось загрузить карточку государства: ' + error.message, true); }
+  }
+
+  const cultureLabels = {
+    militaristic: 'Милитаристская', pacifist: 'Пацифистская',
+    xenophobic: 'Ксенофобная', xenophilic: 'Ксенофильная',
+    hierarchical: 'Иерархическая', egalitarian: 'Эгалитарная',
+    spiritual: 'Духовная', rationalist: 'Рационалистическая',
+    collectivist: 'Коллективистская', individualistic: 'Индивидуалистическая',
+    expansionist: 'Экспансионистская', isolationist: 'Изоляционистская',
+  };
+  const governmentLabels = {
+    monarchy: 'Монархия', democracy: 'Демократия', oligarchy: 'Олигархия',
+    dictatorship: 'Диктатура', technocracy: 'Технократия', ideocracy: 'Идеократия',
+    theocracy: 'Теократия', fascism: 'Фашизм',
+  };
+
+  function renderFoundedCards(country) {
+    const faithType = country.officialSystem.type;
+    $('#systems-tab-label').textContent = faithType === 'religion' ? 'Вера' : 'Идеология';
+    $('#country-tab-label').textContent = 'Страна';
+    $('#systems-intro').classList.add('hidden');
+    $('#systems-builder').classList.add('hidden');
+    $('#faith-card-host').classList.remove('hidden');
+    $('#country-intro').classList.add('hidden');
+    $('#country-builder').classList.add('hidden');
+    $('#country-card-host').classList.remove('hidden');
+
+    const system = country.officialSystem;
+    const title = faithType === 'religion' ? 'Верования' : 'Принципы';
+    const metrics = faithType === 'religion'
+      ? [['Адепты', '—'], ['Святые места', '—'], ['Храмы', String((country.buildings || []).find((x) => x.type === 'religious_building')?.count || 0)]]
+      : [['Последователи', '—'], ['Ответвления', '—'], ['Центры', '—']];
+    $('#faith-card-host').innerHTML = `
+      <article class="archive-card social-profile-card">
+        <header class="archive-card-header">
+          <div><span class="panel-kicker">${faithType === 'religion' ? 'ГОСУДАРСТВЕННАЯ ВЕРА' : 'ГОСУДАРСТВЕННАЯ ИДЕОЛОГИЯ'}</span><h2>${escapeHtml(system.name)}</h2></div>
+          ${system.emblemDataUrl ? `<img class="archive-emblem" src="${escapeHtml(system.emblemDataUrl)}" alt="Символ системы">` : '<div class="archive-emblem placeholder-emblem">PW</div>'}
+        </header>
+        <div class="archive-card-main">
+          <section class="archive-principles"><h3>${title}</h3><ul>
+            ${(system.principles || []).map((item) => `<li><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.description)}</p><small>${item.polarity === 'positive' ? 'Позитивный принцип' : item.polarity === 'negative' ? 'Негативный принцип' : 'Нейтральный принцип'}</small></li>`).join('')}
+          </ul></section>
+          <aside class="archive-metrics"><h3>Показатели</h3>
+            ${metrics.map(([label, value]) => `<div class="archive-metric"><span>${label}</span><strong>${value}</strong></div>`).join('')}
+            <div class="authority-panel"><strong>Авторитет</strong><p>Значение будет рассчитываться после внедрения этой механики в симуляцию.</p><div class="authority-track"><i></i><i></i><i></i><i></i></div></div>
+          </aside>
+        </div>
+        <footer class="archive-notes"><h3>Заметки</h3><p>Карточка построена из выбранных игроком принципов. Не реализованные численные показатели не подменяются условными значениями.</p></footer>
+      </article>`;
+
+    const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
+    const values = [
+      ['Население', String(country.residentCount)],
+      ['Научные центры', String(counts.get('science') || 0)],
+      ['Оборонительные башни', String(counts.get('tower') || 0)],
+      ['Военные силы', 'Пока не рассчитываются'],
+      ['Экономика', 'Пока не рассчитывается'],
+      ['Фабрики / товары', String(counts.get('factory') || 0)],
+      ['Поля / продовольствие', String(counts.get('field') || 0)],
+      ['Золотоносные рудники', String(counts.get('gold_mine') || 0)],
+      ['Столица', String(counts.get('capital') || 0)],
+    ];
+    $('#country-card-host').innerHTML = `
+      <article class="archive-card country-profile-card">
+        <header class="archive-card-header country-card-header">
+          <div><span class="panel-kicker">ГОСУДАРСТВО · ПАСПОРТ</span><h2>${escapeHtml(country.name)}</h2><p>${escapeHtml(governmentLabels[country.government] || country.government)}</p></div>
+          ${country.flagDataUrl ? `<img class="archive-emblem country-flag" src="${escapeHtml(country.flagDataUrl)}" alt="Флаг государства">` : '<div class="archive-emblem placeholder-emblem">PW</div>'}
+        </header>
+        <div class="country-profile-grid">${values.map(([label, value]) => `<div class="country-profile-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>
+        <section class="country-culture-block"><h3>Культура</h3><div class="culture-tags">
+          ${(country.culture || []).map((item) => `<span>${escapeHtml(cultureLabels[item] || item)}</span>`).join('') || '<span>Не указана</span>'}
+        </div></section>
+        <section class="country-official-system"><h3>${faithType === 'religion' ? 'Государственная вера' : 'Государственная идеология'}</h3>
+          <strong>${escapeHtml(system.name)}</strong><p>${(system.principles || []).map((item) => escapeHtml(item.name)).join(' · ')}</p>
+        </section>
+        <footer class="archive-notes"><h3>Заметки</h3><p>Стартовая территория: ${country.territory.centerX ?? '—'}, ${country.territory.centerY ?? '—'} · 5 × 5. Полные экономические и социальные показатели появятся после подключения симуляции.</p></footer>
+      </article>`;
   }
 
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
@@ -678,7 +883,7 @@
       button.classList.toggle('occupied', Boolean(type));
       button.classList.toggle('water-cell', isWater);
       button.disabled = isWater && !type;
-      button.innerHTML = type ? `${buildingMeta[type].icon}<small>${buildingMeta[type].label.slice(0, 3)}</small>` : (isWater ? '≈' : key === '2,2' ? '·' : '');
+      button.innerHTML = type ? buildingIconSvg(type) : (isWater ? '≈' : key === '2,2' ? '·' : '');
       button.title = type ? buildingMeta[type].label : isWater ? 'Вода — здесь нельзя размещать здания' : 'Суша — свободная клетка';
     });
     const counts = {};
@@ -689,10 +894,10 @@
     const valid = Object.entries(required).every(([type, count]) => counts[type] === count)
       && extraCount === 1 && Object.keys(counts).length === Object.keys(counts).filter((type) => type in required || extra.includes(type)).length
       && Object.keys(state.placements).length === 7;
-    $('#building-counts').textContent = Object.entries(buildingMeta)
+    $('#building-counts').innerHTML = Object.entries(buildingMeta)
       .filter(([type]) => required[type] || extra.includes(type))
-      .map(([type, meta]) => `${meta.icon} ${meta.label}: ${counts[type] || 0}/${required[type] || 1}`)
-      .join('   ·   ') + (valid ? '   ✓ ГОТОВО' : '   ·   НЕ ЗАПОЛНЕНО');
+      .map(([type, meta]) => `<span class="building-count-item">${buildingIconSvg(type)} ${escapeHtml(meta.label)}: ${counts[type] || 0}/${required[type] || 1}</span>`)
+      .join('') + (valid ? '   ✓ ГОТОВО' : '   ·   НЕ ЗАПОЛНЕНО');
   }
 
   async function loadPending() {
@@ -783,6 +988,8 @@
       $('#country-status').textContent = 'Основано';
       await loadCampaignMap();
       await loadCampaigns();
+      await loadCountryProfile();
+      activateTab('country');
       buildWorldPreview();
     } catch (error) {
       setMessage('#country-message', error.message || 'Не удалось создать государство.');
@@ -893,11 +1100,12 @@
             type: $('#system-type').value,
             name: $('#system-name').value.trim(),
             principles,
-            emblemDataUrl: await readOptionalImage('#system-emblem'),
+            emblemDataUrl: (await readOptionalImage('#system-emblem')) || state.loadedSystemEmblemDataUrl,
           }),
         });
         $('#system-name').value = '';
         $('#system-emblem').value = '';
+        state.loadedSystemEmblemDataUrl = null;
         $$('.principle-check').forEach((input) => { input.checked = false; });
         updatePrincipleBalance();
         setMessage('#system-message', 'Учение создано и сразу доступно для выбора.', true);
@@ -905,7 +1113,7 @@
         $('#official-system-type').value = $('#system-type').value;
         updateBuildingChoices();
         await refreshAvailableSystems();
-        showToast('Учение создано. Согласование не требуется.');
+        showToast('Учение сохранено в личной библиотеке и добавлено в кампанию.');
       } catch (error) {
         setMessage('#system-message', error.message);
       }

@@ -125,9 +125,8 @@
 
       <nav class="workspace-nav" aria-label="Разделы кампании">
         <button class="workspace-tab active" data-tab="overview" type="button">Обзор мира</button>
-        <button class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
-        <button class="workspace-tab" data-tab="country" type="button">Основание страны</button>
-        <button class="workspace-tab" data-tab="admin" type="button">Модерация</button>
+        <button id="systems-tab-label" class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
+        <button id="country-tab-label" class="workspace-tab" data-tab="country" type="button">Основание страны</button>
       </nav>
 
       <div id="map-modal" class="map-modal hidden" role="dialog" aria-modal="true" aria-label="Карта кампании">
@@ -174,8 +173,8 @@
       </section>
 
       <section id="tab-systems" class="tab-panel hidden">
-        <div class="section-intro"><div><div class="panel-kicker">ИДЕЙНАЯ ОСНОВА</div><h2>Вера формирует цивилизацию.</h2><p class="muted">Создай религию или идеологию. До десяти принципов; первые два позитивных бесплатны, последующие требуют отрицательного баланса.</p></div><div class="rule-seal">7 <small>СИСТЕМ<br>КАЖДОГО ТИПА</small></div></div>
-        <div class="systems-layout">
+        <div id="systems-intro" class="section-intro"><div><div class="panel-kicker">ИДЕЙНАЯ ОСНОВА</div><h2>Вера формирует цивилизацию.</h2><p class="muted">Создай религию или идеологию. До десяти принципов; первые два позитивных бесплатны, последующие требуют отрицательного баланса.</p></div><div class="rule-seal">7 <small>СИСТЕМ<br>КАЖДОГО ТИПА</small></div></div>
+        <div id="systems-builder" class="systems-layout">
           <div class="panel system-create-panel">
             <div class="panel-kicker">НОВАЯ СИСТЕМА</div>
             <h2>Создать учение</h2>
@@ -195,11 +194,12 @@
             <div id="systems-list" class="systems-list"><div class="empty-state compact">Системы ещё не созданы.</div></div>
           </div>
         </div>
+        <div id="faith-card-host" class="founded-card-host hidden"></div>
       </section>
 
       <section id="tab-country" class="tab-panel hidden">
-        <div class="section-intro"><div><div class="panel-kicker">ПЕРВОЕ ПОСЕЛЕНИЕ</div><h2>Заложи фундамент государства.</h2><p class="muted">Выбери центр территории, официальную систему и размести семь стартовых построек на участке 5×5.</p></div><div class="rule-seal">5×5 <small>СТАРТОВАЯ<br>ТЕРРИТОРИЯ</small></div></div>
-        <div class="country-layout">
+        <div id="country-intro" class="section-intro"><div><div class="panel-kicker">ПЕРВОЕ ПОСЕЛЕНИЕ</div><h2>Заложи фундамент государства.</h2><p class="muted">Выбери центр территории, официальную систему и размести семь стартовых построек на участке 5×5.</p></div><div class="rule-seal">5×5 <small>СТАРТОВАЯ<br>ТЕРРИТОРИЯ</small></div></div>
+        <div id="country-builder" class="country-layout">
           <div class="panel country-form-panel">
             <div class="panel-kicker">ПАСПОРТ ГОСУДАРСТВА</div>
             <form id="country-form" class="form-stack">
@@ -227,7 +227,7 @@
               <div class="building-picker">
                 <div><strong>Размещение построек</strong><small>Выбери тип и нажми на клетку</small></div>
                 <label class="field"><select id="building-type">
-                  <option value="factory">🏭 Фабрика (2)</option><option value="field">🌾 Поле (2)</option><option value="gold_mine">⛏ Золотой рудник (1)</option><option value="capital">★ Столица (1)</option><option value="religious_building">✦ Храм (1)</option><option value="science">⚗ Научный центр (1)</option><option value="barracks">⚔ Казармы (1)</option><option value="tower">♜ Башня (1)</option>
+                  <option value="factory">Фабрика (2)</option><option value="field">Поле (2)</option><option value="gold_mine">Золотой рудник (1)</option><option value="capital">Столица (1)</option><option value="religious_building">Храм (1)</option><option value="science">Научный центр (1)</option><option value="barracks">Казармы (1)</option><option value="tower">Башня (1)</option>
                 </select></label>
                 <div id="building-counts" class="building-counts"></div>
               </div>
@@ -244,6 +244,7 @@
             <div class="panel note-panel"><span class="note-icon">⚑</span><div><strong>Учение доступно сразу</strong><p>Новая религия или идеология создаётся без обязательной модерации. Также можно выбрать одно из трёх ближайших учений того же типа.</p></div></div>
           </div>
         </div>
+        <div id="country-card-host" class="founded-card-host hidden"></div>
       </section>
 
       <section id="tab-admin" class="tab-panel hidden">
