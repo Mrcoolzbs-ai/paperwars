@@ -267,6 +267,13 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       try {
         await client.query('BEGIN');
         transactionOpen = true;
+        const campaign = await client.query<{ id: string }>(
+          'SELECT id FROM campaigns WHERE id = $1 FOR UPDATE',
+          [campaignId],
+        );
+        if (campaign.rows.length === 0) {
+          throw new AuthValidationError('Campaign does not exist');
+        }
         const membership = await client.query<{ campaign_id: string }>(
           'SELECT campaign_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
           [campaignId, userId, 'active'],
