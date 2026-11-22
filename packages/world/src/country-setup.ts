@@ -15,9 +15,6 @@ import {
 } from './errors.js';
 import type {
   AvailableSocialSystem,
-  CampaignMapCountry,
-  CampaignMapView,
-  CampaignSpawnReservation,
   CountrySetupService,
   CreateSocialSystemInput,
   OfficialSystemType,
