@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createAuthService,
   createAccessTokenSigner,
@@ -101,6 +104,19 @@ try {
     campaignService,
     countrySetupService,
     secureCookies: process.env['NODE_ENV'] === 'production',
+  });
+
+  const webEntry = resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html');
+  app.get('/', async (_request, reply) => {
+    try {
+      const page = await readFile(webEntry);
+      return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(page);
+    } catch {
+      return reply.code(503).send({
+        error: 'WEB_CLIENT_NOT_BUILT',
+        message: 'Build the graphical client with "pnpm build" before opening the game.',
+      });
+    }
   });
 
   await app.listen({ port, host });
