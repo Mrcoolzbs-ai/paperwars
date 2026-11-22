@@ -216,20 +216,71 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           status: string;
           current_turn: number;
           orders_locked: boolean;
+          map_width: number | null;
+          map_height: number | null;
         }>(
-          'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
+          'SELECT id, status, current_turn, orders_locked, map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
           [campaignId],
         );
         const target = campaign.rows[0];
-        if (target?.status !== 'active' || target.current_turn !== 1 || !target.orders_locked) {
-          throw new AuthValidationError(
-            'Campaign is no longer accepting players for the initial setup',
+        if (
+          target?.status !== 'active' || target.current_turn !== 1 || !target.orders_locked ||
+          target.map_width === null || target.map_height === null
+        ) {
+          throw new AuthValidationError('Campaign is no longer accepting players for the initial setup');
+        }
+        const existing = await client.query<{ status: string }>(
+          'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
+          [campaignId, userId],
+        );
+        if (existing.rows[0]?.status !== 'active') {
+          const playerCount = await client.query<{ count: number }>(
+            `SELECT COUNT(*)::int AS count FROM campaign_memberships
+             WHERE campaign_id = $1 AND status = 'active'`,
+            [campaignId],
           );
+          const maxPlayers = Math.floor((target.map_width * target.map_height) / 100);
+          if ((playerCount.rows[0]?.count ?? 0) >= maxPlayers) {
+            throw new AuthValidationError('Campaign is full (' + maxPlayers + ' player slots)');
+          }
         }
         await client.query(
           `INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed)
            VALUES ($1, $2, 'active', FALSE)
-           ON CONFLICT (campaign_id, user_id) DO UPDATE SET status = 'active'`,
+           ON CONFLICT (campaign_id, user_id) DO UPDATE
+           SET status = 'active', orders_confirmed = FALSE`,
+          [campaignId, userId],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async leaveCampaign(userId, campaignId) {
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const membership = await client.query<{ campaign_id: string }>(
+          'SELECT campaign_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
+          [campaignId, userId, 'active'],
+        );
+        if (membership.rows.length === 0) {
+          throw new AuthValidationError('You are not an active member of this campaign');
+        }
+        await client.query(
+          `UPDATE campaign_memberships SET status = 'left', orders_confirmed = FALSE
+           WHERE campaign_id = $1 AND user_id = $2`,
+          [campaignId, userId],
+        );
+        await client.query(
+          'DELETE FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $2',
           [campaignId, userId],
         );
         await client.query('COMMIT');
