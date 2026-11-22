@@ -43,6 +43,14 @@ if (!/^[a-f0-9]{64}$/i.test(encodedAccessSecret)) {
 
 const rulesetVersion = requiredEnv('RULESET_VERSION');
 const rngVersion = requiredEnv('RNG_VERSION');
+const socialSystemAdminUserIds = (process.env['SOCIAL_SYSTEM_ADMIN_USER_IDS'] ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (socialSystemAdminUserIds.some((userId) => !uuidPattern.test(userId))) {
+  throw new Error('SOCIAL_SYSTEM_ADMIN_USER_IDS must be a comma-separated list of UUIDs');
+}
 const seedKeyProvider = new EnvironmentSeedKeyProvider(process.env);
 const accessTokens = createAccessTokenSigner({
   secret: Buffer.from(encodedAccessSecret, 'hex'),
@@ -80,7 +88,10 @@ try {
     rngVersion,
   });
 
-  const countrySetupService = createCountrySetupService({ pool: persistence.pool });
+  const countrySetupService = createCountrySetupService({
+    pool: persistence.pool,
+    socialSystemAdminUserIds,
+  });
 
   app = createApp({
     logger: true,
