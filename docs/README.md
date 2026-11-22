@@ -47,3 +47,5 @@
 Ещё не реализованы: participant/role management, auth rate limiting/audit, исполняемый Simulation Engine, turn Worker, closeOrders/finalization, Stage 2 country setup (Q24, карта и старт 7/18), игровые world DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
 
 Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
+
+- [social-systems.md](architecture/social-systems.md)
