@@ -795,6 +795,10 @@
       }
     });
 
+    $('#leave-campaign').addEventListener('click', () => {
+      if (state.campaign) leaveCampaign(state.campaign.id);
+    });
+
     $('#join-campaign-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       const campaignId = $('#join-campaign-id').value.trim();
