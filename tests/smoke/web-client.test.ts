@@ -45,6 +45,10 @@ describe('browser client', () => {
   it('keeps the health endpoint separate from the game home page', async () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ status: 'ok', engineVersion: '0.1.0' });
+    expect(response.json()).toMatchObject({
+      status: 'ok',
+      apiContractVersion: 'browser-auth-v1',
+      engineVersion: '0.1.0',
+    });
   });
 });
