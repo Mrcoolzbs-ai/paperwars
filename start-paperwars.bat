@@ -17,28 +17,22 @@ if not exist "package.json" (
 
 where node >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Node.js не найден. Установите Node.js 22 или новее и перезапустите файл.
+  echo [ERROR] Node.js не найден. Установите Node.js 22 или новее.
   echo         https://nodejs.org/
+  start "" "https://nodejs.org/"
   goto failed
 )
-
 node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)" >nul 2>&1
 if errorlevel 1 (
   echo [ERROR] Нужен Node.js версии 22 или новее.
   node --version
+  start "" "https://nodejs.org/"
   goto failed
 )
 
 where corepack >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Corepack не найден. Переустановите Node.js 22+ с Corepack или включите его.
-  goto failed
-)
-
-where docker >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] Docker не найден. Установите Docker Desktop для Windows.
-  echo         https://www.docker.com/products/docker-desktop/
+  echo [ERROR] Corepack не найден. Переустановите Node.js 22+ с Corepack.
   goto failed
 )
 
@@ -68,13 +62,64 @@ for /f "usebackq tokens=1,* delims==" %%A in (".env") do if "%%A"=="PORT" set "P
 if not defined PORT set "PORT=3000"
 
 echo.
-echo [1/5] Проверка Docker Desktop...
+echo [1/5] Проверка Docker Desktop и Docker CLI...
+where docker >nul 2>&1
+if not errorlevel 1 goto docker_cli_ready
+
+rem Docker Desktop may be installed even when its CLI directory is missing from PATH.
+if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" (
+  set "PATH=%PATH%;%ProgramFiles%\Docker\Docker\resources\bin"
+  goto docker_cli_ready
+)
+if exist "%LOCALAPPDATA%\Programs\Docker\Docker\resources\bin\docker.exe" (
+  set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Docker\Docker\resources\bin"
+  goto docker_cli_ready
+)
+
+rem If Docker is absent, offer a one-time installation via Windows Package Manager.
+where winget >nul 2>&1
+if errorlevel 1 (
+  echo [ERROR] Docker Desktop не найден, а winget недоступен.
+  echo         Установите Docker Desktop вручную по ссылке ниже, затем повторите запуск.
+  start "" "https://www.docker.com/products/docker-desktop/"
+  goto failed
+)
+
+echo Docker Desktop не найден на этом компьютере.
+choice /C YN /M "Установить Docker Desktop автоматически через winget"
+if errorlevel 2 goto docker_manual
+winget install --id Docker.DockerDesktop -e --source winget --accept-package-agreements --accept-source-agreements
+if errorlevel 1 (
+  echo [ERROR] winget не смог установить Docker Desktop.
+  echo         Открою официальную страницу установки.
+  start "" "https://www.docker.com/products/docker-desktop/"
+  goto failed
+)
+
+if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" (
+  set "PATH=%PATH%;%ProgramFiles%\Docker\Docker\resources\bin"
+)
+where docker >nul 2>&1
+if errorlevel 1 (
+  echo [WAIT] Docker установлен, но Windows пока не видит docker.exe.
+  echo         Перезагрузите Windows или откройте новый терминал, затем повторите запуск.
+  goto failed
+)
+goto docker_cli_ready
+
+:docker_manual
+echo Установите Docker Desktop вручную, запустите его и повторите запуск BAT-файла.
+start "" "https://www.docker.com/products/docker-desktop/"
+goto failed
+
+:docker_cli_ready
+echo [OK] Docker CLI найден.
 docker info >nul 2>&1
 if errorlevel 1 (
   echo [WAIT] Запускаю Docker Desktop, если он установлен...
   if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
   if exist "%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe" start "" "%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe"
-  echo [WAIT] Ожидание готовности Docker (до 60 секунд)...
+  echo [WAIT] Ожидание готовности Docker (до 90 секунд)...
   set "DOCKER_TRIES=0"
   goto wait_docker
 )
@@ -85,8 +130,11 @@ timeout /t 3 /nobreak >nul
 docker info >nul 2>&1
 if not errorlevel 1 goto docker_ready
 set /a DOCKER_TRIES+=1
-if %DOCKER_TRIES% GEQ 20 (
-  echo [ERROR] Docker Desktop так и не запустился. Откройте Docker Desktop и повторите запуск.
+if %DOCKER_TRIES% GEQ 30 (
+  echo [ERROR] Docker Desktop не запустился за 90 секунд.
+  echo         Возможно, требуется включить WSL 2 и перезагрузить компьютер.
+  echo         Инструкция: https://docs.docker.com/desktop/features/wsl/
+  start "" "https://docs.docker.com/desktop/features/wsl/"
   goto failed
 )
 goto wait_docker
@@ -146,7 +194,7 @@ if not errorlevel 1 goto open_browser
 set /a API_TRIES+=1
 if %API_TRIES% GEQ 45 (
   echo [ERROR] API не ответил за 90 секунд.
-  echo         Посмотрите сообщение об ошибке в открывшемся окне "Paper Wars API".
+  echo         Посмотрите сообщение об ошибке в окне "Paper Wars API".
   goto failed
 )
 timeout /t 2 /nobreak >nul
