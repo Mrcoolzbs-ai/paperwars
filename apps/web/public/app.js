@@ -228,11 +228,11 @@
           <button class="campaign-leave" data-campaign-id="${escapeHtml(campaign.id)}" type="button">Покинуть</button>
         </div>
       </article>`).join('');
-    $('.campaign-open', host).forEach((button) => button.addEventListener('click', () => {
+    Array.from(host.querySelectorAll('.campaign-open')).forEach((button) => button.addEventListener('click', () => {
       const campaign = state.campaigns.find((item) => item.id === button.dataset.campaignId);
       if (campaign) openCampaign(campaign);
     }));
-    $('.campaign-leave', host).forEach((button) => button.addEventListener('click', () => {
+    Array.from(host.querySelectorAll('.campaign-leave')).forEach((button) => button.addEventListener('click', () => {
       leaveCampaign(button.dataset.campaignId);
     }));
   }
