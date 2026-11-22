@@ -187,9 +187,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(library.statusCode).toBe(200);
-        expect(
-          library.json<{ systems: Array<{ id: string; name: string }> }>().systems,
-        ).toContainEqual(expect.objectContaining({ id: createdSystem.id, name: 'Harbor Light' }));
+        const librarySystems = library.json<{
+          systems: Array<{ id: string; name: string; principles: unknown[] }>;
+        }>().systems;
+        expect(librarySystems).toHaveLength(1);
+        expect(librarySystems[0]).toMatchObject({ name: 'Harbor Light' });
+        const librarySystemId = librarySystems[0]?.id;
+
 
         const overwritten = await app.inject({
           method: 'POST',
@@ -224,6 +228,24 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(
           overwritten.json<{ system: { principles: unknown[] } }>().system.principles,
         ).toHaveLength(3);
+
+        const refreshedLibrary = await app.inject({
+          method: 'GET',
+          url: '/social-systems/mine',
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+        });
+        expect(refreshedLibrary.statusCode).toBe(200);
+        const refreshedSystems = refreshedLibrary.json<{
+          systems: Array<{ id: string; name: string; principles: unknown[] }>;
+        }>().systems;
+        expect(refreshedSystems).toHaveLength(1);
+        expect(refreshedSystems[0]).toMatchObject({
+          id: librarySystemId,
+          name: 'Harbor Light',
+          principles: expect.arrayContaining([
+            expect.objectContaining({ name: 'Shared stewardship' }),
+          ]),
+        });
 
         const mine = await app.inject({
           method: 'GET',
