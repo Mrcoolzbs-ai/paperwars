@@ -582,7 +582,7 @@ Q18–Q20 — причина катастрофы, природа золота �
 ### Stage 1.7 — исполняемый pure Simulation Engine (в работе)
 
 - В `@paper-wars/simulation` добавлен I/O-free orchestration API `resolveTurn`: проверка engine/ruleset/snapshot совместимости, проверка finalized orders, вызов подключённого ruleset resolver, инварианты результата.
-- RNG обёрнут журналирующим адаптером; uniform и weighted выборы фиксируются в формате `random_draws`, повторное использование draw ID и недопустимые диапазоны блокируются.
+- RNG обёрнут журналирующим адаптером; `createDeterministicRandomSource` связывает committed turn seed с HMAC-SHA-256 функциями `drawUniform`/`drawWeighted`, а uniform и weighted выборы фиксируются в формате `random_draws`; повторное использование draw ID и недопустимые диапазоны блокируются.
 - Resolver возвращает результат без журнала; авторитетный `randomDraws` формируется самим engine.
 - Осталось реализовать конкретные игровые фазы/механики и подтверждённый ruleset resolver; численные параметры PROPOSAL не вводить.
 
