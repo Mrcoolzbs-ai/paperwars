@@ -949,8 +949,6 @@
       refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
       renderTerritoryGrid();
     });
-    $('#spawn-x').addEventListener('change', () => refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message)));
-    $('#spawn-y').addEventListener('change', () => refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message)));
     $('#building-type').addEventListener('change', (event) => { state.selectedBuilding = event.target.value; });
     $('#country-form').addEventListener('submit', submitCountry);
     $('#refresh-pending').addEventListener('click', loadPending);
