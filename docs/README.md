@@ -1,7 +1,7 @@
 # Документация Paper Wars: Rebirth
 
 **Documentation Baseline v1.0**  
-**Статус:** нормативная спецификация восстановлена по трём частям авторских материалов и зафиксирована в Markdown. Это документационный baseline, а не утверждение о готовности исполняемого приложения.
+**Статус:** игровые правила и технические контракты Baseline v1.0 сведены в Markdown. Это документационный baseline, а не утверждение о готовности исполняемого приложения. Исторические legacy-правила и часть архивных таблиц ещё требуют полной транскрипции и сверки.
 
 ## Нормативные правила
 
@@ -24,29 +24,35 @@
 - [Подтверждённый канон](lore/canon.md).
 - [Неподтверждённые сюжетные предложения](lore/unconfirmed-proposals.md).
 
-## План и полная восстановительная запись
+## Единая спецификация и план
 
+- [Единая спецификация проекта](SPECIFICATION.md) — главный вход в Baseline v1.0: игровые правила, архитектурные контракты, статус реализации и известные расхождения.
+- [Восстановительная запись](RECOVERED_SPECIFICATION.md) — исторический отчёт о реконструкции и её ограничениях на 21 ноября 2026 года.
 - [Дорожная карта разработки](roadmap.md) — этапы 0–9, зависимости и Definition of Done.
-- [Восстановленная спецификация](RECOVERED_SPECIFICATION.md) — сводная запись исходной реконструкции, включая архитектурные решения, границы восстановления и состояние репозитория.
 
 ## Первичные архивные материалы
 
 - [VK discussions export](../VK_discussions_205658089_2026-11-20.docx)
 - [VK wall export](../VK_wall_205658089_2026-11-20.docx)
 
-## Статус реализации на 21 ноября 2026 года
+## Статус реализации на 22 ноября 2026 года
 
-Документы остаются нормативным Baseline; часть технических контрактов уже реализована и проверена:
+Документация Baseline v1.0 находится в Markdown; единая точка входа — [SPECIFICATION.md](SPECIFICATION.md). Правила и спецификация не равны готовности исполняемых игровых механик.
 
-- Stage 1.1 monorepo и базовый API skeleton merged в `main` (PR #3).
-- Stage 1.2 PostgreSQL/Drizzle schema, SQL migrations и integration tests merged (PR #4).
-- Stage 1.3 RNG/commit-reveal primitives, AES-256-GCM seed persistence, versioned key provider и random draw log merged (PR #5).
-- Stage 1.4 scrypt auth, access JWT, refresh rotation/replay revocation, authenticated campaign create/list и atomic campaign+membership+first seed merged (PR #6).
-- Stage 1.5 branded domain entities, order/event/snapshot/resolution contracts, versioned RulesetManifest и state compatibility migration merged (PR #7).
-- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 55 тестов прошли на PostgreSQL 18.7.
+В main влиты этапы Stage 1.1–1.5 (PR #3–#7): monorepo/API skeleton, PostgreSQL/Drizzle, RNG/commit-reveal и хранение seed, аутентификация, доменные контракты и ruleset manifest.
 
-В Draft PR #8 реализованы pre-country social systems, начальная регистрация страны (территория 5×5, стартовые здания и население), предварительный Web-клиент и HTTP-интеграция. PR ещё не влит в main. Ещё не реализованы: participant/role management, auth rate limiting/audit, исполняемый Simulation Engine, turn Worker, closeOrders/finalization, полноценные игровые world DTO и продолжение игрового цикла. Q18–Q20 остаются PROPOSAL и не входят в канон.
+**Draft PR #15** ([feat(web): add Paper Wars browser client MVP](https://github.com/Mrcoolzbs-ai/paperwars/pull/15)) находится в ветке `stage-3-browser-client`, основан на `stage-2-country-setup`, открыт и не влит. В нём добавлены seeded-карта с руслами рек, регистрация государства и культура, выход из кампании и лимит участников, библиотека религий/идеологий, карточки государства и выбранной системы, символы построек и первые действия на территории.
 
-Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
+Последняя проверенная CI-сборка для HEAD PR #15 (2ca23d1f2c14c19c4180b2563277e6afe3d77117) успешна: Build, Typecheck, Lint, Format check, 68/68 тестов в 14 файлах. [Результат CI](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45065489740).
 
-- [social-systems.md](architecture/social-systems.md)
+Ограничения текущего MVP:
+- Полный Simulation Engine, разрешение ходов и worker ещё не подключены.
+- Первые строительные действия происходят сразу, без полного бюджета 3 ОД.
+- Не завершены колонизация, снос, добыча золота, экономика, производство, армия, дипломатия и полный игровой цикл.
+- Численные эффекты культуры и принципов не применяются движком; часть показателей карточек пока является визуальными заглушками.
+- Генератор мира пока не моделирует высоты, биомы, климат, озёра и полноценную гидрологию.
+
+**Важно о соответствии Baseline:** нормативные правила требуют административного согласования религии/идеологии до её официального назначения. Текущий PR #15 временно делает новые системы автоматически доступными и убирает вкладку модерации из обычной навигации. Это расхождение реализации с Baseline, а не молчаливое изменение правила.
+
+Q18–Q20 остаются PROPOSAL и не входят в канон.
+
