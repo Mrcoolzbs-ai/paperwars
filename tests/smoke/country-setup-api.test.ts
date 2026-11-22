@@ -135,8 +135,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(mine.statusCode).toBe(200);
-        expect(mine.json<{ systems: Array<{ id: string }> }>().systems.map((item) => item.id))
-          .toContain(pendingSystem.id);
+        expect(
+          mine.json<{ systems: Array<{ id: string }> }>().systems.map((item) => item.id),
+        ).toContain(pendingSystem.id);
 
         const nonAdminReview = await app.inject({
           method: 'POST',
@@ -153,8 +154,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(availableBeforeReview.statusCode).toBe(200);
-        expect(availableBeforeReview.json<{ systems: Array<{ id: string }> }>().systems)
-          .toHaveLength(0);
+        expect(
+          availableBeforeReview.json<{ systems: Array<{ id: string }> }>().systems,
+        ).toHaveLength(0);
 
         const rejectedCountry = await app.inject({
           method: 'POST',
@@ -169,7 +171,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           },
         });
         expect(rejectedCountry.statusCode).toBe(422);
-        expect(rejectedCountry.json<{ error: string }>().error).toBe('OFFICIAL_SYSTEM_NOT_AVAILABLE');
+        expect(rejectedCountry.json<{ error: string }>().error).toBe(
+          'OFFICIAL_SYSTEM_NOT_AVAILABLE',
+        );
 
         const pending = await app.inject({
           method: 'GET',
@@ -186,8 +190,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           payload: { decision: 'approve', reason: 'The submitted principles are consistent.' },
         });
         expect(approval.statusCode).toBe(200);
-        expect(approval.json<{ system: { approvalStatus: string } }>().system.approvalStatus)
-          .toBe('approved');
+        expect(approval.json<{ system: { approvalStatus: string } }>().system.approvalStatus).toBe(
+          'approved',
+        );
 
         const availableAfterReview = await app.inject({
           method: 'GET',
@@ -196,7 +201,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         });
         expect(availableAfterReview.statusCode).toBe(200);
         expect(
-          availableAfterReview.json<{ systems: Array<{ id: string }> }>().systems.map((item) => item.id),
+          availableAfterReview
+            .json<{ systems: Array<{ id: string }> }>()
+            .systems.map((item) => item.id),
         ).toContain(pendingSystem.id);
 
         const createdCountry = await app.inject({

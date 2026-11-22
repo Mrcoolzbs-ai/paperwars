@@ -159,9 +159,14 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
     throw new CountrySetupValidationError('Social system type must be religion or ideology');
   }
   const name = validateSystemName(input.name);
-  if (!Array.isArray(input.principles) || input.principles.length < 1 ||
-      input.principles.length > MAX_SOCIAL_SYSTEM_PRINCIPLES) {
-    throw new CountrySetupValidationError('A social system must contain between 1 and 10 principles');
+  if (
+    !Array.isArray(input.principles) ||
+    input.principles.length < 1 ||
+    input.principles.length > MAX_SOCIAL_SYSTEM_PRINCIPLES
+  ) {
+    throw new CountrySetupValidationError(
+      'A social system must contain between 1 and 10 principles',
+    );
   }
 
   const principles: SocialSystemPrinciple[] = [];
@@ -173,13 +178,23 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
       throw new CountrySetupValidationError(`Principle ${index + 1} must be an object`);
     }
     const value = raw as Record<string, unknown>;
-    if (typeof value['name'] !== 'string' || value['name'].trim().length < 2 ||
-        value['name'].trim().length > 80) {
-      throw new CountrySetupValidationError(`Principle ${index + 1} needs a name of 2 to 80 characters`);
+    if (
+      typeof value['name'] !== 'string' ||
+      value['name'].trim().length < 2 ||
+      value['name'].trim().length > 80
+    ) {
+      throw new CountrySetupValidationError(
+        `Principle ${index + 1} needs a name of 2 to 80 characters`,
+      );
     }
-    if (typeof value['description'] !== 'string' || value['description'].trim().length < 1 ||
-        value['description'].trim().length > 2000) {
-      throw new CountrySetupValidationError(`Principle ${index + 1} needs a description of up to 2000 characters`);
+    if (
+      typeof value['description'] !== 'string' ||
+      value['description'].trim().length < 1 ||
+      value['description'].trim().length > 2000
+    ) {
+      throw new CountrySetupValidationError(
+        `Principle ${index + 1} needs a description of up to 2000 characters`,
+      );
     }
     const polarity = value['polarity'];
     if (polarity !== 'positive' && polarity !== 'negative' && polarity !== 'neutral') {
@@ -188,7 +203,9 @@ function validateSocialSystemInput(input: CreateSocialSystemInput): {
     const principleName = (value['name'] as string).trim();
     const key = principleName.toLocaleLowerCase('ru-RU');
     if (principleNames.has(key)) {
-      throw new CountrySetupValidationError('Principle names must be unique within a social system');
+      throw new CountrySetupValidationError(
+        'Principle names must be unique within a social system',
+      );
     }
     principleNames.add(key);
     if (polarity === 'positive') positiveCount += 1;
@@ -231,19 +248,15 @@ function toAvailableSocialSystem(row: SocialSystemRow): AvailableSocialSystem {
   };
 }
 
-async function lockInitialSetupCampaign(
-  tx: PoolClient,
-  campaignId: string,
-): Promise<void> {
+async function lockInitialSetupCampaign(tx: PoolClient, campaignId: string): Promise<void> {
   const campaign = await tx.query<{
     id: string;
     status: string;
     current_turn: number;
     orders_locked: boolean;
-  }>(
-    'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
-    [campaignId],
-  );
+  }>('SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
+    campaignId,
+  ]);
   const row = campaign.rows[0];
   if (!row || row.status !== 'active' || row.current_turn !== 1 || !row.orders_locked) {
     throw new CampaignSetupNotReadyError();
@@ -539,7 +552,13 @@ export function createCountrySetupService(options: {
                      'player_created', 'active')
            RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
                      principles, approval_status, review_reason, created_at`,
-          [campaignId, validated.type, validated.name, userId, JSON.stringify(validated.principles)],
+          [
+            campaignId,
+            validated.type,
+            validated.name,
+            userId,
+            JSON.stringify(validated.principles),
+          ],
         );
         const row = inserted.rows[0];
         if (row === undefined) throw new Error('Social system insert did not return a row');
@@ -610,13 +629,15 @@ export function createCountrySetupService(options: {
 
     async reviewSocialSystem(adminUserId, campaignId, systemId, input: SocialSystemReviewInput) {
       requireAdmin(adminUserId);
-      if (input === null || typeof input !== 'object' ||
-          (input.decision !== 'approve' && input.decision !== 'reject')) {
+      if (
+        input === null ||
+        typeof input !== 'object' ||
+        (input.decision !== 'approve' && input.decision !== 'reject')
+      ) {
         throw new CountrySetupValidationError('Review decision must be approve or reject');
       }
       const reason = input.reason === undefined ? null : input.reason;
-      if (reason !== null &&
-          (typeof reason !== 'string' || reason.trim().length > 500)) {
+      if (reason !== null && (typeof reason !== 'string' || reason.trim().length > 500)) {
         throw new CountrySetupValidationError('Review reason must be at most 500 characters');
       }
 
@@ -644,8 +665,13 @@ export function createCountrySetupService(options: {
            WHERE campaign_id = $1 AND id = $2
            RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
                      principles, approval_status, review_reason, created_at`,
-          [campaignId, systemId, input.decision === 'approve' ? 'approved' : 'rejected',
-            adminUserId, reason === null ? null : reason.trim()],
+          [
+            campaignId,
+            systemId,
+            input.decision === 'approve' ? 'approved' : 'rejected',
+            adminUserId,
+            reason === null ? null : reason.trim(),
+          ],
         );
         const row = updated.rows[0];
         if (row === undefined) throw new SocialSystemNotFoundError();
@@ -750,7 +776,10 @@ export function createCountrySetupService(options: {
       const name = validateCountryName(input.name);
       validateInteger(input.spawnX, 'spawnX');
       validateInteger(input.spawnY, 'spawnY');
-      if (typeof input.officialSystemId !== 'string' || !UUID_PATTERN.test(input.officialSystemId)) {
+      if (
+        typeof input.officialSystemId !== 'string' ||
+        !UUID_PATTERN.test(input.officialSystemId)
+      ) {
         throw new CountrySetupValidationError('An approved officialSystemId is required');
       }
       const officialSystemId = input.officialSystemId;

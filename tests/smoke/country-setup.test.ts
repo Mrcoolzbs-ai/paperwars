@@ -337,8 +337,16 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const principles = [
         { name: 'Principle One', description: 'A positive principle.', polarity: 'positive' },
         { name: 'Principle Two', description: 'Another positive principle.', polarity: 'positive' },
-        { name: 'Principle Three', description: 'A third positive principle.', polarity: 'positive' },
-        { name: 'Necessary drawback', description: 'A balancing negative principle.', polarity: 'negative' },
+        {
+          name: 'Principle Three',
+          description: 'A third positive principle.',
+          polarity: 'positive',
+        },
+        {
+          name: 'Necessary drawback',
+          description: 'A balancing negative principle.',
+          polarity: 'negative',
+        },
         { name: 'Neutral custom', description: 'A neutral practice.', polarity: 'neutral' },
       ];
       const submitted = [];
@@ -366,9 +374,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         countrySetup.createSocialSystem(player.user.id, campaign.id, {
           type: 'religion',
           name: 'Eighth Faith',
-          principles: [
-            { name: 'A principle', description: 'A description.', polarity: 'neutral' },
-          ],
+          principles: [{ name: 'A principle', description: 'A description.', polarity: 'neutral' }],
         }),
       ).rejects.toBeInstanceOf(SocialSystemLimitReachedError);
 

@@ -133,9 +133,10 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof SocialSystemAdminRequiredError
   ) {
     return reply.code(403).send({
-      error: error instanceof SocialSystemAdminRequiredError
-        ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
-        : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
+      error:
+        error instanceof SocialSystemAdminRequiredError
+          ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
+          : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
     });
   }
   if (error instanceof SocialSystemNotFoundError) {
@@ -309,7 +310,10 @@ function registerCountryRoutes(
   app.get('/campaigns/:campaignId/social-systems/mine', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const systems = await countrySetupService.listMySocialSystems(user.id, getCampaignId(request));
+      const systems = await countrySetupService.listMySocialSystems(
+        user.id,
+        getCampaignId(request),
+      );
       return reply.send({ systems });
     } catch (error) {
       return sendAuthError(error, reply);
@@ -319,7 +323,10 @@ function registerCountryRoutes(
   app.get('/campaigns/:campaignId/social-systems/pending', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const systems = await countrySetupService.listPendingSocialSystems(user.id, getCampaignId(request));
+      const systems = await countrySetupService.listPendingSocialSystems(
+        user.id,
+        getCampaignId(request),
+      );
       return reply.send({ systems });
     } catch (error) {
       return sendAuthError(error, reply);

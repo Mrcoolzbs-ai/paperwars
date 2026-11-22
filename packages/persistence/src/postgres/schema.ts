@@ -127,14 +127,23 @@ export const socialSystems = pgTable(
     originX: integer('origin_x'),
     originY: integer('origin_y'),
     traits: jsonb('traits').$type<readonly string[]>().notNull().default([]),
-    createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     approvalStatus: text('approval_status').notNull().default('approved'),
-    principles: jsonb('principles').$type<readonly {
-      readonly name: string;
-      readonly description: string;
-      readonly polarity: 'positive' | 'negative' | 'neutral';
-    }[]>().notNull().default([]),
-    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    principles: jsonb('principles')
+      .$type<
+        readonly {
+          readonly name: string;
+          readonly description: string;
+          readonly polarity: 'positive' | 'negative' | 'neutral';
+        }[]
+      >()
+      .notNull()
+      .default([]),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true, mode: 'date' }),
     reviewReason: text('review_reason'),
     creationKind: text('creation_kind').notNull().default('player_created'),
@@ -152,7 +161,11 @@ export const socialSystems = pgTable(
     index('social_systems_player_slot_idx')
       .on(table.campaignId, table.systemType, table.approvalStatus)
       .where(sql`${table.creationKind} = 'player_created' and ${table.lifecycleStatus} = 'active'`),
-    index('social_systems_creator_idx').on(table.campaignId, table.createdByUserId, table.createdAt),
+    index('social_systems_creator_idx').on(
+      table.campaignId,
+      table.createdByUserId,
+      table.createdAt,
+    ),
     check('social_systems_type_check', sql`${table.systemType} in ('religion', 'ideology')`),
     check(
       'social_systems_name_length_check',
@@ -163,10 +176,22 @@ export const socialSystems = pgTable(
       sql`(${table.originX} is null and ${table.originY} is null) or (${table.originX} is not null and ${table.originY} is not null and ${table.originX} >= 0 and ${table.originY} >= 0)`,
     ),
     check('social_systems_traits_array_check', sql`jsonb_typeof(${table.traits}) = 'array'`),
-    check('social_systems_principles_array_check', sql`jsonb_typeof(${table.principles}) = 'array'`),
-    check('social_systems_approval_status_check', sql`${table.approvalStatus} in ('pending', 'approved', 'rejected')`),
-    check('social_systems_creation_kind_check', sql`${table.creationKind} in ('player_created', 'schism', 'seeded')`),
-    check('social_systems_lifecycle_status_check', sql`${table.lifecycleStatus} in ('active', 'destroyed')`),
+    check(
+      'social_systems_principles_array_check',
+      sql`jsonb_typeof(${table.principles}) = 'array'`,
+    ),
+    check(
+      'social_systems_approval_status_check',
+      sql`${table.approvalStatus} in ('pending', 'approved', 'rejected')`,
+    ),
+    check(
+      'social_systems_creation_kind_check',
+      sql`${table.creationKind} in ('player_created', 'schism', 'seeded')`,
+    ),
+    check(
+      'social_systems_lifecycle_status_check',
+      sql`${table.lifecycleStatus} in ('active', 'destroyed')`,
+    ),
     check(
       'social_systems_review_reason_length_check',
       sql`${table.reviewReason} is null or char_length(${table.reviewReason}) <= 500`,
