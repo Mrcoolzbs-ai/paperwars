@@ -48,7 +48,7 @@ describe('browser client', () => {
     expect(script.headers['content-type']).toContain('javascript');
     expect(() => new Script(script.body, { filename: 'apps/web/public/app.js' })).not.toThrow();
     expect(script.body).toContain('/campaigns');
-    expect(script.body).toContain('A campaign-listing failure must not erase the session');
+    expect(script.body).toContain('Сессия активна, но список кампаний не загрузился');
     expect(script.body).toContain('Авторизация прошла успешно, но список кампаний не загрузился');
     expect(script.body).toContain('Building symbols are rendered after country labels');
     expect(script.body).toContain("ctx.fillText('З'");
