@@ -729,6 +729,20 @@
       }
     });
 
+    $('#join-campaign-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const campaignId = $('#join-campaign-id').value.trim();
+      try {
+        await request('/campaigns/' + encodeURIComponent(campaignId) + '/join', { method: 'POST' });
+        $('#join-campaign-id').value = '';
+        setMessage('#join-campaign-message', 'Ты присоединился к кампании. Она появится в списке миров.', true);
+        await loadCampaigns();
+        showToast('Подключение к кампании выполнено.');
+      } catch (error) {
+        setMessage('#join-campaign-message', error.message);
+      }
+    });
+
     $('#logout-button').addEventListener('click', async () => {
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
