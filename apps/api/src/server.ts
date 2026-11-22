@@ -95,6 +95,11 @@ try {
     socialSystemAdminUserIds,
   });
 
+  const webEntryPath =
+    process.env['NODE_ENV'] === 'production'
+      ? resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html')
+      : undefined;
+
   app = createApp({
     logger: true,
     rulesetVersion,
@@ -103,9 +108,7 @@ try {
     campaignService,
     countrySetupService,
     secureCookies: process.env['NODE_ENV'] === 'production',
-    ...(process.env['NODE_ENV'] === 'production'
-      ? { webEntryPath: resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html') }
-      : {}),
+    ...(webEntryPath === undefined ? {} : { webEntryPath }),
   });
 
   await app.listen({ port, host });
