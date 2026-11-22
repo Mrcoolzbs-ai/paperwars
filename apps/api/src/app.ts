@@ -252,6 +252,7 @@ function registerCampaignRoutes(
       const campaign = await campaignService.createCampaign(user.id, body['name'], {
         mapWidth: body['mapWidth'] as number,
         mapHeight: body['mapHeight'] as number,
+        turnDurationHours: body['turnDurationHours'] as number | undefined,
       });
       return reply.code(201).send({ campaign });
     } catch (error) {
@@ -293,6 +294,32 @@ function registerCountryRoutes(
   authService: AuthService,
   countrySetupService: CountrySetupService,
 ): void {
+  app.get('/campaigns/:campaignId/map', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const map = await countrySetupService.getCampaignMap(user.id, getCampaignId(request));
+      return reply.send({ map });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.put('/campaigns/:campaignId/spawn-reservation', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const reservation = await countrySetupService.reserveSpawn(
+        user.id,
+        getCampaignId(request),
+        parseCoordinate(body['centerX'], 'centerX'),
+        parseCoordinate(body['centerY'], 'centerY'),
+      );
+      return reply.send({ reservation });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.post('/campaigns/:campaignId/social-systems', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
