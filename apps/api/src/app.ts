@@ -250,10 +250,12 @@ function registerCampaignRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
       const turnDurationHours = body['turnDurationHours'];
+      const mapSeed = body['mapSeed'];
       const campaign = await campaignService.createCampaign(user.id, body['name'], {
         mapWidth: body['mapWidth'] as number,
         mapHeight: body['mapHeight'] as number,
         ...(typeof turnDurationHours === 'number' ? { turnDurationHours } : {}),
+        ...(typeof mapSeed === 'string' ? { mapSeed } : {}),
       });
       return reply.code(201).send({ campaign });
     } catch (error) {
