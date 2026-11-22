@@ -113,6 +113,12 @@ export interface WeightedOutcome<T> {
   readonly value: T;
 }
 
+/** Resolver output before the engine attaches its authoritative random-draw journal. */
+export type TurnSimulationResult<
+  TState,
+  TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
+> = Omit<TurnResolution<TState, TEvent>, 'randomDraws'>;
+
 /** Pure, deterministic source supplied to the Simulation Engine for one turn. */
 export interface RandomSource {
   uniform(domain: string, drawId: string, min: number, max: number): number;
@@ -132,7 +138,7 @@ export type TurnResolver<
   TPayload,
   TRuleset extends object,
   TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
-> = (input: TurnSimulationInput<TState, TPayload, TRuleset>) => TurnResolution<TState, TEvent>;
+> = (input: TurnSimulationInput<TState, TPayload, TRuleset>) => TurnSimulationResult<TState, TEvent>;
 
 export class TurnResolutionInvariantError extends Error {
   constructor(message: string) {
