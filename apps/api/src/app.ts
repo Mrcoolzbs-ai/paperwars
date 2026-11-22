@@ -39,6 +39,8 @@ export interface CreateAppOptions {
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
   readonly secureCookies?: boolean;
+  /** Optional built HTML entry point used by the production server. */
+  readonly webEntryPath?: string;
 }
 
 interface RecordBody {
@@ -469,8 +471,19 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   });
 
   app.get('/', async (_request, reply) => {
-    const page = await readFile(new URL('../../web/public/index.html', import.meta.url));
-    return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(page);
+    try {
+      const page = await readFile(
+        options.webEntryPath ?? new URL('../../web/public/index.html', import.meta.url),
+      );
+      return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(page);
+    } catch (error) {
+      if (options.webEntryPath === undefined) throw error;
+      reply.log.error({ err: error }, 'Built browser client entry point could not be read');
+      return reply.code(503).send({
+        error: 'WEB_CLIENT_NOT_BUILT',
+        message: 'The built browser client is missing. Run the Paper Wars launcher again.',
+      });
+    }
   });
 
   app.get('/styles.css', async (_request, reply) => {
@@ -516,6 +529,7 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   app.get('/health', async () => ({
     status: 'ok',
+    apiContractVersion: 'browser-auth-v1',
     engineVersion: engine.engineVersion,
     rulesetVersion: engine.rulesetVersion,
     rngVersion: engine.rngVersion,
