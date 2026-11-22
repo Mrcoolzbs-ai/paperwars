@@ -73,10 +73,18 @@ const orders: readonly OrderEnvelope<TestOrderPayload>[] = [
 
 const random = {
   uniform: (_domain: string, _drawId: string, min: number, max: number) => Math.min(min + 3, max),
-  weighted: <T>(_domain: string, _drawId: string, outcomes: readonly { readonly value: T }[]) => {
-    const first = outcomes[0];
-    if (first === undefined) throw new Error('A weighted test outcome is required');
-    return first.value;
+  weighted: <T>(
+    _domain: string,
+    _drawId: string,
+    outcomes: readonly { readonly weight: number; readonly value: T }[],
+  ) => {
+    const target = Math.min(3, outcomes.reduce((sum, outcome) => sum + outcome.weight, 0) - 1);
+    let cumulativeWeight = 0;
+    for (const outcome of outcomes) {
+      cumulativeWeight += outcome.weight;
+      if (target < cumulativeWeight) return outcome.value;
+    }
+    throw new Error('A weighted test outcome is required');
   },
 };
 
@@ -244,6 +252,36 @@ describe('Simulation Engine phase runner', () => {
         phaseHandlers: incomplete,
       }),
     ).toThrow(SimulationPhaseConfigurationError);
+  });
+
+  it('uses the supplied weighted selector and rejects inconsistent weighted results', () => {
+    let selected: string | undefined;
+    const handlers = {
+      ...createHandlers(),
+      RESEARCH: (context: TurnPhaseContext<TestState, TestOrderPayload, RulesetManifest, TestEvent>) => {
+        selected = context.random.weighted('test', 'research:choice', [
+          { id: 'common', weight: 2, value: 'common' },
+          { id: 'rare', weight: 1, value: 'rare' },
+        ]);
+        return { state: context.state };
+      },
+    };
+    const resolver = createTurnResolver({ engine, phaseHandlers: handlers });
+    const resolution = resolver({ snapshot, orders: [], ruleset: manifest, random });
+
+    expect(selected).toBe('rare');
+    expect(resolution.randomDraws).toContainEqual({
+      domain: 'test',
+      drawId: 'research:choice',
+      minValue: 0,
+      maxValue: 2,
+      value: 2,
+    });
+
+    const inconsistentRandom = { ...random, weighted: () => 'common' };
+    expect(() =>
+      resolver({ snapshot, orders: [], ruleset: manifest, random: inconsistentRandom }),
+    ).toThrow(/does not match its deterministic uniform draw/);
   });
 
   it('deduplicates identical draws and rejects reuse with changed bounds', () => {
