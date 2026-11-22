@@ -189,12 +189,22 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       try {
         await client.query('BEGIN');
         transactionOpen = true;
-        const campaign = await client.query<{ id: string; status: string }>(
-          'SELECT id, status FROM campaigns WHERE id = $1 FOR UPDATE',
+        const campaign = await client.query<{
+          id: string;
+          status: string;
+          current_turn: number;
+          orders_locked: boolean;
+        }>(
+          'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
           [campaignId],
         );
-        if (campaign.rows[0]?.status !== 'active') {
-          throw new AuthValidationError('Campaign does not exist or is not accepting players');
+        const target = campaign.rows[0];
+        if (
+          target?.status !== 'active' ||
+          target.current_turn !== 1 ||
+          !target.orders_locked
+        ) {
+          throw new AuthValidationError('Campaign is no longer accepting players for the initial setup');
         }
         await client.query(
           `INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed)
