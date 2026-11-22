@@ -193,3 +193,130 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .building-count-item .building-icon-img,.building-count-item .building-icon-svg{width:24px;height:24px}.building-count-item .building-gold-symbol{font-size:22px}
 @media(max-width:760px){.faith-doc-content{grid-template-columns:1fr}.faith-doc-header,.country-doc-header{min-height:0}.country-doc-top-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.country-doc-middle{grid-template-columns:1fr}.country-doc-bottom{grid-template-columns:repeat(2,minmax(0,1fr))}.country-action-layout{grid-template-columns:1fr}.country-action-grid{max-width:340px}}
 @media(max-width:460px){.archive-card{padding:9px}.faith-doc-header h2,.country-doc-title h2{font-size:24px}.faith-doc-emblem,.country-doc-flag{width:88px;height:88px;flex-basis:88px}.faith-doc-metrics{gap:4px}.faith-doc-metric{min-height:108px;padding:4px}.faith-doc-metric span{font-size:12px}.country-doc-economy{grid-template-columns:1fr}}
+
+
+/* Archived profile-card layout: square sections, restrained rules and readable blocks. */
+.archive-card {
+  background: #f7f5ed;
+  border: 2px solid #161a16;
+  border-radius: 0;
+  box-shadow: 4px 4px 0 rgba(16, 24, 18, .16);
+  padding: clamp(14px, 2.1vw, 24px);
+}
+.archive-card-kicker {
+  color: #5b513b;
+  font: 700 9px/1.4 "DM Mono", monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+.faith-doc-title-block { flex: 1; min-width: 0; }
+.faith-doc-title-block h2 { display: block; width: 100%; }
+.country-doc-top-stat { border-radius: 0; background: #fff; }
+.country-doc-middle,
+.country-doc-economy,
+.country-doc-government,
+.country-doc-bottom { overflow: visible; }
+.country-doc-middle > section,
+.country-doc-economy > div,
+.country-doc-government,
+.country-doc-bottom > section,
+.faith-doc-beliefs,
+.faith-doc-authority,
+.faith-doc-metric,
+.faith-doc-notes {
+  border-radius: 0;
+  background: #fff;
+}
+.country-doc-section-title {
+  margin: 15px 0 7px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #171b17;
+  color: #171b17;
+  font: 700 11px/1.35 "DM Mono", monospace;
+  letter-spacing: .11em;
+}
+.country-doc-inactive-actions {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #697365;
+  background: #eeece2;
+  color: #252b25;
+}
+.country-doc-inactive-actions strong {
+  font: 700 11px "DM Mono", monospace;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.country-doc-inactive-actions p {
+  margin: 0;
+  font: 12px/1.45 Arial, sans-serif;
+  color: #4b534b;
+}
+.faith-doc-beliefs li {
+  border-bottom: 1px solid #d3d0c4;
+  padding-bottom: 8px;
+}
+.faith-doc-beliefs li:last-child { border-bottom: 0; }
+.faith-doc-metric { min-height: 112px; }
+.country-doc-bottom > section { position: relative; overflow: visible; }
+.country-doc-culture { position: relative; z-index: 2; }
+.culture-symbols { overflow: visible; isolation: isolate; }
+.culture-symbol {
+  z-index: 1;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+}
+.culture-symbol:hover,
+.culture-symbol:focus-visible {
+  z-index: 50;
+}
+.culture-symbol::after {
+  z-index: 100;
+  white-space: pre-line;
+  width: min(300px, 72vw);
+  line-height: 1.45;
+  box-shadow: 2px 3px 0 rgba(0,0,0,.24);
+}
+.culture-symbol:focus-visible { outline-offset: 2px; }
+
+/* Keep the full two-stack factory pictogram inside its tile. */
+.territory-cell .building-icon-img[data-building-type="factory"],
+.territory-cell .building-icon-img[data-building-type="tower"] {
+  width: 66%;
+  height: 66%;
+  max-width: 36px;
+  max-height: 36px;
+  padding: 4%;
+  box-sizing: border-box;
+  object-fit: contain;
+}
+.building-count-item .building-icon-img[data-building-type="factory"],
+.building-count-item .building-icon-img[data-building-type="tower"] {
+  padding: 2px;
+  box-sizing: border-box;
+  object-fit: contain;
+}
+.building-gold-symbol[data-building-type="gold_mine"] {
+  font-family: Georgia, serif;
+  font-weight: 900;
+  color: #efc900;
+  text-shadow: -1px 0 #725c00, 1px 0 #725c00, 0 1px #725c00, 0 -1px #725c00;
+}
+@media (max-width: 760px) {
+  .country-doc-top-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .country-doc-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .faith-doc-header, .country-doc-header { min-height: 0; }
+}
+@media (max-width: 460px) {
+  .faith-doc-content { grid-template-columns: 1fr; }
+  .country-doc-middle, .country-doc-economy { grid-template-columns: 1fr; }
+  .faith-doc-emblem, .country-doc-flag {
+    width: 88px;
+    height: 88px;
+    flex-basis: 88px;
+  }
+}
