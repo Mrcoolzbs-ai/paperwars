@@ -249,8 +249,12 @@ async function lockInitialSetupCampaign(
   if (!row || row.status !== 'active' || row.current_turn !== 1 || !row.orders_locked) {
     throw new CampaignSetupNotReadyError();
   }
+  await tx.query(
+    'SELECT version FROM world_snapshots WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
+    [campaignId],
+  );
   const job = await tx.query(
-    'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 LIMIT 1',
+    'SELECT id FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
     [campaignId],
   );
   if (job.rows.length > 0) throw new SocialSystemReviewConflictError();
@@ -473,8 +477,193 @@ async function buildSnapshot(
 export function createCountrySetupService(options: {
   readonly pool: Pool;
   readonly systemAvailabilityPolicy?: SocialSystemAvailabilityPolicy;
+  readonly socialSystemAdminUserIds?: readonly string[];
 }): CountrySetupService {
+  const adminUserIds = new Set(options.socialSystemAdminUserIds ?? []);
+  const requireAdmin = (userId: string): void => {
+    if (!adminUserIds.has(userId)) throw new SocialSystemAdminRequiredError();
+  };
+
   return {
+    async createSocialSystem(userId, campaignId, input) {
+      const validated = validateSocialSystemInput(input);
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        await lockInitialSetupCampaign(client, campaignId);
+
+        const memberResult = await client.query<MembershipRow>(
+          `SELECT status, country_id
+           FROM campaign_memberships
+           WHERE campaign_id = $1 AND user_id = $2
+           FOR UPDATE`,
+          [campaignId, userId],
+        );
+        const member = memberResult.rows[0];
+        if (member === undefined || member.status !== 'active') {
+          throw new NotActiveCampaignMemberError();
+        }
+        if (member.country_id !== null) throw new CountryAlreadyRegisteredError();
+
+        const count = await client.query<{ count: number }>(
+          `SELECT count(*)::integer AS count
+           FROM social_systems
+           WHERE campaign_id = $1 AND system_type = $2
+             AND creation_kind = 'player_created'
+             AND lifecycle_status = 'active'
+             AND approval_status IN ('pending', 'approved')`,
+          [campaignId, validated.type],
+        );
+        if ((count.rows[0]?.count ?? 0) >= MAX_PLAYER_SYSTEMS_PER_TYPE) {
+          throw new SocialSystemLimitReachedError();
+        }
+
+        const duplicate = await client.query(
+          `SELECT 1 FROM social_systems
+           WHERE campaign_id = $1 AND system_type = $2
+             AND lower(btrim(name)) = lower($3)
+             AND creation_kind = 'player_created'
+             AND lifecycle_status = 'active'
+             AND approval_status IN ('pending', 'approved')
+           LIMIT 1`,
+          [campaignId, validated.type, validated.name],
+        );
+        if (duplicate.rows.length > 0) throw new SocialSystemNameConflictError();
+
+        const inserted = await client.query<SocialSystemRow>(
+          `INSERT INTO social_systems (
+             campaign_id, system_type, name, origin_x, origin_y, traits,
+             created_by_user_id, approval_status, principles, creation_kind, lifecycle_status
+           ) VALUES ($1, $2, $3, NULL, NULL, '[]'::jsonb, $4, 'pending', $5::jsonb,
+                     'player_created', 'active')
+           RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
+                     principles, approval_status, review_reason, created_at`,
+          [campaignId, validated.type, validated.name, userId, JSON.stringify(validated.principles)],
+        );
+        const row = inserted.rows[0];
+        if (row === undefined) throw new Error('Social system insert did not return a row');
+
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return toSocialSystemView(row);
+      } catch (error) {
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async listMySocialSystems(userId, campaignId) {
+      const membership = await options.pool.query(
+        `SELECT 1 FROM campaign_memberships
+         WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+        [campaignId, userId],
+      );
+      if (membership.rows.length === 0) throw new NotActiveCampaignMemberError();
+      const result = await options.pool.query<SocialSystemRow>(
+        `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+                principles, approval_status, review_reason, created_at
+         FROM social_systems
+         WHERE campaign_id = $1 AND created_by_user_id = $2
+           AND creation_kind = 'player_created'
+         ORDER BY created_at, id`,
+        [campaignId, userId],
+      );
+      return result.rows.map(toSocialSystemView);
+    },
+
+    async listPendingSocialSystems(adminUserId, campaignId) {
+      requireAdmin(adminUserId);
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        await lockInitialSetupCampaign(client, campaignId);
+        const result = await client.query<SocialSystemRow>(
+          `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+                  principles, approval_status, review_reason, created_at
+           FROM social_systems
+           WHERE campaign_id = $1 AND approval_status = 'pending'
+             AND creation_kind = 'player_created'
+           ORDER BY created_at, id`,
+          [campaignId],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return result.rows.map(toSocialSystemView);
+      } catch (error) {
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async reviewSocialSystem(adminUserId, campaignId, systemId, input: SocialSystemReviewInput) {
+      requireAdmin(adminUserId);
+      if (input === null || typeof input !== 'object' ||
+          (input.decision !== 'approve' && input.decision !== 'reject')) {
+        throw new CountrySetupValidationError('Review decision must be approve or reject');
+      }
+      const reason = input.reason === undefined ? null : input.reason;
+      if (reason !== null &&
+          (typeof reason !== 'string' || reason.trim().length > 500)) {
+        throw new CountrySetupValidationError('Review reason must be at most 500 characters');
+      }
+
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        await lockInitialSetupCampaign(client, campaignId);
+        const pending = await client.query<SocialSystemRow>(
+          `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+                  principles, approval_status, review_reason, created_at
+           FROM social_systems
+           WHERE campaign_id = $1 AND id = $2 AND approval_status = 'pending'
+             AND creation_kind = 'player_created'
+           FOR UPDATE`,
+          [campaignId, systemId],
+        );
+        if (pending.rows[0] === undefined) throw new SocialSystemNotFoundError();
+
+        const updated = await client.query<SocialSystemRow>(
+          `UPDATE social_systems
+           SET approval_status = $3, reviewed_by_user_id = $4,
+               reviewed_at = clock_timestamp(), review_reason = $5
+           WHERE campaign_id = $1 AND id = $2
+           RETURNING id, campaign_id, system_type, name, origin_x, origin_y,
+                     principles, approval_status, review_reason, created_at`,
+          [campaignId, systemId, input.decision === 'approve' ? 'approved' : 'rejected',
+            adminUserId, reason === null ? null : reason.trim()],
+        );
+        const row = updated.rows[0];
+        if (row === undefined) throw new SocialSystemNotFoundError();
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return toSocialSystemView(row);
+      } catch (error) {
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async listAvailableSystems(userId, campaignId, systemType, spawnX, spawnY) {
       validateInteger(spawnX, 'spawnX');
       validateInteger(spawnY, 'spawnY');
@@ -489,10 +678,6 @@ export function createCountrySetupService(options: {
           [campaignId, userId],
         );
         if (membership.rows.length === 0) throw new NotActiveCampaignMemberError();
-
-        if (options.systemAvailabilityPolicy === undefined) {
-          throw new SystemAvailabilityNotConfiguredError();
-        }
 
         const campaign = await result.query<{
           map_width: number | null;
@@ -513,12 +698,30 @@ export function createCountrySetupService(options: {
           );
         }
 
-        return options.systemAvailabilityPolicy.listAvailable(result, {
-          campaignId,
-          systemType,
-          spawnX,
-          spawnY,
-        });
+        const owned = await result.query<SocialSystemRow>(
+          `SELECT id, campaign_id, system_type, name, origin_x, origin_y,
+                  principles, approval_status, review_reason, created_at
+           FROM social_systems
+           WHERE campaign_id = $1 AND created_by_user_id = $2
+             AND system_type = $3 AND approval_status = 'approved'
+             AND lifecycle_status = 'active'`,
+          [campaignId, userId, systemType],
+        );
+        const systems = new Map<string, AvailableSocialSystem>(
+          owned.rows.map((system) => [system.id, toAvailableSocialSystem(system)]),
+        );
+        if (options.systemAvailabilityPolicy !== undefined) {
+          const nearby = await options.systemAvailabilityPolicy.listAvailable(result, {
+            campaignId,
+            systemType,
+            spawnX,
+            spawnY,
+          });
+          for (const system of nearby) {
+            if (!systems.has(system.id)) systems.set(system.id, system);
+          }
+        }
+        return [...systems.values()];
       } finally {
         result.release();
       }
@@ -531,8 +734,10 @@ export function createCountrySetupService(options: {
       const name = validateCountryName(input.name);
       validateInteger(input.spawnX, 'spawnX');
       validateInteger(input.spawnY, 'spawnY');
-      const officialChoice = validateOfficialSystemChoice(input.officialSystem);
-      validateBuildingPlacements(input.buildings, officialChoice.type);
+      if (typeof input.officialSystemId !== 'string' || !UUID_PATTERN.test(input.officialSystemId)) {
+        throw new CountrySetupValidationError('An approved officialSystemId is required');
+      }
+      const officialSystemId = input.officialSystemId;
 
       const client = await options.pool.connect();
       let transactionOpen = false;
@@ -590,14 +795,22 @@ export function createCountrySetupService(options: {
           throw new CountryAlreadyRegisteredError();
         }
 
+        const turnJob = await client.query(
+          'SELECT id FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
+          [campaignId],
+        );
+        if (turnJob.rows.length > 0) throw new CampaignSetupNotReadyError();
+
         const system = await resolveOfficialSystem(
           client,
           campaignId,
+          userId,
           input.spawnX,
           input.spawnY,
-          officialChoice,
+          officialSystemId,
           options.systemAvailabilityPolicy,
         );
+        validateBuildingPlacements(input.buildings, system.type);
 
         const countryResult = await client.query<{ id: string }>(
           `INSERT INTO countries (
