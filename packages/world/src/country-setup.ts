@@ -1395,7 +1395,12 @@ export function createCountrySetupService(options: {
         transactionOpen = true;
         const context = await lockCountryActionContext(client, userId, campaignId);
         const cell = await validateFreeLandActionCell(
-          client, campaignId, context.countryId, context.campaign, coordinates.x, coordinates.y,
+          client,
+          campaignId,
+          context.countryId,
+          context.campaign,
+          coordinates.x,
+          coordinates.y,
         );
         const population = await client.query(
           `UPDATE country_cells SET population = population - 1
@@ -1403,7 +1408,9 @@ export function createCountrySetupService(options: {
           [campaignId, context.countryId, cell.cell_id],
         );
         if (population.rowCount !== 1) {
-          throw new CountrySetupValidationError('The selected cell no longer has an available resident');
+          throw new CountrySetupValidationError(
+            'The selected cell no longer has an available resident',
+          );
         }
         await client.query(
           `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
@@ -1413,18 +1420,35 @@ export function createCountrySetupService(options: {
         await client.query(
           `INSERT INTO game_events (campaign_id, turn_number, event_type, payload, visibility)
            VALUES ($1, 1, 'building_constructed', $2, 'public')`,
-          [campaignId, { countryId: context.countryId, buildingType: type, x: coordinates.x, y: coordinates.y }],
+          [
+            campaignId,
+            {
+              countryId: context.countryId,
+              buildingType: type,
+              x: coordinates.x,
+              y: coordinates.y,
+            },
+          ],
         );
         await saveUpdatedTurnOneSnapshot(
-          client, campaignId, context.campaign.map_width!, context.campaign.map_height!,
-          context.campaign.ruleset_version, context.snapshotVersion,
+          client,
+          campaignId,
+          context.campaign.map_width!,
+          context.campaign.map_height!,
+          context.campaign.ruleset_version,
+          context.snapshotVersion,
         );
         await client.query('COMMIT');
         transactionOpen = false;
       } catch (error) {
-        if (transactionOpen) { await client.query('ROLLBACK'); transactionOpen = false; }
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
         throw error;
-      } finally { client.release(); }
+      } finally {
+        client.release();
+      }
     },
 
     async moveCountryCapital(userId, campaignId, input) {
@@ -1439,7 +1463,12 @@ export function createCountrySetupService(options: {
         transactionOpen = true;
         const context = await lockCountryActionContext(client, userId, campaignId);
         const target = await validateFreeLandActionCell(
-          client, campaignId, context.countryId, context.campaign, coordinates.x, coordinates.y,
+          client,
+          campaignId,
+          context.countryId,
+          context.campaign,
+          coordinates.x,
+          coordinates.y,
         );
         const result = await client.query<CountryActionBuildingRow>(
           `SELECT cc.cell_id, cell.x, cell.y
@@ -1453,7 +1482,8 @@ export function createCountrySetupService(options: {
           [campaignId, context.countryId],
         );
         const capital = result.rows[0];
-        if (!capital) throw new CountrySetupValidationError('The country has no registered capital');
+        if (!capital)
+          throw new CountrySetupValidationError('The country has no registered capital');
         if (capital.cell_id === target.cell_id) {
           throw new CountrySetupValidationError('Choose another cell to relocate the capital');
         }
@@ -1468,29 +1498,44 @@ export function createCountrySetupService(options: {
           [campaignId, context.countryId, target.cell_id],
         );
         if (freed.rowCount !== 1 || occupied.rowCount !== 1) {
-          throw new CountrySetupValidationError('The selected cells changed; refresh the country map');
+          throw new CountrySetupValidationError(
+            'The selected cells changed; refresh the country map',
+          );
         }
         const moved = await client.query(
           `UPDATE country_buildings SET cell_id = $4
            WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = 'capital'`,
           [campaignId, context.countryId, capital.cell_id, target.cell_id],
         );
-        if (moved.rowCount !== 1) throw new CountrySetupValidationError('Capital relocation could not be completed');
+        if (moved.rowCount !== 1)
+          throw new CountrySetupValidationError('Capital relocation could not be completed');
         await client.query(
           `INSERT INTO game_events (campaign_id, turn_number, event_type, payload, visibility)
            VALUES ($1, 1, 'capital_relocated', $2, 'public')`,
-          [campaignId, { countryId: context.countryId, from: { x: capital.x, y: capital.y }, to: coordinates }],
+          [
+            campaignId,
+            { countryId: context.countryId, from: { x: capital.x, y: capital.y }, to: coordinates },
+          ],
         );
         await saveUpdatedTurnOneSnapshot(
-          client, campaignId, context.campaign.map_width!, context.campaign.map_height!,
-          context.campaign.ruleset_version, context.snapshotVersion,
+          client,
+          campaignId,
+          context.campaign.map_width!,
+          context.campaign.map_height!,
+          context.campaign.ruleset_version,
+          context.snapshotVersion,
         );
         await client.query('COMMIT');
         transactionOpen = false;
       } catch (error) {
-        if (transactionOpen) { await client.query('ROLLBACK'); transactionOpen = false; }
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
         throw error;
-      } finally { client.release(); }
+      } finally {
+        client.release();
+      }
     },
 
     async createCountry(userId, campaignId, input) {

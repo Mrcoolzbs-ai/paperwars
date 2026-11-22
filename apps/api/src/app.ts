@@ -521,12 +521,20 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   app.get('/assets/buildings/:file', async (request, reply) => {
     const params = request.params as { readonly file?: unknown };
     const allowed = new Set([
-      'factory.jpg', 'field.jpg', 'tower.jpg', 'barracks.jpg', 'capital.jpg', 'science.jpg', 'gold-mark.jpg',
+      'factory.jpg',
+      'field.jpg',
+      'tower.jpg',
+      'barracks.jpg',
+      'capital.jpg',
+      'science.jpg',
+      'gold-mark.jpg',
     ]);
     if (typeof params.file !== 'string' || !allowed.has(params.file)) {
       return reply.code(404).send({ error: 'BUILDING_ASSET_NOT_FOUND' });
     }
-    const asset = await readFile(new URL('../../web/public/assets/buildings/' + params.file, import.meta.url));
+    const asset = await readFile(
+      new URL('../../web/public/assets/buildings/' + params.file, import.meta.url),
+    );
     return reply.type('image/jpeg').header('Cache-Control', 'public, max-age=86400').send(asset);
   });
 

@@ -340,10 +340,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
            WHERE campaign_id = $1 AND user_id = $2`,
           [campaign.id, member.user.id],
         );
-        await persistence.pool.query(
-          'UPDATE campaigns SET orders_locked = FALSE WHERE id = $1',
-          [campaign.id],
-        );
+        await persistence.pool.query('UPDATE campaigns SET orders_locked = FALSE WHERE id = $1', [
+          campaign.id,
+        ]);
 
         const actionMapResponse = await app.inject({
           method: 'GET',
@@ -358,7 +357,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             terrain: string;
             countries: Array<{
               id: string;
-              cells: Array<{ x: number; y: number; population: number; buildingType: string | null }>;
+              cells: Array<{
+                x: number;
+                y: number;
+                population: number;
+                buildingType: string | null;
+              }>;
             }>;
           };
         }>().map;
@@ -417,9 +421,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           url: `/campaigns/${campaign.id}/map`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
-        const movedCells = afterCapitalMove
-          .json<{ map: { countries: typeof actionMap.countries } }>()
-          .map.countries.find((item) => item.id === ownedCountry.id)?.cells || [];
+        const movedCells =
+          afterCapitalMove
+            .json<{ map: { countries: typeof actionMap.countries } }>()
+            .map.countries.find((item) => item.id === ownedCountry.id)?.cells || [];
         expect(movedCells).toContainEqual(
           expect.objectContaining({
             x: newCapitalCell.x,
@@ -436,7 +441,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             population: 1,
           }),
         );
-
       } finally {
         await app.close();
       }
