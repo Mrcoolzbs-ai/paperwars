@@ -193,8 +193,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       expect(leftDuringSetup.statusCode).toBe(200);
       expect(
-        leftDuringSetup.json<{ membership: { userId: string; status: string } }>().membership,
-      ).toEqual({ userId: inviteeId, status: 'left' });
+        leftDuringSetup.json<{
+          membership: {
+            campaignId: string;
+            userId: string;
+            status: string;
+            discardedOrderCount: number;
+          };
+        }>().membership,
+      ).toEqual({
+        campaignId,
+        userId: inviteeId,
+        status: 'left',
+        discardedOrderCount: 0,
+      });
 
       const lockDuringSetup = await persistence!.pool.query<{ orders_locked: boolean }>(
         'SELECT orders_locked FROM campaigns WHERE id = $1',
@@ -217,6 +229,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaignId, inviteeId],
       );
       expect(membership.rows[0]).toEqual({ status: 'left', country_id: null });
+
+      // Restore the shared campaign to its pre-registration state for the next
+      // invitation test; the snapshot above exists only to exercise this case.
+      await persistence!.pool.query(
+        'DELETE FROM world_snapshots WHERE campaign_id = $1 AND turn_number = 1',
+        [campaignId],
+      );
     });
 
     it('allows revocation and blocks new invitations after initial setup completes', async () => {
