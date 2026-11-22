@@ -119,8 +119,16 @@ export type TurnSimulationResult<
   TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
 > = Omit<TurnResolution<TState, TEvent>, 'randomDraws'>;
 
+/** Campaign/turn identity bound to the deterministic source used for this resolution. */
+export interface RandomSourceContext {
+  readonly campaignId: string;
+  readonly turnNumber: number;
+  readonly rngVersion: string;
+}
+
 /** Pure, deterministic source supplied to the Simulation Engine for one turn. */
 export interface RandomSource {
+  readonly context: RandomSourceContext;
   uniform(domain: string, drawId: string, min: number, max: number): number;
   weighted<T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]): T;
 }
