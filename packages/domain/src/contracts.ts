@@ -138,7 +138,9 @@ export type TurnResolver<
   TPayload,
   TRuleset extends object,
   TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
-> = (input: TurnSimulationInput<TState, TPayload, TRuleset>) => TurnSimulationResult<TState, TEvent>;
+> = (
+  input: TurnSimulationInput<TState, TPayload, TRuleset>,
+) => TurnSimulationResult<TState, TEvent>;
 
 export class TurnResolutionInvariantError extends Error {
   constructor(message: string) {
