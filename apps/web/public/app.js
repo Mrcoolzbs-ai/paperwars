@@ -234,6 +234,11 @@
     requestAnimationFrame(buildWorldPreview);
     activateTab('overview');
     await loadSystems();
+    if (!campaign.countryId) {
+      const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+      if (reservation) activateTab('systems');
+      else openMap();
+    }
   }
 
   function mapIsLand(x, y) {
@@ -353,15 +358,27 @@
 
   function openMap() {
     if (!state.campaign) return;
-    loadCampaignMap().catch((error) => showToast(error.message, true));
-    state.mapSelectedCenter = null;
+    const existingReservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+    state.mapSelectedCenter = existingReservation
+      ? { x: existingReservation.centerX, y: existingReservation.centerY }
+      : null;
     state.mapTransform = null;
-    $('#confirm-spawn').disabled = true;
+    $('#confirm-spawn').disabled = !state.mapSelectedCenter;
     $('#map-selection-label').textContent = state.campaign.countryId
       ? 'Государство уже основано. Перетаскивай карту и смотри территории игроков.'
-      : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
+      : existingReservation
+        ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
+        : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
     $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId));
     $('#map-modal').classList.remove('hidden');
+    loadCampaignMap().then(() => {
+      const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
+      if (reservation && !state.mapSelectedCenter) {
+        state.mapSelectedCenter = { x: reservation.centerX, y: reservation.centerY };
+        $('#confirm-spawn').disabled = false;
+      }
+      requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
+    }).catch((error) => showToast(error.message, true));
     requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
   }
 
