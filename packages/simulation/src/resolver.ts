@@ -91,6 +91,7 @@ function createRecordedRandomSource(source: RandomSource): {
   readonly getDraws: () => readonly RandomDrawRecord[];
 } {
   const records = new Map<string, RandomDrawRecord>();
+  const weightedTableSignatures = new Map<string, string>();
 
   const record = (
     domain: string,
@@ -164,6 +165,15 @@ function createRecordedRandomSource(source: RandomSource): {
       }
     }
 
+    const key = `${domain.length}:${domain}${drawId.length}:${drawId}`;
+    const tableSignature = JSON.stringify(
+      outcomes.map((outcome) => [outcome.id, outcome.weight]),
+    );
+    const previousSignature = weightedTableSignatures.get(key);
+    if (previousSignature !== undefined && previousSignature !== tableSignature) {
+      throw new SimulationRandomDrawConflictError(domain, drawId);
+    }
+
     // The source owns weighted selection. The equivalent uniform draw is
     // also read so the exact integer target can be persisted in the audit log.
     // RandomSource is deterministic by (domain, drawId), so both calls must
@@ -179,6 +189,7 @@ function createRecordedRandomSource(source: RandomSource): {
             'Weighted random source result does not match its deterministic uniform draw',
           );
         }
+        weightedTableSignatures.set(key, tableSignature);
         return selected;
       }
     }
