@@ -142,9 +142,8 @@ export async function lockCampaignForOrderWrite(
 }
 
 /**
- * Allows invitations and acceptance while a newly-created campaign is in setup:
- * turn one, with no initial snapshot and no turn job. Once a snapshot exists,
- * the usual orders_locked gate applies.
+ * Serializes invitation changes with initial country setup. Creation and
+ * acceptance require the pre-snapshot setup window; revocation may bypass it.
  */
 export async function lockCampaignForInvitationWrite(
   tx: PoolClient,
@@ -154,10 +153,9 @@ export async function lockCampaignForInvitationWrite(
   const result = await tx.query<{
     status: string;
     current_turn: number;
-    orders_locked: boolean;
     initial_setup: boolean;
   }>(
-    'SELECT status, current_turn, orders_locked, ' +
+    'SELECT status, current_turn, ' +
       '(current_turn = 1 ' +
       'AND NOT EXISTS (SELECT 1 FROM world_snapshots AS snapshot ' +
       'WHERE snapshot.campaign_id = campaigns.id AND snapshot.turn_number = 1) ' +
@@ -170,7 +168,9 @@ export async function lockCampaignForInvitationWrite(
   if (!row) throw new TurnProcessingError('Campaign not found');
   if (row.status !== 'active') throw new TurnProcessingError('Campaign is not active');
   if ((options.requireInitialSetup ?? true) && !row.initial_setup) {
-    throw new OrdersAlreadyLockedError('Invitations are only allowed during initial campaign setup');
+    throw new OrdersAlreadyLockedError(
+      'Invitations are only allowed during initial campaign setup',
+    );
   }
   return row.current_turn;
 }
