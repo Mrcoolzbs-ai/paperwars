@@ -44,7 +44,7 @@
 
 **Draft PR #15** ([feat(web): add Paper Wars browser client MVP](https://github.com/Mrcoolzbs-ai/paperwars/pull/15)) находится в ветке `stage-3-browser-client`, основан на `stage-2-country-setup`, открыт и не влит. В нём добавлены seeded-карта с руслами рек, регистрация государства и культура, выход из кампании и лимит участников, библиотека религий/идеологий, карточки государства и выбранной системы, символы построек и их отображение на большой карте. Игровые действия после основания пока отключены до появления движка ходов.
 
-Последняя завершённая успешная CI-сборка до восстановления спецификации выполнена для кода PR #15 на коммите `2ca23d1f2c14c19c4180b2563277e6afe3d77117`: Build, Typecheck, Lint, Format check, 68/68 тестов в 14 файлах. После восстановления спецификации и обновления BAT-обновлятора CI повторно запускается для текущей ветки; актуальное состояние проверок доступно на [странице GitHub Actions для stage-3-browser-client](https://github.com/Mrcoolzbs-ai/paperwars/actions?query=branch%3Astage-3-browser-client). [Предыдущий успешный прогон](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45065489740).
+Последняя CI-сборка для текущего PR HEAD `c99fdd780962d2fa72a4331af54ba08e3c9f4e90` успешна: Build, Typecheck, Lint, Format check и 68/68 тестов в 14 файлах. [Результат CI](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45070846792).
 
 Ограничения текущего MVP:
 - Полный Simulation Engine, разрешение ходов и worker ещё не подключены.
