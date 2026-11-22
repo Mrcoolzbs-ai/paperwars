@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Script } from 'node:vm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '@paper-wars/api';
@@ -15,6 +18,23 @@ describe('browser client', () => {
     expect(response.headers['content-type']).toContain('text/html');
     expect(response.body).toContain('Paper Wars: Rebirth');
     expect(response.body).toContain('auth-screen');
+  });
+
+  it('serves a configured production entry through the shared root route', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'paperwars-web-entry-'));
+    const entryPath = join(directory, 'index.html');
+    await writeFile(entryPath, '<!doctype html><main id="built-entry">Built client</main>', 'utf8');
+    const productionApp = createApp({ webEntryPath: entryPath });
+
+    try {
+      const response = await productionApp.inject({ method: 'GET', url: '/' });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('built-entry');
+      expect(response.body).toContain('Built client');
+    } finally {
+      await productionApp.close();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('serves the browser client assets', async () => {
