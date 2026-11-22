@@ -1,3 +1,4 @@
+import { Script } from 'node:vm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '@paper-wars/api';
 
@@ -25,7 +26,10 @@ describe('browser client', () => {
 
     expect(script.statusCode).toBe(200);
     expect(script.headers['content-type']).toContain('javascript');
+    expect(() => new Script(script.body, { filename: 'apps/web/public/app.js' })).not.toThrow();
     expect(script.body).toContain('/campaigns');
+    expect(script.body).toContain('A campaign-listing failure must not erase the session');
+    expect(script.body).toContain('Авторизация прошла успешно, но список кампаний не загрузился');
     expect(script.body).toContain('Building symbols are rendered after country labels');
     expect(script.body).toContain("ctx.fillText('З'");
     expect(script.body).toContain('Эффект: ');
