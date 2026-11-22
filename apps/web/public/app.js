@@ -663,6 +663,9 @@
     }
     const payload = {
       name: $('#country-name').value.trim(),
+      culture: $('#culture-list input:checked').map((input) => input.value),
+      government: $('#government').value,
+      flagDataUrl: await readOptionalImage('#country-flag'),
       spawnX: Number($('#spawn-x').value),
       spawnY: Number($('#spawn-y').value),
       officialSystemId: $('#official-system').value,
@@ -672,7 +675,7 @@
       }),
     };
     if (!payload.officialSystemId) {
-      setMessage('#country-message', 'Сначала выбери одобренную официальную систему.');
+      setMessage('#country-message', 'Сначала выбери доступную религию или идеологию.');
       return;
     }
     try {
@@ -730,11 +733,12 @@
             name: $('#campaign-name').value.trim(),
             mapWidth: Number($('#map-width').value),
             mapHeight: Number($('#map-height').value),
+            turnDurationHours: Number($('#turn-duration-hours').value),
           }),
         });
         $('#campaign-form').reset();
-        $('#map-width').value = '40';
-        $('#map-height').value = '30';
+        $('#map-width').value = '80';
+        $('#map-height').value = '60';
         await loadCampaigns();
         showToast(`Кампания «${data.campaign.name}» создана.`);
       } catch (error) {
@@ -749,38 +753,85 @@
     $$('.workspace-tab').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
     $$('[data-go-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.goTab)));
 
-    $('#add-principle').addEventListener('click', () => addPrincipleRow());
+    $('#system-type').addEventListener('change', renderPrincipleCatalog);
     $('#system-form').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const principles = $$('.principle-row').map((row) => ({
-        name: $('.principle-name', row).value.trim(),
-        description: $('.principle-text', row).value.trim(),
-        polarity: $('.principle-polarity', row).value,
+      if (!updatePrincipleBalance()) {
+        setMessage('#system-message', 'Выбери от 1 до 10 пунктов и соблюдай баланс позитивных и негативных.');
+        return;
+      }
+      const principles = $$('.principle-check:checked').map((input) => ({
+        name: input.dataset.name,
+        description: input.dataset.description,
+        effect: input.dataset.effect,
+        polarity: input.dataset.polarity,
       }));
       try {
-        await request(`/campaigns/${state.campaign.id}/social-systems`, {
+        await request('/campaigns/' + state.campaign.id + '/social-systems', {
           method: 'POST',
           body: JSON.stringify({
             type: $('#system-type').value,
             name: $('#system-name').value.trim(),
             principles,
+            emblemDataUrl: await readOptionalImage('#system-emblem'),
           }),
         });
         $('#system-name').value = '';
-        $('#principles-list').innerHTML = '';
-        state.principles = [];
-        addPrincipleRow('', '', 'positive');
-        addPrincipleRow('', '', 'positive');
-        addPrincipleRow('', '', 'neutral');
-        setMessage('#system-message', 'Заявка отправлена. Система появится в списке со статусом «На проверке».', true);
+        $('#system-emblem').value = '';
+        $$('.principle-check').forEach((input) => { input.checked = false; });
+        updatePrincipleBalance();
+        setMessage('#system-message', 'Учение создано и сразу доступно для выбора.', true);
         await loadSystems();
-        showToast('Система отправлена на согласование.');
+        showToast('Учение создано. Согласование не требуется.');
       } catch (error) {
         setMessage('#system-message', error.message);
       }
     });
 
     $('#refresh-systems').addEventListener('click', loadSystems);
+    $('#open-map').addEventListener('click', openMap);
+    $('#close-map').addEventListener('click', () => $('#map-modal').classList.add('hidden'));
+    $('#confirm-spawn').addEventListener('click', confirmSpawn);
+    window.addEventListener('resize', () => {
+      drawMapCanvas($('#world-grid'), true);
+      if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
+    });
+    $('#map-canvas').addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || !state.mapTransform) return;
+      state.mapDrag = { x: event.clientX, y: event.clientY, originX: state.mapTransform.x, originY: state.mapTransform.y, moved: false };
+      $('#map-canvas').setPointerCapture(event.pointerId);
+    });
+    $('#map-canvas').addEventListener('pointermove', (event) => {
+      if (!state.mapDrag) return;
+      const dx = event.clientX - state.mapDrag.x;
+      const dy = event.clientY - state.mapDrag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) state.mapDrag.moved = true;
+      if (state.mapDrag.moved) {
+        state.mapTransform.x = state.mapDrag.originX + dx;
+        state.mapTransform.y = state.mapDrag.originY + dy;
+        drawMapCanvas($('#map-canvas'), false);
+      }
+    });
+    $('#map-canvas').addEventListener('pointerup', (event) => {
+      const drag = state.mapDrag;
+      state.mapDrag = null;
+      if (!drag || drag.moved || state.campaign?.countryId) return;
+      const cell = mapCellAt(event.clientX, event.clientY);
+      if (cell) chooseSpawnCenter(cell.x, cell.y);
+    });
+    $('#map-canvas').addEventListener('wheel', (event) => {
+      event.preventDefault();
+      if (!state.mapTransform) return;
+      state.mapTransform.zoom = Math.max(0.35, Math.min(5, state.mapTransform.zoom * (event.deltaY < 0 ? 1.12 : 0.89)));
+      drawMapCanvas($('#map-canvas'), false);
+    }, { passive: false });
+    $('#culture-list').addEventListener('change', (event) => {
+      const selected = $('#culture-list input:checked');
+      if (selected.length > 5 && event.target.checked) {
+        event.target.checked = false;
+        showToast('Можно выбрать не более пяти культурных характеристик.', true);
+      }
+    });
     $('#official-system-type').addEventListener('change', () => {
       updateBuildingChoices();
       refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
@@ -796,9 +847,7 @@
   async function init() {
     bindEvents();
     buildWorldPreview();
-    addPrincipleRow('Взаимопомощь', 'Члены общества поддерживают друг друга.', 'positive');
-    addPrincipleRow('Справедливость', 'Закон одинаков для всех жителей.', 'positive');
-    addPrincipleRow('Созерцание', 'Каждый волен искать собственный путь.', 'neutral');
+    renderPrincipleCatalog();
     resetTerritoryGrid();
     updateBuildingChoices();
 
