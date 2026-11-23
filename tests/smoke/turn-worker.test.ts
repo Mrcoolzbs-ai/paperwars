@@ -234,10 +234,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           current_turn: number;
           orders_locked: boolean;
           deadline_at: Date;
-        }>(
-          'SELECT status, current_turn, orders_locked, deadline_at FROM campaigns WHERE id = $1',
-          [fixture.campaignId],
-        );
+        }>('SELECT status, current_turn, orders_locked, deadline_at FROM campaigns WHERE id = $1', [
+          fixture.campaignId,
+        ]);
         expect(campaign.rows[0]).toMatchObject({
           status: 'active',
           current_turn: 2,
@@ -352,10 +351,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           nextTurnNumber: 2,
         });
 
-        const campaign = await pool.query<{ status: string; current_turn: number; orders_locked: boolean }>(
-          'SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1',
-          [fixture.campaignId],
-        );
+        const campaign = await pool.query<{
+          status: string;
+          current_turn: number;
+          orders_locked: boolean;
+        }>('SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1', [
+          fixture.campaignId,
+        ]);
         expect(campaign.rows[0]).toEqual({
           status: 'completed',
           current_turn: 1,
