@@ -100,6 +100,8 @@ async function lockActiveMembership(
 }
 
 async function assertRateLimit(client: PoolClient, userId: string): Promise<void> {
+  // Serialize message sends for one account so concurrent requests cannot bypass the rolling limit.
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 1))', [userId]);
   const recent = await client.query<{ readonly message_count: number }>(
     `SELECT count(*)::int AS message_count
      FROM chat_messages
