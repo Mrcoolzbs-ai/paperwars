@@ -16,6 +16,7 @@
     chatSending: false,
     chatRequestId: 0,
     chatPollTimer: null,
+    worldChatOnly: false,
     isAdmin: false,
     adminOverview: null,
     adminCampaignDetail: null,
@@ -381,6 +382,11 @@
 
   async function openCampaign(campaign) {
     stopChatPolling();
+    state.worldChatOnly = false;
+    $('#workspace-screen').classList.remove('world-chat-mode');
+    $('.workspace-header').classList.remove('hidden');
+    $('.workspace-nav').classList.remove('hidden');
+    $('#chat-back-to-lobby').classList.add('hidden');
     state.chatRequestId += 1;
     state.chatRoom = 'world';
     state.chatMessages = [];
@@ -735,7 +741,11 @@
       ? 'Общение игроков всего мира'
       : (state.campaign?.name || 'Текущая кампания');
     $('#chat-campaign-label').textContent = state.campaign?.name || 'Текущая кампания';
-    $('.chat-channel-button').forEach((button) => {
+    $('[data-chat-room="campaign"]').classList.toggle(
+      'hidden',
+      state.worldChatOnly || !state.campaign,
+    );
+    $$('.chat-channel-button').forEach((button) => {
       button.classList.toggle('active', button.dataset.chatRoom === state.chatRoom);
     });
   }
@@ -769,9 +779,10 @@
   }
 
   async function loadChatMessages() {
-    if (!state.token || !state.user || !state.campaign) return;
+    if (!state.token || !state.user) return;
     const room = state.chatRoom;
-    const campaignId = state.campaign.id;
+    const campaignId = state.campaign?.id ?? null;
+    if (room === 'campaign' && campaignId === null) return;
     const requestId = ++state.chatRequestId;
     state.chatLoading = true;
     try {
@@ -782,7 +793,7 @@
       if (
         requestId !== state.chatRequestId ||
         room !== state.chatRoom ||
-        campaignId !== state.campaign?.id
+        campaignId !== (state.campaign?.id ?? null)
       ) return;
       state.chatMessages = Array.isArray(data.messages) ? data.messages : [];
       renderChatMessages();
@@ -816,7 +827,7 @@
 
   async function submitChatMessage(event) {
     event.preventDefault();
-    if (state.chatSending || !state.campaign) return;
+    if (state.chatSending || (state.chatRoom === 'campaign' && !state.campaign)) return;
     const input = $('#chat-input');
     const message = input.value.trim();
     if (!message) return;
@@ -860,6 +871,38 @@
       activateTab('overview');
     }
     return state.isAdmin;
+  }
+
+  function openWorldChat() {
+    stopChatPolling();
+    state.worldChatOnly = true;
+    state.chatRoom = 'world';
+    state.chatMessages = [];
+    state.chatRequestId += 1;
+    $('#workspace-screen').classList.add('world-chat-mode');
+    $('.workspace-header').classList.add('hidden');
+    $('.workspace-nav').classList.add('hidden');
+    $('.tab-panel').forEach((panel) => panel.classList.add('hidden'));
+    $('#tab-chat').classList.remove('hidden');
+    $('#chat-back-to-lobby').classList.remove('hidden');
+    updateChatRoomHeader();
+    showScreen('workspace');
+    renderChatMessages();
+    void loadChatMessages();
+    startChatPolling();
+  }
+
+  async function closeWorldChat() {
+    if (!state.worldChatOnly) return;
+    stopChatPolling();
+    state.worldChatOnly = false;
+    state.chatRequestId += 1;
+    $('#workspace-screen').classList.remove('world-chat-mode');
+    $('.workspace-header').classList.remove('hidden');
+    $('.workspace-nav').classList.remove('hidden');
+    $('#chat-back-to-lobby').classList.add('hidden');
+    await loadCampaigns();
+    showScreen('game');
   }
 
   function adminJsonDetails(title, records) {
@@ -1839,10 +1882,16 @@
     });
 
     $('#back-to-campaigns').addEventListener('click', async () => {
+      if (state.worldChatOnly) {
+        await closeWorldChat();
+        return;
+      }
       stopChatPolling();
       await loadCampaigns();
       showScreen('game');
     });
+    $('#open-world-chat').addEventListener('click', openWorldChat);
+    $('#chat-back-to-lobby').addEventListener('click', closeWorldChat);
     $$('.workspace-tab').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
     $$('[data-go-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.goTab)));
 
