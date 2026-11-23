@@ -56,7 +56,7 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
 
   return {
     async getOverview() {
-      const [users, campaigns, totals] = await Promise.all([
+      const [users, campaigns, playerSocialSystemLibrary, auditLogs, totals] = await Promise.all([
         pool.query<Record<string, unknown>>(
           `SELECT
              user_row.id,
@@ -113,6 +113,29 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         ),
         pool.query<Record<string, unknown>>(
           `SELECT
+             library.id, library.owner_user_id AS "ownerUserId",
+             owner.email AS "ownerEmail", library.system_type AS "type",
+             library.name, library.principles, library.emblem_data_url AS "emblemDataUrl",
+             library.source_campaign_id AS "sourceCampaignId",
+             library.created_at AS "createdAt", library.updated_at AS "updatedAt"
+           FROM player_social_system_library AS library
+           JOIN users AS owner ON owner.id = library.owner_user_id
+           ORDER BY library.updated_at DESC, library.id`,
+        ),
+        pool.query<Record<string, unknown>>(
+          `SELECT
+             audit.id, audit.action, audit.actor_user_id AS "actorUserId",
+             actor.email AS "actorEmail", audit.campaign_id AS "campaignId",
+             campaign.name AS "campaignName", audit.turn_number AS "turnNumber",
+             audit.details, audit.created_at AS "createdAt"
+           FROM admin_audit_logs AS audit
+           JOIN users AS actor ON actor.id = audit.actor_user_id
+           LEFT JOIN campaigns AS campaign ON campaign.id = audit.campaign_id
+           ORDER BY audit.created_at DESC, audit.id DESC
+           LIMIT 250`,
+        ),
+        pool.query<Record<string, unknown>>(
+          `SELECT
              (SELECT count(*)::int FROM users) AS "userCount",
              (SELECT count(*)::int FROM users WHERE status = 'active') AS "activeUserCount",
              (SELECT count(*)::int FROM campaigns) AS "campaignCount",
@@ -124,6 +147,8 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
       return {
         users: users.rows,
         campaigns: campaigns.rows,
+        playerSocialSystemLibrary: playerSocialSystemLibrary.rows,
+        auditLogs: auditLogs.rows,
         totals: totals.rows[0] ?? {},
       };
     },
@@ -150,6 +175,10 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
       const [
         members,
         countries,
+        spawnReservations,
+        cells,
+        countryCells,
+        buildings,
         socialSystems,
         orders,
         events,
@@ -201,6 +230,58 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
             AND system_row.id = country.official_system_id
            WHERE country.campaign_id = $1
            ORDER BY country.created_at, country.id`,
+          [campaignId],
+        ),
+        pool.query<Record<string, unknown>>(
+          `SELECT
+             reservation.user_id AS "userId", user_row.email,
+             reservation.center_x AS "centerX", reservation.center_y AS "centerY",
+             reservation.updated_at AS "updatedAt"
+           FROM campaign_spawn_reservations AS reservation
+           JOIN users AS user_row ON user_row.id = reservation.user_id
+           WHERE reservation.campaign_id = $1
+           ORDER BY reservation.updated_at DESC, reservation.user_id`,
+          [campaignId],
+        ),
+        pool.query<Record<string, unknown>>(
+          `SELECT id, x, y, created_at AS "createdAt"
+           FROM cells
+           WHERE campaign_id = $1
+           ORDER BY y, x, id`,
+          [campaignId],
+        ),
+        pool.query<Record<string, unknown>>(
+          `SELECT
+             country_cell.country_id AS "countryId",
+             country.name AS "countryName", country_cell.cell_id AS "cellId",
+             cell.x, cell.y, country_cell.population
+           FROM country_cells AS country_cell
+           JOIN countries AS country
+             ON country.campaign_id = country_cell.campaign_id
+            AND country.id = country_cell.country_id
+           JOIN cells AS cell
+             ON cell.campaign_id = country_cell.campaign_id
+            AND cell.id = country_cell.cell_id
+           WHERE country_cell.campaign_id = $1
+           ORDER BY country.name, cell.y, cell.x`,
+          [campaignId],
+        ),
+        pool.query<Record<string, unknown>>(
+          `SELECT
+             building.id, building.country_id AS "countryId",
+             country.name AS "countryName",
+             building.cell_id AS "cellId", cell.x, cell.y,
+             building.building_type AS "buildingType",
+             building.created_at AS "createdAt"
+           FROM country_buildings AS building
+           JOIN countries AS country
+             ON country.campaign_id = building.campaign_id
+            AND country.id = building.country_id
+           JOIN cells AS cell
+             ON cell.campaign_id = building.campaign_id
+            AND cell.id = building.cell_id
+           WHERE building.campaign_id = $1
+           ORDER BY country.name, cell.y, cell.x, building.id`,
           [campaignId],
         ),
         pool.query<Record<string, unknown>>(
@@ -407,6 +488,10 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         campaign,
         members: members.rows,
         countries: countries.rows,
+        spawnReservations: spawnReservations.rows,
+        cells: cells.rows,
+        countryCells: countryCells.rows,
+        buildings: buildings.rows,
         socialSystems: socialSystems.rows,
         orders: orders.rows,
         events: events.rows,
