@@ -5,7 +5,9 @@
     token: sessionStorage.getItem('pw_access_token') || '',
     user: null,
     campaigns: [],
+    openCampaigns: [],
     campaign: null,
+    refreshPromise: null,
     systems: [],
     librarySystems: [],
     availableSystems: [],
@@ -218,11 +220,42 @@
     }
     ctx.restore();
   }
-  async function request(url, options = {}) {
+  async function refreshAccessToken() {
+    if (!state.refreshPromise) {
+      state.refreshPromise = (async () => {
+        const response = await fetch('/auth/refresh', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data || typeof data.accessToken !== 'string') {
+          const error = new Error(data?.message || 'Сессия завершена. Войди снова.');
+          error.status = response.status;
+          throw error;
+        }
+        state.token = data.accessToken;
+        sessionStorage.setItem('pw_access_token', state.token);
+        return state.token;
+      })().finally(() => { state.refreshPromise = null; });
+    }
+    return state.refreshPromise;
+  }
+
+  async function request(url, options = {}, retried = false) {
     const headers = new Headers(options.headers || {});
     if (state.token) headers.set('Authorization', `Bearer ${state.token}`);
     if (options.body !== undefined) headers.set('Content-Type', 'application/json');
     const response = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+    if (response.status === 401 && state.token && !retried &&
+        !['/auth/login', '/auth/register', '/auth/refresh', '/auth/resend-verification'].includes(url)) {
+      try {
+        await refreshAccessToken();
+        return request(url, options, true);
+      } catch {
+        state.token = '';
+        sessionStorage.removeItem('pw_access_token');
+      }
+    }
     const raw = await response.text();
     let data = null;
     try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
@@ -314,6 +347,62 @@
     const data = await request('/campaigns');
     state.campaigns = data.campaigns || [];
     renderCampaigns();
+    await loadOpenCampaigns();
+  }
+
+  async function loadOpenCampaigns() {
+    const host = $('#open-campaign-list');
+    if (!host) return;
+    const refresh = $('#refresh-open-campaigns');
+    if (refresh) refresh.disabled = true;
+    try {
+      const data = await request('/campaigns/open');
+      state.openCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+      renderOpenCampaigns();
+    } catch (error) {
+      host.innerHTML = '<div class="open-campaign-empty">Не удалось загрузить открытые кампании: ' + escapeHtml(error.message) + '</div>';
+    } finally {
+      if (refresh) refresh.disabled = false;
+    }
+  }
+
+  function renderOpenCampaigns() {
+    const host = $('#open-campaign-list');
+    if (!host) return;
+    if (!state.openCampaigns.length) {
+      host.innerHTML = '<div class="open-campaign-empty">Сейчас нет открытых кампаний. Создай свой мир или загляни позже.</div>';
+      return;
+    }
+    host.innerHTML = state.openCampaigns.map((campaign) => `
+      <article class="open-campaign-card">
+        <div>
+          <strong>${escapeHtml(campaign.name)}</strong>
+          <small>${campaign.mapWidth} × ${campaign.mapHeight} · ХОД ${String(campaign.currentTurn).padStart(2, '0')}</small>
+        </div>
+        <div class="open-campaign-meta">
+          <span>Игроки <b>${campaign.playerCount}/${campaign.maxPlayers}</b></span>
+          <span>Ход <b>${campaign.turnDurationHours} ч</b></span>
+          <span>Создана <b>${escapeHtml(new Date(campaign.createdAt).toLocaleDateString('ru-RU'))}</b></span>
+        </div>
+        <button class="button button-outline open-campaign-join" data-open-campaign-id="${escapeHtml(campaign.id)}" type="button">Вступить в кампанию ↗</button>
+      </article>`).join('');
+    host.querySelectorAll('.open-campaign-join').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const campaignId = button.dataset.openCampaignId;
+        if (!campaignId) return;
+        button.disabled = true;
+        try {
+          await request('/campaigns/' + encodeURIComponent(campaignId) + '/join', { method: 'POST' });
+          await loadCampaigns();
+          showToast('Ты присоединился к кампании.');
+        } catch (error) {
+          showToast(error.message, true);
+          await loadOpenCampaigns();
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
   }
 
   async function leaveCampaign(campaignId) {
@@ -1360,10 +1449,16 @@
           method: 'POST',
           body: JSON.stringify({ email, password }),
         });
+        if (mode === 'register' && data?.verificationRequired === true) {
+          $('#email-verification-actions').classList.remove('hidden');
+          setMessage('#auth-message', 'Письмо с подтверждением отправлено на ' + email + '. Открой письмо и подтверди адрес, затем вернись сюда для входа.', true);
+          return;
+        }
         if (!data || typeof data.accessToken !== 'string' || !data.user) {
           throw new Error('Сервер вернул неполный ответ авторизации.');
         }
 
+        $('#email-verification-actions').classList.add('hidden');
         state.token = data.accessToken;
         sessionStorage.setItem('pw_access_token', state.token);
         state.user = data.user;
@@ -1382,7 +1477,10 @@
         }
       } catch (error) {
         let message = error.message || 'Не удалось выполнить авторизацию.';
-        if (error.code === 'UNAUTHENTICATED') {
+        if (error.code === 'EMAIL_NOT_VERIFIED') {
+          $('#email-verification-actions').classList.remove('hidden');
+          message = 'Сначала подтверди адрес электронной почты. Можно отправить письмо повторно.';
+        } else if (error.code === 'UNAUTHENTICATED') {
           message = 'Неверная почта или пароль.';
         } else if (error.code === 'EMAIL_ALREADY_REGISTERED') {
           message = 'Аккаунт с этой почтой уже существует. Переключись на вкладку «Войти».';
@@ -1414,6 +1512,29 @@
         setMessage('#join-campaign-message', error.message);
       }
     });
+
+    $('#resend-verification').addEventListener('click', async () => {
+      const email = $('#auth-email').value.trim();
+      if (!email) {
+        setMessage('#auth-message', 'Сначала введи адрес электронной почты.');
+        return;
+      }
+      const button = $('#resend-verification');
+      button.disabled = true;
+      try {
+        await request('/auth/resend-verification', {
+          method: 'POST',
+          body: JSON.stringify({ email }),
+        });
+        setMessage('#auth-message', 'Если аккаунт ожидает подтверждения, письмо отправлено. Проверь входящие и папку спама.', true);
+      } catch (error) {
+        setMessage('#auth-message', error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('#refresh-open-campaigns').addEventListener('click', () => { void loadOpenCampaigns(); });
 
     $('#logout-button').addEventListener('click', async () => {
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
