@@ -166,42 +166,42 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       'creates VK-only profiles and enables optional email/password backup login',
       async () => {
       const current = getPersistence();
-      const auth = createAuthService({
-        pool: current.pool,
-        accessTokens: signer,
-        refreshTokenTtlSeconds: 3600,
-      });
-      const session = await auth.signInWithVk(`vk-${randomUUID()}`);
-      expect(session.user.email).toBeNull();
-      expect(session.user.displayName).toMatch(/^Игрок-/);
-
-      const initial = await auth.getProfile(session.user.id);
-      expect(initial).toMatchObject({ hasVk: true, hasPassword: false, email: null });
-
-      const email = `backup-${randomUUID()}@example.test`;
-      const nickname = `Commander-${randomUUID().slice(0, 8)}`;
-      const updated = await auth.updateProfile(session.user.id, nickname, email);
-      expect(updated).toMatchObject({ displayName: nickname, email, hasVk: true });
-
-      const password = 'a secure backup password';
-      await auth.updatePassword(session.user.id, null, password);
-      const emailLogin = await auth.login(email, password);
-      expect(emailLogin.user.id).toBe(session.user.id);
-      expect(emailLogin.user.displayName).toBe(nickname);
-
-      const another = await auth.signInWithVk(`vk-${randomUUID()}`);
-      await expect(
-        auth.updateProfile(another.user.id, nickname, null),
-      ).rejects.toBeInstanceOf(DisplayNameAlreadyTakenError);
-      expect(await auth.authenticateAccessToken(session.accessToken)).toMatchObject({
-        id: session.user.id,
-        email,
-        displayName: nickname,
-      });
-
-      const cleared = await auth.updateProfile(session.user.id, nickname, null);
-      expect(cleared).toMatchObject({ email: null, hasPassword: false });
-      await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
+        const auth = createAuthService({
+          pool: current.pool,
+          accessTokens: signer,
+          refreshTokenTtlSeconds: 3600,
+        });
+        const session = await auth.signInWithVk(`vk-${randomUUID()}`);
+        expect(session.user.email).toBeNull();
+        expect(session.user.displayName).toMatch(/^Игрок-/);
+  
+        const initial = await auth.getProfile(session.user.id);
+        expect(initial).toMatchObject({ hasVk: true, hasPassword: false, email: null });
+  
+        const email = `backup-${randomUUID()}@example.test`;
+        const nickname = `Commander-${randomUUID().slice(0, 8)}`;
+        const updated = await auth.updateProfile(session.user.id, nickname, email);
+        expect(updated).toMatchObject({ displayName: nickname, email, hasVk: true });
+  
+        const password = 'a secure backup password';
+        await auth.updatePassword(session.user.id, null, password);
+        const emailLogin = await auth.login(email, password);
+        expect(emailLogin.user.id).toBe(session.user.id);
+        expect(emailLogin.user.displayName).toBe(nickname);
+  
+        const another = await auth.signInWithVk(`vk-${randomUUID()}`);
+        await expect(
+          auth.updateProfile(another.user.id, nickname, null),
+        ).rejects.toBeInstanceOf(DisplayNameAlreadyTakenError);
+        expect(await auth.authenticateAccessToken(session.accessToken)).toMatchObject({
+          id: session.user.id,
+          email,
+          displayName: nickname,
+        });
+  
+        const cleared = await auth.updateProfile(session.user.id, nickname, null);
+        expect(cleared).toMatchObject({ email: null, hasPassword: false });
+        await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
       },
     );
 
