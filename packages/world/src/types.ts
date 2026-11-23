@@ -1,0 +1,144 @@
+import type { Pool, PoolClient } from 'pg';
+
+export type OfficialSystemType = 'religion' | 'ideology';
+export type SocialSystemPolarity = 'positive' | 'negative' | 'neutral';
+export type SocialSystemApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type SocialSystemReviewDecision = 'approve' | 'reject';
+export type StartBuildingType =
+  | 'factory'
+  | 'field'
+  | 'gold_mine'
+  | 'capital'
+  | 'religious_building'
+  | 'science'
+  | 'barracks'
+  | 'tower';
+
+export interface SocialSystemPrinciple {
+  readonly name: string;
+  readonly description: string;
+  readonly polarity: SocialSystemPolarity;
+}
+
+export interface CreateSocialSystemInput {
+  readonly type: unknown;
+  readonly name: unknown;
+  readonly principles: unknown;
+}
+
+export interface SocialSystemReviewInput {
+  readonly decision: unknown;
+  readonly reason?: unknown;
+}
+
+export interface SocialSystemView {
+  readonly id: string;
+  readonly campaignId: string;
+  readonly type: OfficialSystemType;
+  readonly name: string;
+  readonly principles: readonly SocialSystemPrinciple[];
+  readonly approvalStatus: SocialSystemApprovalStatus;
+  readonly reviewReason: string | null;
+  readonly createdAt: Date;
+}
+
+export interface StartBuildingPlacement {
+  readonly type: StartBuildingType;
+  /** Horizontal offset inside the 5x5 territory, from 0 through 4. */
+  readonly x: number;
+  /** Vertical offset inside the 5x5 territory, from 0 through 4. */
+  readonly y: number;
+}
+
+export interface CreateCountryInput {
+  readonly name: unknown;
+  /** Center X coordinate of the 5x5 starting territory. */
+  readonly spawnX: number;
+  /** Center Y coordinate of the 5x5 starting territory. */
+  readonly spawnY: number;
+  /** ID of a previously created and administrator-approved system. */
+  readonly officialSystemId: unknown;
+  readonly buildings: ReadonlyArray<StartBuildingPlacement>;
+}
+
+export interface AvailableSocialSystem {
+  readonly id: string;
+  readonly type: OfficialSystemType;
+  readonly name: string;
+  readonly originX: number | null;
+  readonly originY: number | null;
+  readonly principles: readonly SocialSystemPrinciple[];
+}
+
+export interface SocialSystemAvailabilityQuery {
+  readonly campaignId: string;
+  readonly systemType: OfficialSystemType;
+  readonly spawnX: number;
+  readonly spawnY: number;
+}
+
+export interface SocialSystemAvailabilityPolicy {
+  /**
+   * Must apply the current ruleset's geographic accessibility parameters and
+   * return eligible systems sorted by proximity. This package does not invent
+   * a default radius or distance metric.
+   */
+  listAvailable(
+    tx: PoolClient,
+    query: SocialSystemAvailabilityQuery,
+  ): Promise<readonly AvailableSocialSystem[]>;
+}
+
+export interface CountrySetupOptions {
+  readonly pool: Pool;
+  readonly systemAvailabilityPolicy?: SocialSystemAvailabilityPolicy;
+  /** Global administrator user IDs allowed to approve/reject submitted systems. */
+  readonly socialSystemAdminUserIds?: readonly string[];
+}
+
+export interface CreatedCountry {
+  readonly id: string;
+  readonly campaignId: string;
+  readonly name: string;
+  readonly officialSystem: AvailableSocialSystem;
+  readonly territory: {
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly width: 5;
+    readonly height: 5;
+  };
+  readonly buildingCount: 7;
+  readonly residentCount: 18;
+  readonly snapshotVersion: number;
+}
+
+export interface CountrySetupService {
+  createSocialSystem(
+    userId: string,
+    campaignId: string,
+    input: CreateSocialSystemInput,
+  ): Promise<SocialSystemView>;
+  listMySocialSystems(userId: string, campaignId: string): Promise<readonly SocialSystemView[]>;
+  listPendingSocialSystems(
+    adminUserId: string,
+    campaignId: string,
+  ): Promise<readonly SocialSystemView[]>;
+  reviewSocialSystem(
+    adminUserId: string,
+    campaignId: string,
+    systemId: string,
+    input: SocialSystemReviewInput,
+  ): Promise<SocialSystemView>;
+  listAvailableSystems(
+    userId: string,
+    campaignId: string,
+    systemType: OfficialSystemType,
+    spawnX: number,
+    spawnY: number,
+  ): Promise<readonly AvailableSocialSystem[]>;
+  createCountry(
+    userId: string,
+    campaignId: string,
+    input: CreateCountryInput,
+  ): Promise<CreatedCountry>;
+}

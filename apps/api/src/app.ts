@@ -10,6 +10,25 @@ import {
   type CampaignService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
+import {
+  CampaignSetupNotReadyError,
+  CountryAlreadyRegisteredError,
+  CountrySetupValidationError,
+  NotActiveCampaignMemberError,
+  OfficialSystemNotAvailableError,
+  SocialSystemAdminRequiredError,
+  SocialSystemLimitReachedError,
+  SocialSystemNameConflictError,
+  SocialSystemNotFoundError,
+  SocialSystemReviewConflictError,
+  SpawnAreaUnavailableError,
+  SystemAvailabilityNotConfiguredError,
+  type CountrySetupService,
+  type CreateCountryInput,
+  type CreateSocialSystemInput,
+  type OfficialSystemType,
+  type SocialSystemReviewInput,
+} from '@paper-wars/world';
 
 export interface CreateAppOptions {
   readonly logger?: boolean;
@@ -17,6 +36,7 @@ export interface CreateAppOptions {
   readonly rngVersion?: string;
   readonly authService?: AuthService;
   readonly campaignService?: CampaignService;
+  readonly countrySetupService?: CountrySetupService;
   readonly secureCookies?: boolean;
 }
 
@@ -104,6 +124,39 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof UnauthenticatedError
   ) {
     return reply.code(401).send({ error: 'UNAUTHENTICATED' });
+  }
+  if (error instanceof CountrySetupValidationError) {
+    return reply.code(400).send({ error: 'INVALID_COUNTRY_SETUP', message: error.message });
+  }
+  if (
+    error instanceof NotActiveCampaignMemberError ||
+    error instanceof SocialSystemAdminRequiredError
+  ) {
+    return reply.code(403).send({
+      error:
+        error instanceof SocialSystemAdminRequiredError
+          ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
+          : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
+    });
+  }
+  if (error instanceof SocialSystemNotFoundError) {
+    return reply.code(404).send({ error: 'SOCIAL_SYSTEM_NOT_FOUND' });
+  }
+  if (
+    error instanceof CampaignSetupNotReadyError ||
+    error instanceof CountryAlreadyRegisteredError ||
+    error instanceof SpawnAreaUnavailableError ||
+    error instanceof SocialSystemLimitReachedError ||
+    error instanceof SocialSystemNameConflictError ||
+    error instanceof SocialSystemReviewConflictError
+  ) {
+    return reply.code(409).send({ error: 'COUNTRY_SETUP_CONFLICT', message: error.message });
+  }
+  if (error instanceof OfficialSystemNotAvailableError) {
+    return reply.code(422).send({ error: 'OFFICIAL_SYSTEM_NOT_AVAILABLE' });
+  }
+  if (error instanceof SystemAvailabilityNotConfiguredError) {
+    return reply.code(503).send({ error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED' });
   }
   return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
@@ -195,7 +248,10 @@ function registerCampaignRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
-      const campaign = await campaignService.createCampaign(user.id, body['name']);
+      const campaign = await campaignService.createCampaign(user.id, body['name'], {
+        mapWidth: body['mapWidth'] as number,
+        mapHeight: body['mapHeight'] as number,
+      });
       return reply.code(201).send({ campaign });
     } catch (error) {
       return sendAuthError(error, reply);
@@ -207,6 +263,126 @@ function registerCampaignRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const campaigns = await campaignService.listCampaignsForUser(user.id);
       return reply.send({ campaigns });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+}
+
+function parseCoordinate(value: unknown, field: string): number {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return value;
+  if (typeof value === 'string' && /^-?[0-9]+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  throw new CountrySetupValidationError(`${field} must be a safe integer`);
+}
+
+function getCampaignId(request: FastifyRequest): string {
+  const params = asRecord(request.params);
+  const campaignId = params['campaignId'];
+  if (typeof campaignId !== 'string' || campaignId.trim().length === 0) {
+    throw new CountrySetupValidationError('campaignId is required');
+  }
+  return campaignId;
+}
+
+function registerCountryRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  countrySetupService: CountrySetupService,
+): void {
+  app.post('/campaigns/:campaignId/social-systems', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const system = await countrySetupService.createSocialSystem(
+        user.id,
+        getCampaignId(request),
+        body as unknown as CreateSocialSystemInput,
+      );
+      return reply.code(201).send({ system });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/social-systems/mine', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const systems = await countrySetupService.listMySocialSystems(
+        user.id,
+        getCampaignId(request),
+      );
+      return reply.send({ systems });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/social-systems/pending', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const systems = await countrySetupService.listPendingSocialSystems(
+        user.id,
+        getCampaignId(request),
+      );
+      return reply.send({ systems });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post<{ Params: { campaignId: string; systemId: string } }>(
+    '/campaigns/:campaignId/social-systems/:systemId/review',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const system = await countrySetupService.reviewSocialSystem(
+          user.id,
+          request.params.campaignId,
+          request.params.systemId,
+          body as unknown as SocialSystemReviewInput,
+        );
+        return reply.send({ system });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
+  app.post('/campaigns/:campaignId/countries', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const country = await countrySetupService.createCountry(
+        user.id,
+        getCampaignId(request),
+        body as unknown as CreateCountryInput,
+      );
+      return reply.code(201).send({ country });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/social-systems/available', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const query = asRecord(request.query);
+      const systemType = query['systemType'];
+      if (systemType !== 'religion' && systemType !== 'ideology') {
+        throw new CountrySetupValidationError('systemType must be religion or ideology');
+      }
+      const systems = await countrySetupService.listAvailableSystems(
+        user.id,
+        getCampaignId(request),
+        systemType as OfficialSystemType,
+        parseCoordinate(query['spawnX'], 'spawnX'),
+        parseCoordinate(query['spawnY'], 'spawnY'),
+      );
+      return reply.send({ systems });
     } catch (error) {
       return sendAuthError(error, reply);
     }
@@ -234,6 +410,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.campaignService !== undefined) {
     registerCampaignRoutes(app, options.authService, options.campaignService);
+  }
+
+  if (options.authService !== undefined && options.countrySetupService !== undefined) {
+    registerCountryRoutes(app, options.authService, options.countrySetupService);
   }
 
   return app;

@@ -109,7 +109,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         method: 'POST',
         url: '/campaigns',
         headers: { authorization: `Bearer ${body.accessToken}` },
-        payload: { name: `api-campaign-${randomUUID()}` },
+        payload: { name: `api-campaign-${randomUUID()}`, mapWidth: 40, mapHeight: 30 },
       });
       expect(campaign.statusCode).toBe(201);
       expect(

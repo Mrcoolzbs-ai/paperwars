@@ -17,8 +17,8 @@
     "test": "pnpm build && pnpm --filter @paper-wars/tests test",
     "test:smoke": "pnpm test",
     "clean": "pnpm -r --workspace-concurrency=1 --if-present clean",
-    "dev:api": "pnpm --filter @paper-wars/api dev",
-    "start:api": "pnpm --filter @paper-wars/api start",
+    "dev:api": "pnpm build && pnpm --filter @paper-wars/api dev",
+    "start:api": "pnpm build && pnpm --filter @paper-wars/api start",
     "db:migrate": "pnpm --filter @paper-wars/persistence db:migrate"
   },
   "devDependencies": {

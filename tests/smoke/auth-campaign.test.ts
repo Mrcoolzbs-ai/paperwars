@@ -88,11 +88,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         revoked: string;
       }>(
         `SELECT
-           count(*)::text AS total,
-           bool_or(token_hash = $2) AS raw_token_matches,
-           count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked
-         FROM refresh_tokens
-         WHERE user_id = $1`,
+             count(*)::text AS total,
+             bool_or(token_hash = $2) AS raw_token_matches,
+             count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked
+           FROM refresh_tokens
+           WHERE user_id = $1`,
         [registered.user.id, registered.refreshToken],
       );
       expect(stored.rows[0]?.total).toBe('3');
@@ -154,14 +154,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       const campaignName = `integration-${randomUUID()}`;
 
-      const created = await campaigns.createCampaign(user.user.id, campaignName);
+      const created = await campaigns.createCampaign(user.user.id, campaignName, {
+        mapWidth: 40,
+        mapHeight: 30,
+      });
       expect(created.status).toBe('active');
       expect(created.currentTurn).toBe(1);
       expect(created.ordersLocked).toBe(true);
       expect(created.firstTurnCommitment).toMatch(/^[a-f0-9]{64}$/);
 
       const membership = await current.pool.query<{ status: string; country_id: string | null }>(
-        'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+        `SELECT status, country_id FROM campaign_memberships
+           WHERE campaign_id = $1 AND user_id = $2`,
         [created.id, user.user.id],
       );
       expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
@@ -172,7 +176,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         encrypted_seed: Buffer;
         nonce: Buffer;
       }>(
-        'SELECT status, commitment, encrypted_seed, nonce FROM random_seeds WHERE campaign_id = $1 AND turn_number = 1',
+        `SELECT status, commitment, encrypted_seed, nonce FROM random_seeds
+           WHERE campaign_id = $1 AND turn_number = 1`,
         [created.id],
       );
       expect(seedRow.rows).toHaveLength(1);
@@ -210,11 +215,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         seedOptions: stableOptions,
       });
 
-      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`);
+      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`, {
+        mapWidth: 40,
+        mapHeight: 30,
+      });
       const failedName = `should-rollback-${randomUUID()}`;
-      await expect(campaigns.createCampaign(user.user.id, failedName)).rejects.toThrow(
-        /Failed to generate unique AES-GCM nonce/,
-      );
+      await expect(
+        campaigns.createCampaign(user.user.id, failedName, { mapWidth: 40, mapHeight: 30 }),
+      ).rejects.toThrow(/Failed to generate unique AES-GCM nonce/);
 
       const rows = await current.pool.query<{ count: string }>(
         'SELECT count(*)::text AS count FROM campaigns WHERE name = $1',

@@ -10,7 +10,8 @@
 - **Stage 1.3** — deterministic RNG, commit-reveal seed service, AES-256-GCM, versioned keys и random draw audit log: merged (PR #5).
 - **Stage 1.4** — scrypt auth, HS256 access JWT, rotating refresh sessions/replay detection и атомарное campaign + first seed create: merged (PR #6).
 - **Stage 1.5** — branded domain entities, snapshot/order/event/turn contracts, ruleset compatibility и schema-version migrations: merged (PR #7).
-- Последний чистый CI: build, typecheck, lint, format-check и 55/55 тестов прошли на PostgreSQL 18.7.
+- PR #8 (Draft): предварительная регистрация и согласование религий/идеологий до создания государства, стартовая территория 5×5 и семь зданий; CI прошёл: build, typecheck, lint, format-check и 60/60 тестов на PostgreSQL 18.7.
+- PR #8 также добавляет первый графический Web-клиент: карта, выбор территории, редактор стартовой раскладки и подключение к API.
 
 Спецификация и код не означают, что игра уже реализует полный ход. Q18–Q20 остаются сюжетными PROPOSAL и не входят в канон.
 
@@ -57,21 +58,32 @@ corepack pnpm build
 
 GitHub Actions поднимает отдельный PostgreSQL service и выполняет миграционные integration tests автоматически.
 
-## Запуск API
+## Запуск игры и графического клиента
+
+**Windows:** установите Node.js 22+ и дважды нажмите `start-paperwars.bat` в корне репозитория. Если Docker Desktop отсутствует, скрипт предложит установить его через `winget` (либо откроет официальную страницу установки); если Docker установлен, но не запущен, скрипт попробует его открыть. Далее он создаст `.env` (если его ещё нет), установит зависимости, поднимет PostgreSQL, применит миграции, соберёт проект, запустит API в отдельном окне и откроет браузер. Существующий `.env` скрипт не перезаписывает. Для работы Docker Desktop может потребоваться WSL 2, включённая аппаратная виртуализация и перезагрузка Windows.
+
+**Linux/macOS:** соберите проект и запустите API вместе с Web-клиентом:
 
 ```bash
+corepack pnpm build
 corepack pnpm dev:api
 ```
 
-Health-check: `GET http://127.0.0.1:3000/health`.
+Откройте **http://127.0.0.1:3000**. Клиент использует тот же origin, поэтому авторизация работает через существующие access/refresh-сессии без отдельной настройки CORS. Для production-подобного запуска используйте `corepack pnpm start:api`.
+
+Первый графический экран включает карту с выбором центра стартовой территории, редактор 5×5 и размещение семи стартовых зданий, регистрацию/вход, создание кампаний, отправку религий и идеологий на согласование и панель проверки для администраторов. Гостевой режим показывает демонстрационную карту, не сохраняющую состояние.
+
+Разделы приказов, армии, дипломатии и полный движок ходов пока не реализованы. Кнопки этих разделов показывают, что механики находятся в разработке.
+
+Health-check API: `GET http://127.0.0.1:3000/health`.
 
 ## Текущие ограничения
 
 - Participant invitations/roles, audit trail и rate limiting для публичных auth endpoints пока не реализованы.
-- Полный country setup (official system, стартовые здания/население, world snapshot) ещё не реализован; это Stage 2.
+- Базовый начальный country setup вынесен в Draft PR #8: выбор одобренной системы, территория 5×5, стартовые здания/население и первичный snapshot. Полноценное состояние мира и дальнейшие игровые механики ещё впереди.
 - Domain contracts и pure TurnResolver interface уже есть, но Simulation Engine пока не исполняет игровые ходы.
 - PostgreSQL Worker, закрытие приказов, lease/fencing и atomic turn finalization ещё не реализованы.
-- Публичный API seed reveal и Web-клиент ещё не реализованы.
+- Графический Web-клиент предварительной версии добавлен; публичный API seed reveal, полный Simulation Engine и игровой цикл ещё не реализованы.
 - Stage 1 DoD не достигнут: полного end-to-end цикла «приказ → worker → симуляция → snapshot → API» пока нет.
 
 ## Seed encryption configuration
