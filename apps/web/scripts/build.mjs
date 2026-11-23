@@ -24,6 +24,13 @@ for (const marker of [
   'id="admin-overview-stats"',
   'id="admin-campaign-list"',
   'id="admin-campaign-detail"',
+  'id="open-world-chat"',
+  'id="tab-chat"',
+  'id="chat-back-to-lobby"',
+  'id="chat-messages"',
+  'id="chat-form"',
+  'data-chat-room="world"',
+  'data-chat-room="campaign"',
 ]) {
   if (!html.includes(marker)) {
     throw new Error(`The campaign turn room is missing required markup: ${marker}`);
@@ -36,6 +43,8 @@ for (const endpoint of [
   "'/admin/overview'",
   "'/admin/campaigns/'",
   "'/turn/force-close'",
+  "'/chat/world'",
+  "'/chat'",
 ]) {
   if (!browserScript.includes(endpoint)) {
     throw new Error(`The campaign turn room is missing its API request: ${endpoint}`);

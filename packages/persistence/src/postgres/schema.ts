@@ -817,3 +817,36 @@ export const adminAuditLogs = pgTable(
     check('admin_audit_logs_details_object_check', sql`jsonb_typeof(${table.details}) = 'object'`),
   ],
 );
+
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    scope: text('scope').notNull(),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    message: text('message').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('chat_messages_world_created_idx')
+      .on(table.createdAt, table.id)
+      .where(sql`${table.scope} = 'world'`),
+    index('chat_messages_campaign_created_idx')
+      .on(table.campaignId, table.createdAt, table.id)
+      .where(sql`${table.scope} = 'campaign'`),
+    index('chat_messages_user_created_idx').on(table.userId, table.createdAt),
+    check('chat_messages_scope_check', sql`${table.scope} in ('world', 'campaign')`),
+    check(
+      'chat_messages_room_scope_check',
+      sql`(${table.scope} = 'world' and ${table.campaignId} is null)
+        or (${table.scope} = 'campaign' and ${table.campaignId} is not null)`,
+    ),
+    check(
+      'chat_messages_message_length_check',
+      sql`char_length(btrim(${table.message})) between 1 and 2000`,
+    ),
+  ],
+);
