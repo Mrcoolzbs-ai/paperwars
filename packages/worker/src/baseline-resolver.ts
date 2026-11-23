@@ -329,6 +329,9 @@ export const baselineTurnResolver: TurnResolver<
   }
 
   return {
+    campaignId: snapshot.campaignId,
+    turnNumber: snapshot.turnNumber,
+    sourceSnapshotVersion: snapshot.version,
     nextState: {
       ...state,
       turnNumber: snapshot.turnNumber + 1,
