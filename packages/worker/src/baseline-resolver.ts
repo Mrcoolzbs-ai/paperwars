@@ -137,7 +137,9 @@ export const baselineTurnResolver: TurnResolver<
     throw new Error('Baseline world snapshot does not match schema version 1');
   }
 
-  const countryById = new Map(state.countries.map((country) => [country.id, country]));
+  const countryById = new Map<string, BaselineWorldCountry>(
+    state.countries.map((country): [string, BaselineWorldCountry] => [country.id, country]),
+  );
   const candidates: DemolitionCandidate[] = [];
   const orderResults = new Map<string, OrderResolution>();
 
@@ -200,10 +202,10 @@ export const baselineTurnResolver: TurnResolver<
       );
       continue;
     }
-    if (!isSafeInteger(cell.population) || cell.population < 0 || cell.population >= Number.MAX_SAFE_INTEGER) {
+    if (!isSafeInteger(cell.population) || cell.population < 0 || cell.population >= 2_147_483_647) {
       orderResults.set(
         order.id,
-        result(order.id, 'INVALID_POPULATION', 'The cell population cannot receive a returning resident.'),
+        result(order.id, 'INVALID_POPULATION', 'The cell population is outside the supported PostgreSQL integer range.'),
       );
       continue;
     }
