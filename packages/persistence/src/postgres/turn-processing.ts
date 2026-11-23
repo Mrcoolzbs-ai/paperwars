@@ -263,3 +263,143 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
     client.release();
   }
 }
+
+
+export interface TurnJobLease {
+  readonly id: string;
+  readonly jobKey: string;
+  readonly campaignId: string;
+  readonly turnNumber: number;
+  readonly snapshotVersion: number;
+  readonly generation: number;
+  readonly retryCount: number;
+  readonly workerId: string;
+  readonly leaseUntil: Date;
+}
+
+/** Claims the oldest pending job without waiting for jobs claimed by other workers. */
+export async function claimNextTurnJob(
+  pool: Pool,
+  workerId: string,
+): Promise<TurnJobLease | null> {
+  const normalizedWorkerId = workerId.trim();
+  if (normalizedWorkerId.length === 0 || normalizedWorkerId.length > 200) {
+    throw new RangeError('workerId must contain between 1 and 200 characters');
+  }
+
+  const result = await pool.query<{
+    id: string;
+    job_key: string;
+    campaign_id: string;
+    turn_number: number;
+    snapshot_version: number;
+    generation: number;
+    retry_count: number;
+    worker_id: string;
+    lease_until: Date;
+  }>(
+    `WITH candidate AS (
+       SELECT id
+       FROM turn_jobs
+       WHERE status = 'pending'
+       ORDER BY created_at, id
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     UPDATE turn_jobs AS job
+     SET status = 'processing',
+         generation = job.generation + 1,
+         worker_id = $1,
+         lease_until = clock_timestamp() + INTERVAL '5 minutes',
+         started_at = clock_timestamp()
+     FROM candidate
+     WHERE job.id = candidate.id
+     RETURNING job.id, job.job_key, job.campaign_id, job.turn_number,
+               job.snapshot_version, job.generation, job.retry_count,
+               job.worker_id, job.lease_until`,
+    [normalizedWorkerId],
+  );
+  const row = result.rows[0];
+  if (row === undefined) return null;
+
+  return {
+    id: row.id,
+    jobKey: row.job_key,
+    campaignId: row.campaign_id,
+    turnNumber: row.turn_number,
+    snapshotVersion: row.snapshot_version,
+    generation: row.generation,
+    retryCount: row.retry_count,
+    workerId: row.worker_id,
+    leaseUntil: row.lease_until,
+  };
+}
+
+/**
+ * Renews only a currently valid lease owned by the same worker generation.
+ * A stale worker cannot resurrect an expired lease.
+ */
+export async function renewTurnJobLease(
+  pool: Pool,
+  job: Pick<TurnJobLease, 'id' | 'workerId' | 'generation'>,
+): Promise<Date | null> {
+  const result = await pool.query<{ lease_until: Date }>(
+    `UPDATE turn_jobs
+     SET lease_until = clock_timestamp() + INTERVAL '5 minutes'
+     WHERE id = $1
+       AND worker_id = $2
+       AND generation = $3
+       AND status = 'processing'
+       AND lease_until > clock_timestamp()
+     RETURNING lease_until`,
+    [job.id, job.workerId, job.generation],
+  );
+  return result.rows[0]?.lease_until ?? null;
+}
+
+export interface ReapedTurnJobs {
+  readonly requeuedCount: number;
+  readonly failedCount: number;
+}
+
+/**
+ * Reassigns expired leases at most five times. retry_count counts reassignments,
+ * so the sixth expired attempt is failed without incrementing it again.
+ */
+export async function reapExpiredTurnJobs(
+  pool: Pool,
+  batchSize = 100,
+): Promise<ReapedTurnJobs> {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) {
+    throw new RangeError('batchSize must be an integer between 1 and 1000');
+  }
+
+  const result = await pool.query<{ status: 'pending' | 'failed' }>(
+    `WITH expired AS (
+       SELECT id
+       FROM turn_jobs
+       WHERE status = 'processing'
+         AND lease_until <= clock_timestamp()
+       ORDER BY lease_until, id
+       FOR UPDATE SKIP LOCKED
+       LIMIT $1
+     )
+     UPDATE turn_jobs AS job
+     SET status = CASE WHEN job.retry_count >= 5 THEN 'failed' ELSE 'pending' END,
+         retry_count = CASE
+           WHEN job.retry_count >= 5 THEN job.retry_count
+           ELSE job.retry_count + 1
+         END,
+         worker_id = NULL,
+         lease_until = NULL
+     FROM expired
+     WHERE job.id = expired.id
+     RETURNING job.status`,
+    [batchSize],
+  );
+
+  return {
+    requeuedCount: result.rows.filter((row) => row.status === 'pending').length,
+    failedCount: result.rows.filter((row) => row.status === 'failed').length,
+  };
+}
