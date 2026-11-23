@@ -109,7 +109,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('waits for every active participant, atomically finalizes/discards orders and creates generation zero job', async () => {
+    it(
+      'waits for every active participant, atomically finalizes/discards orders and creates generation zero job',
+      async () => {
       const pool = getPool();
       const fixture = await createFixture(2);
       try {
@@ -215,7 +217,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
 
         const closed = await closeOrders(pool, fixture.campaignId);
-        expect(closed).toMatchObject({ turnNumber: 1, finalizedOrderCount: 0, discardedOrderCount: 1 });
+        expect(closed).toMatchObject({
+          turnNumber: 1,
+          finalizedOrderCount: 0,
+          discardedOrderCount: 1,
+        });
 
         const member = await pool.query<{ orders_confirmed: boolean }>(
           'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1',
