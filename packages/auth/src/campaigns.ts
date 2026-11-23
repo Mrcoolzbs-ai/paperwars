@@ -4,7 +4,14 @@ import {
   CampaignTurnProcessingError,
   closeOrders,
   confirmCampaignOrders,
+  createCampaignOrder,
+  deleteCampaignOrder,
+  listCampaignOrders,
+  updateCampaignOrder,
   createCommittedSeed,
+  type CampaignOrderView,
+  type CreateCampaignOrderInput,
+  type UpdateCampaignOrderInput,
   type ClosedTurnJob,
   type CreateCommittedSeedOptions,
 } from '@paper-wars/persistence';
@@ -69,6 +76,19 @@ export interface CampaignService {
   ): Promise<CreatedCampaign>;
   joinCampaign(userId: string, campaignId: string): Promise<void>;
   leaveCampaign(userId: string, campaignId: string): Promise<void>;
+  listOrders(userId: string, campaignId: string): Promise<readonly CampaignOrderView[]>;
+  createOrder(
+    userId: string,
+    campaignId: string,
+    input: CreateCampaignOrderInput,
+  ): Promise<CampaignOrderView>;
+  updateOrder(
+    userId: string,
+    campaignId: string,
+    orderId: string,
+    input: UpdateCampaignOrderInput,
+  ): Promise<CampaignOrderView>;
+  deleteOrder(userId: string, campaignId: string, orderId: string): Promise<void>;
   confirmOrders(userId: string, campaignId: string): Promise<ClosedTurnJob | null>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
@@ -85,6 +105,22 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
   const clock = options.clock ?? (() => new Date());
 
   return {
+    async listOrders(userId, campaignId) {
+      return listCampaignOrders(options.pool, campaignId, userId);
+    },
+
+    async createOrder(userId, campaignId, input) {
+      return createCampaignOrder(options.pool, campaignId, userId, input);
+    },
+
+    async updateOrder(userId, campaignId, orderId, input) {
+      return updateCampaignOrder(options.pool, campaignId, userId, orderId, input);
+    },
+
+    async deleteOrder(userId, campaignId, orderId) {
+      await deleteCampaignOrder(options.pool, campaignId, userId, orderId);
+    },
+
     async confirmOrders(userId, campaignId) {
       await confirmCampaignOrders(options.pool, campaignId, userId);
       try {
