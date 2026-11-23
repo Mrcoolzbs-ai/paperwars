@@ -83,6 +83,8 @@ export interface DomainEvent<TType extends string, TPayload> {
   readonly type: TType;
   readonly schemaVersion: number;
   readonly payload: Readonly<TPayload>;
+  /** Event visibility must be explicit; the Worker never defaults private data to public. */
+  readonly visibility: 'public' | 'private';
 }
 
 export interface RandomDrawRecord {
