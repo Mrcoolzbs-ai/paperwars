@@ -98,6 +98,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           migration_name: '0012_private_event_recipients.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
+        {
+          migration_name: '0013_vk_first_profiles.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
       ]);
     });
 
