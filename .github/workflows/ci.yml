@@ -54,9 +54,6 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Format check
-        run: |
-          pnpm exec prettier --write tests/smoke/campaign-visibility-api.test.ts
-          git diff --unified=0 -- tests/smoke/campaign-visibility-api.test.ts
-        continue-on-error: true
+        run: pnpm format:check
       - name: Tests
         run: pnpm --filter @paper-wars/tests test
