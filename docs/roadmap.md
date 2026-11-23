@@ -169,20 +169,25 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.8. Закрытие приказов, очередь и Worker
 
-- [ ] `closeOrders`: первым делом блокировать кампанию `FOR UPDATE`; проверить статус, orders_locked, snapshot и актуальный список активных участников.
-- [ ] Проверять подтверждения либо deadline по времени БД `clock_timestamp()`.
-- [ ] В одной транзакции финализировать confirmed orders, discard draft/unconfirmed, включить orders_locked и создать TurnJob.
-- [ ] Операции приказов используют `FOR SHARE` на campaign; проверка orders_locked и изменение приказа — одна транзакция.
-- [ ] Изменения состава участников используют `FOR UPDATE` на campaign, чтобы сериализоваться с closeOrders.
-- [ ] Уникальный TurnJob на (campaign_id, turn_number); начальная generation=0, первый успешный claim увеличивает её до 1.
-- [ ] Захват через PostgreSQL `FOR UPDATE SKIP LOCKED`, lease 5 минут.
-- [ ] Продлевать lease только при совпадении worker_id/generation/status и если старый lease ещё действует: `lease_until > clock_timestamp()`.
-- [ ] Reaper использует `clock_timestamp()`; 5 переназначений разрешены, после истечения lease шестой попытки job становится failed, retry_count остаётся 5.
-- [ ] Fencing token generation не сбрасывается.
-- [ ] Финальный UPDATE обязан проверять generation, worker_id, status и `lease_until > clock_timestamp()`, возвращать ровно одну строку; иначе вся транзакция откатывается.
-- [ ] Единый порядок row locks: campaigns → world_snapshots → turn_jobs → остальные таблицы.
-- [ ] В одной транзакции сохранять следующий snapshot, events, random log, economic/battle reports, next seed и результат TurnJob.
+**Статус на 23 ноября 2026 года: реализован начальный инфраструктурный инкремент; полноценный исполнитель игрового хода ещё не готов.**
+
+- [x] `closeOrders`: первой блокировкой берёт кампанию `FOR UPDATE`; проверяет статус, `orders_locked`, snapshot и актуальный список активных участников.
+- [x] Проверяет подтверждения либо deadline по времени БД `clock_timestamp()`.
+- [x] В одной транзакции финализирует `confirmed`, переводит `draft/unconfirmed` в `discarded`, включает `orders_locked` и создаёт TurnJob.
+- [x] `confirmCampaignOrders` использует `FOR SHARE` на campaign и изменяет подтверждение только активного участника в той же транзакции.
+- [ ] Обработчики создания, изменения и удаления приказов ещё должны использовать `FOR SHARE` на campaign и проверять `orders_locked` в той же транзакции.
+- [x] Изменение состава участников использует `FOR UPDATE` на campaign; действующие join/leave и создание страны сериализуются с закрытием.
+- [x] Уникальный TurnJob на (campaign_id, turn_number); при создании `generation=0`, первый успешный claim увеличивает её до 1.
+- [x] `claimNextTurnJob`: PostgreSQL `FOR UPDATE SKIP LOCKED`, lease ровно 5 минут, один job на успешный claim.
+- [x] `renewTurnJobLease` продлевает lease только при совпадении job/worker/generation/status и если прежний lease ещё действует: `lease_until > clock_timestamp()`.
+- [x] `reapExpiredTurnJobs` использует `clock_timestamp()`; разрешает 5 переназначений, после истечения lease шестой попытки ставит `failed`, оставляя `retry_count=5`.
+- [x] Fencing token `generation` не сбрасывается при переназначении.
+- [x] `completeTurnJob` выполняет fenced final UPDATE и требует ровно одну строку по id/worker/generation/status/live lease; иначе выбрасывает ошибку для rollback вызывающей транзакции.
+- [x] Явный порядок блокировок в `closeOrders`: campaigns → world_snapshots → turn_jobs → memberships/orders.
+- [ ] Полноценный Worker должен исполнить resolver и в той же транзакции сохранить следующий snapshot, events, random log, economic/battle reports, next seed и completed TurnJob.
 - [ ] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
+
+Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API подтверждения: `POST /campaigns/:campaignId/orders/confirm`. PostgreSQL integration tests покрывают атомарное закрытие, deadline, конкурентные закрытия, lease, retry limit и fencing.
 
 ### 1.9. API и Web-каркас
 
