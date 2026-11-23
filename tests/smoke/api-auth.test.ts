@@ -100,7 +100,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const me = await app.inject({
         method: 'GET',
         url: '/auth/me',
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
       });
       expect(me.statusCode).toBe(200);
       expect(me.json<{ user: { id: string } }>().user.id).toBe(body.user.id);
@@ -108,7 +108,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const campaign = await app.inject({
         method: 'POST',
         url: '/campaigns',
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
         payload: { name: `api-campaign-${randomUUID()}`, mapWidth: 40, mapHeight: 30 },
       });
       expect(campaign.statusCode).toBe(201);
@@ -119,7 +119,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const campaignList = await app.inject({
         method: 'GET',
         url: '/campaigns',
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
       });
       expect(campaignList.statusCode).toBe(200);
       expect(campaignList.json<{ campaigns: Array<{ id: string }> }>().campaigns).toContainEqual(
@@ -143,7 +143,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const createdOrder = await app.inject({
         method: 'POST',
         url: `/campaigns/${campaignId}/orders`,
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
         payload: {
           type: 'construction',
           payload: { buildingType: 'field', x: 1, y: 2 },
@@ -162,7 +162,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const mine = await app.inject({
         method: 'GET',
         url: `/campaigns/${campaignId}/orders/mine`,
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
       });
       expect(mine.statusCode).toBe(200);
       expect(mine.json<{ orders: Array<{ id: string }> }>().orders).toContainEqual(
@@ -172,24 +172,25 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const updatedOrder = await app.inject({
         method: 'PATCH',
         url: `/campaigns/${campaignId}/orders/${createdOrderBody.order.id}`,
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
         payload: { payload: { buildingType: 'factory', x: 1, y: 2 } },
       });
       expect(updatedOrder.statusCode).toBe(200);
-      expect(updatedOrder.json<{ order: { status: string; payload: Record<string, unknown> } }>().order)
-        .toMatchObject({ status: 'draft', payload: { buildingType: 'factory', x: 1, y: 2 } });
+      expect(
+        updatedOrder.json<{ order: { status: string; payload: Record<string, unknown> } }>().order,
+      ).toMatchObject({ status: 'draft', payload: { buildingType: 'factory', x: 1, y: 2 } });
 
       const temporaryOrder = await app.inject({
         method: 'POST',
         url: `/campaigns/${campaignId}/orders`,
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
         payload: { type: 'test.temporary', payload: {} },
       });
       const temporaryOrderId = temporaryOrder.json<{ order: { id: string } }>().order.id;
       const deletedOrder = await app.inject({
         method: 'DELETE',
         url: `/campaigns/${campaignId}/orders/${temporaryOrderId}`,
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
       });
       expect(temporaryOrder.statusCode).toBe(201);
       expect(deletedOrder.statusCode).toBe(204);
@@ -212,7 +213,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const confirmation = await app.inject({
         method: 'POST',
         url: `/campaigns/${campaignId}/orders/confirm`,
-        headers: { authorization: `Bearer ${body.accessToken}` },
+        headers: { authorization: `*** },
       });
       expect(confirmation.statusCode).toBe(200);
       expect(confirmation.json()).toMatchObject({
