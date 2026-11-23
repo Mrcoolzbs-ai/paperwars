@@ -59,7 +59,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0002_order_resolution.sql',
+          migration_name: '0006_order_resolution.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
@@ -67,27 +67,35 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0004_country_setup.sql',
+          migration_name: '0004_chat_messages.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0005_social_system_creation.sql',
+          migration_name: '0005_email_verification_vk_id.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0006_campaign_setup_enhancements.sql',
+          migration_name: '0007_country_setup.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0007_campaign_world_seed.sql',
+          migration_name: '0008_social_system_creation.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0008_player_social_system_library.sql',
+          migration_name: '0009_campaign_setup_enhancements.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0009_private_event_recipients.sql',
+          migration_name: '0010_campaign_world_seed.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0011_player_social_system_library.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0012_private_event_recipients.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
       ]);
