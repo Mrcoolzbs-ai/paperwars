@@ -1631,7 +1631,7 @@ export function createCountrySetupService(options: {
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
           const isDryLand =
-            spawnMap.terrain[cell.y * campaign.map_width! + cell.x] === 'l';
+            spawnMap.terrain[cell.y * campaign.map_width + cell.x] === 'l';
           return [campaignId, countryId, cellId, isDryLand && !hasBuilding ? 1 : 0] as const;
         });
         const initialResidentCount = countryCellValues.reduce((sum, row) => sum + row[3], 0);
