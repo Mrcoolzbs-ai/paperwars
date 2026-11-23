@@ -10,6 +10,12 @@
     librarySystems: [],
     availableSystems: [],
     pending: [],
+    chatRoom: 'world',
+    chatMessages: [],
+    chatLoading: false,
+    chatSending: false,
+    chatRequestId: 0,
+    chatPollTimer: null,
     isAdmin: false,
     adminOverview: null,
     adminCampaignDetail: null,
@@ -369,6 +375,11 @@
   }
 
   async function openCampaign(campaign) {
+    stopChatPolling();
+    state.chatRequestId += 1;
+    state.chatRoom = 'world';
+    state.chatMessages = [];
+    state.chatLoading = false;
     state.campaign = campaign;
     state.systems = [];
     state.librarySystems = [];
@@ -670,6 +681,7 @@
   }
 
   function activateTab(tab) {
+    if (tab !== 'chat') stopChatPolling();
     if (tab === 'admin' && !state.isAdmin) {
       showToast('Административный доступ не настроен для этой учётной записи.', true);
       return;
@@ -678,6 +690,11 @@
     $$('.tab-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== `tab-${tab}`));
     if (tab === 'systems') loadSystems();
     if (tab === 'turn') loadTurnRoom();
+    if (tab === 'chat') {
+      updateChatRoomHeader();
+      void loadChatMessages();
+      startChatPolling();
+    }
     if (tab === 'country') {
       resetTerritoryGrid();
       refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
@@ -686,6 +703,141 @@
       loadAdminConsole();
       if (state.campaign) loadPending();
       else $('#pending-list').innerHTML = '<div class="empty-state compact">Открой кампанию, чтобы просмотреть её очередь модерации учений.</div>';
+    }
+  }
+
+  function stopChatPolling() {
+    if (state.chatPollTimer !== null) {
+      window.clearInterval(state.chatPollTimer);
+      state.chatPollTimer = null;
+    }
+  }
+
+  function startChatPolling() {
+    stopChatPolling();
+    state.chatPollTimer = window.setInterval(() => {
+      if ($('.workspace-tab.active')?.dataset.tab === 'chat' && !document.hidden) {
+        void loadChatMessages();
+      }
+    }, 5000);
+  }
+
+  function updateChatRoomHeader() {
+    const worldRoom = state.chatRoom === 'world';
+    $('#chat-room-eyebrow').textContent = worldRoom ? 'ГЛОБАЛЬНЫЙ КАНАЛ' : 'КОМНАТА КАМПАНИИ';
+    $('#chat-room-title').textContent = worldRoom ? 'Мировой чат' : 'Чат кампании';
+    $('#chat-room-subtitle').textContent = worldRoom
+      ? 'Общение игроков всего мира'
+      : (state.campaign?.name || 'Текущая кампания');
+    $('#chat-campaign-label').textContent = state.campaign?.name || 'Текущая кампания';
+    $('.chat-channel-button').forEach((button) => {
+      button.classList.toggle('active', button.dataset.chatRoom === state.chatRoom);
+    });
+  }
+
+  function renderChatMessages() {
+    const host = $('#chat-messages');
+    const messages = state.chatMessages || [];
+    if (messages.length === 0) {
+      host.innerHTML = '<div class="chat-empty"><span>' +
+        (state.chatRoom === 'world' ? '◎' : '⌂') +
+        '</span><strong>Пока тихо.</strong><p>Напиши первое сообщение в этом канале.</p></div>';
+      return;
+    }
+    host.innerHTML = messages.map((message) => {
+      const timestamp = new Date(message.createdAt);
+      const dateLabel = Number.isNaN(timestamp.getTime())
+        ? ''
+        : timestamp.toLocaleString('ru-RU', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      return '<article class="chat-message' + (message.isMine ? ' mine' : '') + '">' +
+        '<div class="chat-message-head"><strong>' + escapeHtml(message.authorLabel) +
+        '</strong><time datetime="' + escapeHtml(message.createdAt) + '">' +
+        escapeHtml(dateLabel) + '</time></div><p>' + escapeHtml(message.message) +
+        '</p></article>';
+    }).join('');
+    host.scrollTop = host.scrollHeight;
+  }
+
+  async function loadChatMessages() {
+    if (!state.token || !state.user || !state.campaign) return;
+    const room = state.chatRoom;
+    const campaignId = state.campaign.id;
+    const requestId = ++state.chatRequestId;
+    state.chatLoading = true;
+    try {
+      const url = room === 'world'
+        ? '/chat/world'
+        : '/campaigns/' + encodeURIComponent(campaignId) + '/chat';
+      const data = await request(url);
+      if (
+        requestId !== state.chatRequestId ||
+        room !== state.chatRoom ||
+        campaignId !== state.campaign?.id
+      ) return;
+      state.chatMessages = Array.isArray(data.messages) ? data.messages : [];
+      renderChatMessages();
+      $('#chat-status').textContent = '';
+    } catch (error) {
+      if (requestId !== state.chatRequestId) return;
+      $('#chat-status').textContent = error.status === 403
+        ? 'Доступ к чату кампании есть только у активных участников.'
+        : (error.message || 'Не удалось загрузить сообщения.');
+    } finally {
+      if (requestId === state.chatRequestId) state.chatLoading = false;
+    }
+  }
+
+  function selectChatRoom(room) {
+    if (room !== 'world' && room !== 'campaign') return;
+    if (room === 'campaign' && !state.campaign) return;
+    if (state.chatRoom === room) {
+      void loadChatMessages();
+      return;
+    }
+    state.chatRoom = room;
+    state.chatMessages = [];
+    state.chatRequestId += 1;
+    updateChatRoomHeader();
+    renderChatMessages();
+    $('#chat-status').textContent = '';
+    void loadChatMessages();
+    startChatPolling();
+  }
+
+  async function submitChatMessage(event) {
+    event.preventDefault();
+    if (state.chatSending || !state.campaign) return;
+    const input = $('#chat-input');
+    const message = input.value.trim();
+    if (!message) return;
+    state.chatSending = true;
+    $('#chat-send').disabled = true;
+    $('#chat-status').textContent = '';
+    try {
+      const url = state.chatRoom === 'world'
+        ? '/chat/world'
+        : '/campaigns/' + encodeURIComponent(state.campaign.id) + '/chat';
+      await request(url, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      });
+      input.value = '';
+      await loadChatMessages();
+    } catch (error) {
+      $('#chat-status').textContent = error.status === 429
+        ? 'Слишком много сообщений подряд. Подожди несколько секунд.'
+        : (error.status === 403
+          ? 'Ты больше не являешься активным участником этой кампании.'
+          : (error.message || 'Не удалось отправить сообщение.'));
+    } finally {
+      state.chatSending = false;
+      $('#chat-send').disabled = false;
+      input.focus();
     }
   }
 
