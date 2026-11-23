@@ -55,6 +55,5 @@ jobs:
         run: pnpm lint
       - name: Format check
         run: pnpm format:check
-
       - name: Tests
         run: pnpm --filter @paper-wars/tests test
