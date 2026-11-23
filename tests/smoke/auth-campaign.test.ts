@@ -117,7 +117,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrent = await registerVerifiedUser(auth, `concurrent-${randomUUID()}@example.test`, password);
+      const concurrent = await registerVerifiedUser(
+        auth,
+        `concurrent-${randomUUID()}@example.test`,
+        password,
+      );
       const attempts = await Promise.allSettled([
         auth.refresh(concurrent.refreshToken),
         auth.refresh(concurrent.refreshToken),
