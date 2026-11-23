@@ -362,7 +362,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const ownedCountry = countryMap.countries.find(
           (item) => item.id === createdCountry.json<{ country: { id: string } }>().country.id,
         );
-        expect(ownedCountry).toMatchObject({ id: createdCountry.json<{ country: { id: string } }>().country.id, isMine: true });
+        const createdCountryId = createdCountry.json<{ country: { id: string } }>().country.id;
+        expect(ownedCountry).toMatchObject({ id: createdCountryId, isMine: true });
         expect(ownedCountry).not.toHaveProperty('ownerUserId');
         expect(ownedCountry?.cells).toHaveLength(25);
         const buildingCounts = (ownedCountry?.cells || []).reduce<Record<string, number>>(
