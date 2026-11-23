@@ -256,22 +256,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
         expect(stored.rows[0]?.status).toBe('confirmed');
 
-        const second = await createCampaignOrder(
-          pool,
-          fixture.campaignId,
-          fixture.userIds[0]!,
-          { type: 'colonization', payload: { centerX: 10, centerY: 10 } },
-        );
+        const second = await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+          type: 'colonization',
+          payload: { centerX: 10, centerY: 10 },
+        });
         expect(second.status).toBe('draft');
         let membership = await pool.query<{ orders_confirmed: boolean }>(
           'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
           [fixture.campaignId, fixture.userIds[0]],
         );
         expect(membership.rows[0]?.orders_confirmed).toBe(false);
-        stored = await pool.query<{ status: string }>(
-          'SELECT status FROM orders WHERE id = $1',
-          [order.id],
-        );
+        stored = await pool.query<{ status: string }>('SELECT status FROM orders WHERE id = $1', [
+          order.id,
+        ]);
         expect(stored.rows[0]?.status).toBe('draft');
 
         const updated = await updateCampaignOrder(
@@ -293,10 +290,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [fixture.campaignId, fixture.userIds[0]],
         );
         expect(membership.rows[0]?.orders_confirmed).toBe(false);
-        stored = await pool.query<{ status: string }>(
-          'SELECT status FROM orders WHERE id = $1',
-          [order.id],
-        );
+        stored = await pool.query<{ status: string }>('SELECT status FROM orders WHERE id = $1', [
+          order.id,
+        ]);
         expect(stored.rows[0]?.status).toBe('draft');
         await expect(
           deleteCampaignOrder(pool, fixture.campaignId, fixture.userIds[1]!, order.id),
