@@ -7,8 +7,10 @@ import {
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
   UnauthenticatedError,
+  ChatServiceError,
   type AdminService,
   type AuthService,
+  type ChatService,
   type CampaignService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
@@ -42,6 +44,7 @@ export interface CreateAppOptions {
   readonly countrySetupService?: CountrySetupService;
   readonly adminService?: AdminService;
   readonly adminUserIds?: readonly string[];
+  readonly chatService?: ChatService;
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
   readonly webEntryPath?: string;
@@ -599,6 +602,68 @@ function registerCountryRoutes(
   });
 }
 
+function sendChatError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof ChatServiceError) {
+    if (error.code === 'NOT_ACTIVE_CAMPAIGN_MEMBER') {
+      return reply.code(403).send({ error: error.code, message: error.message });
+    }
+    return reply.code(429).send({ error: error.code, message: error.message });
+  }
+  return sendAuthError(error, reply);
+}
+
+function registerChatRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  chatService: ChatService,
+): void {
+  app.get('/chat/world', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const messages = await chatService.listWorldMessages(user.id);
+      return reply.send({ messages });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.post('/chat/world', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const message = await chatService.sendWorldMessage(user.id, body['message']);
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/chat', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const messages = await chatService.listCampaignMessages(user.id, getCampaignId(request));
+      return reply.send({ messages });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/chat', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const message = await chatService.sendCampaignMessage(
+        user.id,
+        getCampaignId(request),
+        body['message'],
+      );
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+}
+
 function registerAdminRoutes(
   app: FastifyInstance,
   authService: AuthService,
@@ -749,6 +814,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.countrySetupService !== undefined) {
     registerCountryRoutes(app, options.authService, options.countrySetupService);
+  }
+
+  if (options.authService !== undefined && options.chatService !== undefined) {
+    registerChatRoutes(app, options.authService, options.chatService);
   }
 
   if (options.authService !== undefined && options.adminService !== undefined) {
