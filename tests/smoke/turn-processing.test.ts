@@ -702,7 +702,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('returns only the active member current-turn projection and derives order availability from database time', async () => {
+    it(
+      'returns only the active member current-turn projection and derives order availability from database time',
+      async () => {
       const pool = getPool();
       const fixture = await createFixture(1);
       try {
@@ -756,6 +758,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       } finally {
         await removeFixture(fixture);
       }
-    });
+      },
+    );
   },
 );
