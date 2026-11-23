@@ -126,6 +126,7 @@
       <nav class="workspace-nav" aria-label="Разделы кампании">
         <button class="workspace-tab active" data-tab="overview" type="button">Обзор мира</button>
         <button class="workspace-tab" data-tab="turn" type="button">Ход и летопись</button>
+        <button id="chat-tab-label" class="workspace-tab" data-tab="chat" type="button">Чаты</button>
         <button id="systems-tab-label" class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
         <button id="country-tab-label" class="workspace-tab" data-tab="country" type="button">Основание страны</button>
         <button id="admin-tab-label" class="workspace-tab hidden" data-tab="admin" type="button">Администрирование</button>
@@ -202,6 +203,60 @@
               <div class="turn-empty"><strong>История загружается…</strong><p>Здесь появятся безопасные сводки завершённых приказов.</p></div>
             </div>
             <p class="turn-privacy-note">Показываются только исходы приказов твоего государства. Содержимое приказов, сообщения с результатами и данные других стран не передаются в этот экран.</p>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-chat" class="tab-panel hidden">
+        <div class="section-intro chat-section-intro">
+          <div>
+            <div class="panel-kicker">ОБЩЕЕ ПРОСТРАНСТВО</div>
+            <h2>Говори с миром.</h2>
+            <p class="muted">Общий мировой канал и отдельная комната участников текущей кампании.</p>
+          </div>
+          <span class="chat-live-badge"><i></i> ОБНОВЛЕНИЕ КАЖДЫЕ 5 СЕКУНД</span>
+        </div>
+        <div class="chat-workspace">
+          <aside class="chat-channel-panel">
+            <div class="panel-kicker">КАНАЛЫ СВЯЗИ</div>
+            <button class="chat-channel-button active" type="button" data-chat-room="world">
+              <span class="chat-channel-icon">◎</span>
+              <span><strong>Мировой чат</strong><small>Все игроки Paper Wars</small></span>
+              <span class="chat-channel-arrow">↗</span>
+            </button>
+            <button class="chat-channel-button" type="button" data-chat-room="campaign">
+              <span class="chat-channel-icon">⌂</span>
+              <span><strong>Чат кампании</strong><small id="chat-campaign-label">Текущий мир</small></span>
+              <span class="chat-channel-arrow">↗</span>
+            </button>
+            <div class="chat-channel-note">
+              <strong>Два пространства.</strong>
+              <p>Мировую переписку видят все вошедшие игроки. В кампанийную комнату допускаются только её активные участники.</p>
+            </div>
+          </aside>
+          <section class="panel chat-room-panel">
+            <header class="chat-room-header">
+              <div>
+                <div class="panel-kicker" id="chat-room-eyebrow">ГЛОБАЛЬНЫЙ КАНАЛ</div>
+                <h2 id="chat-room-title">Мировой чат</h2>
+                <p id="chat-room-subtitle" class="muted">Общение игроков всего мира</p>
+              </div>
+              <button id="refresh-chat" class="icon-button" type="button" title="Обновить сообщения" aria-label="Обновить сообщения">↻</button>
+            </header>
+            <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-relevant="additions text">
+              <div class="chat-empty"><span>◎</span><strong>Пока тихо.</strong><p>Напиши первое сообщение в этом канале.</p></div>
+            </div>
+            <form id="chat-form" class="chat-compose">
+              <label class="chat-compose-field" for="chat-input">
+                <span class="visually-hidden">Сообщение в чат</span>
+                <textarea id="chat-input" maxlength="2000" rows="2" placeholder="Напиши сообщение… Enter — отправить, Shift + Enter — новая строка" required></textarea>
+              </label>
+              <div class="chat-compose-footer">
+                <span id="chat-compose-hint">До 2000 символов · Без HTML и вложений</span>
+                <button id="chat-send" class="button button-primary" type="submit">Отправить <span>↗</span></button>
+              </div>
+            </form>
+            <p id="chat-status" class="chat-status" role="status" aria-live="polite"></p>
           </section>
         </div>
       </section>
