@@ -17,6 +17,15 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
+async function registerVerified(
+  auth: ReturnType<typeof createAuthService>,
+  email: string,
+  password: string,
+) {
+  const challenge = await auth.register(email, password);
+  return auth.verifyEmail(challenge.verificationToken);
+}
+
 const RELIGION_BUILDINGS: ReadonlyArray<StartBuildingPlacement> = [
   { type: 'factory', x: 0, y: 0 },
   { type: 'factory', x: 1, y: 0 },
@@ -154,7 +163,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it('creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot', async () => {
       const current = getPersistence();
       const { auth, campaigns } = createServices();
-      const firstUser = await auth.register(
+      const firstUser = await registerVerified(auth,
         `country-one-${randomUUID()}@example.test`,
         'country setup test password one',
       );
@@ -162,7 +171,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         pool: current.pool,
         socialSystemAdminUserIds: [firstUser.user.id],
       });
-      const secondUser = await auth.register(
+      const secondUser = await registerVerified(auth,
         `country-two-${randomUUID()}@example.test`,
         'country setup test password two',
       );
@@ -373,11 +382,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it('enforces social system balance, the seven-system limit and optional moderation', async () => {
       const current = getPersistence();
       const { auth, campaigns } = createServices();
-      const admin = await auth.register(
+      const admin = await registerVerified(auth,
         `social-admin-${randomUUID()}@example.test`,
         'social system admin test password',
       );
-      const player = await auth.register(
+      const player = await registerVerified(auth,
         `social-player-${randomUUID()}@example.test`,
         'social system player test password',
       );
@@ -471,7 +480,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it('unlocks turn one when the only active member completes country setup', async () => {
       const current = getPersistence();
       const { auth, campaigns } = createServices();
-      const user = await auth.register(
+      const user = await registerVerified(auth,
         `country-solo-${randomUUID()}@example.test`,
         'country solo test password',
       );
@@ -513,11 +522,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it('rejects invalid start templates and rolls back a colliding 5x5 area', async () => {
       const current = getPersistence();
       const { auth, campaigns } = createServices();
-      const firstUser = await auth.register(
+      const firstUser = await registerVerified(auth,
         `country-collision-one-${randomUUID()}@example.test`,
         'country collision test password',
       );
-      const secondUser = await auth.register(
+      const secondUser = await registerVerified(auth,
         `country-collision-two-${randomUUID()}@example.test`,
         'country collision test password',
       );
