@@ -59,10 +59,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
-          migration_name: '0006_order_resolution.sql',
-          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        },
-        {
           migration_name: '0003_versioned_domain_payloads.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
@@ -72,6 +68,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         },
         {
           migration_name: '0005_email_verification_vk_id.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0006_order_resolution.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
