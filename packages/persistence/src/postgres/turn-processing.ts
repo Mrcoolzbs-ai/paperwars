@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 export type CampaignTurnProcessingErrorCode =
   | 'CAMPAIGN_NOT_FOUND'
@@ -402,4 +402,38 @@ export async function reapExpiredTurnJobs(
     requeuedCount: result.rows.filter((row) => row.status === 'pending').length,
     failedCount: result.rows.filter((row) => row.status === 'failed').length,
   };
+}
+
+
+export class StaleTurnJobLeaseError extends Error {
+  constructor() {
+    super('The worker no longer owns a live lease for this turn job');
+    this.name = 'StaleTurnJobLeaseError';
+  }
+}
+
+/**
+ * Fenced final UPDATE. Call this as the final database mutation in the same
+ * transaction that persists the next snapshot, events, reports and RNG log.
+ * The caller must roll back the entire transaction when this throws.
+ */
+export async function completeTurnJob(
+  transaction: PoolClient,
+  lease: Pick<TurnJobLease, 'id' | 'workerId' | 'generation'>,
+): Promise<void> {
+  const result = await transaction.query<{ id: string }>(
+    `UPDATE turn_jobs
+     SET status = 'completed',
+         completed_at = clock_timestamp(),
+         worker_id = NULL,
+         lease_until = NULL
+     WHERE id = $1
+       AND worker_id = $2
+       AND generation = $3
+       AND status = 'processing'
+       AND lease_until > clock_timestamp()
+     RETURNING id`,
+    [lease.id, lease.workerId, lease.generation],
+  );
+  if (result.rowCount !== 1) throw new StaleTurnJobLeaseError();
 }
