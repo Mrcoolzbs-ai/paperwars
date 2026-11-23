@@ -264,7 +264,6 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
   }
 }
 
-
 export interface TurnJobLease {
   readonly id: string;
   readonly jobKey: string;
