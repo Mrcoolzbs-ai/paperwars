@@ -46,6 +46,9 @@
           <button class="auth-tab active" type="button" data-auth-mode="login">Войти</button>
           <button class="auth-tab" type="button" data-auth-mode="register">Создать аккаунт</button>
         </div>
+        <div id="vk-one-tap" class="vk-one-tap" aria-label="Быстрый вход через VK ID"></div>
+        <p id="vk-one-tap-message" class="form-message" role="status"></p>
+        <div class="auth-divider"><span>или по email</span></div>
         <form id="auth-form" class="form-stack">
           <label class="field"><span>Электронная почта</span><input id="auth-email" type="email" autocomplete="email" placeholder="commander@example.com" required></label>
           <label class="field"><span>Пароль</span><input id="auth-password" type="password" autocomplete="current-password" minlength="12" placeholder="Не менее 12 символов" required></label>
@@ -55,9 +58,6 @@
         <div id="email-verification-actions" class="verification-actions hidden">
           <button id="resend-verification" class="button button-outline button-wide" type="button">Отправить письмо повторно</button>
         </div>
-        <div class="auth-divider"><span>или через VK ID</span></div>
-        <div id="vk-one-tap" class="vk-one-tap" aria-label="Быстрый вход через VK ID"></div>
-        <p id="vk-one-tap-message" class="form-message" role="status"></p>
         <a class="button button-outline button-wide" href="/auth/vk/start">Обычный вход через VK ID ↗</a>
         <div class="secure-note"><span>⌑</span> Защищённая сессия · локальный сервер</div>
       </div>
