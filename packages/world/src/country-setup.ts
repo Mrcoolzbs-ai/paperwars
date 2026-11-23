@@ -28,6 +28,9 @@ import type {
   CountryProfileView,
   StartBuildingPlacement,
   StartBuildingType,
+  AdditionalBuildingType,
+  BuildBuildingInput,
+  BuiltBuilding,
 } from './types.js';
 
 interface CampaignSetupRow {
@@ -1616,6 +1619,193 @@ export function createCountrySetupService(options: {
           databaseError.constraint === 'cells_campaign_coordinates_unique'
         ) {
           throw new SpawnAreaUnavailableError();
+        }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async buildBuilding(userId, campaignId, input: BuildBuildingInput): Promise<BuiltBuilding> {
+      if (input === null || typeof input !== 'object') {
+        throw new CountrySetupValidationError('Building action payload must be an object');
+      }
+      const allowedBuildings = new Set<AdditionalBuildingType>([
+        'factory', 'field', 'religious_building', 'science', 'barracks', 'tower',
+      ]);
+      if (typeof input.buildingType !== 'string' || !allowedBuildings.has(input.buildingType as AdditionalBuildingType)) {
+        throw new CountrySetupValidationError('This building type is not available for immediate construction');
+      }
+      if (typeof input.x !== 'number' || typeof input.y !== 'number') {
+        throw new CountrySetupValidationError('Building coordinates must be numbers');
+      }
+      validateInteger(input.x, 'x');
+      validateInteger(input.y, 'y');
+      if (input.x < 0 || input.x >= TERRITORY_SIDE || input.y < 0 || input.y >= TERRITORY_SIDE) {
+        throw new CountrySetupValidationError('Building coordinates must be inside the owned 5x5 territory');
+      }
+
+      const buildingType = input.buildingType as AdditionalBuildingType;
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+
+        // Match the global lock order used by country setup and turn processing.
+        const campaignResult = await client.query<CampaignSetupRow>(
+          `SELECT id, status, current_turn, orders_locked, map_width, map_height, map_seed, ruleset_version
+           FROM campaigns WHERE id = $1 FOR UPDATE`,
+          [campaignId],
+        );
+        const campaign = campaignResult.rows[0];
+        if (
+          campaign === undefined ||
+          campaign.status !== 'active' ||
+          campaign.current_turn !== 1 ||
+          campaign.map_width === null ||
+          campaign.map_height === null
+        ) {
+          throw new CampaignSetupNotReadyError();
+        }
+
+        const snapshotLock = await client.query<SnapshotLockRow>(
+          `SELECT version FROM world_snapshots
+           WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE`,
+          [campaignId],
+        );
+        const snapshot = snapshotLock.rows[0];
+        if (snapshot === undefined) throw new CampaignSetupNotReadyError();
+
+        const turnJob = await client.query(
+          'SELECT id FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE',
+          [campaignId],
+        );
+        if (turnJob.rows.length > 0) throw new CampaignSetupNotReadyError();
+
+        const memberResult = await client.query<MembershipRow>(
+          `SELECT status, country_id
+           FROM campaign_memberships
+           WHERE campaign_id = $1 AND user_id = $2
+           FOR UPDATE`,
+          [campaignId, userId],
+        );
+        const member = memberResult.rows[0];
+        if (member === undefined || member.status !== 'active') throw new NotActiveCampaignMemberError();
+        if (member.country_id === null) {
+          throw new CountrySetupValidationError('Found a country before issuing building actions');
+        }
+
+        const origin = await client.query<{ origin_x: number | null; origin_y: number | null }>(
+          `SELECT MIN(cell.x)::int AS origin_x, MIN(cell.y)::int AS origin_y
+           FROM country_cells AS owned
+           JOIN cells AS cell ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+           WHERE owned.campaign_id = $1 AND owned.country_id = $2`,
+          [campaignId, member.country_id],
+        );
+        const originRow = origin.rows[0];
+        if (originRow?.origin_x === null || originRow?.origin_x === undefined ||
+            originRow.origin_y === null || originRow.origin_y === undefined) {
+          throw new CountrySetupValidationError('The country territory is not available');
+        }
+
+        const worldX = originRow.origin_x + input.x;
+        const worldY = originRow.origin_y + input.y;
+        const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
+        if (world.terrain[worldY * campaign.map_width + worldX] !== 'l') {
+          throw new CountrySetupValidationError('Buildings can only be placed on dry land');
+        }
+
+        const targetResult = await client.query<{
+          id: string;
+          population: number;
+          building_id: string | null;
+        }>(
+          `SELECT cell.id, owned.population, building.id AS building_id
+           FROM country_cells AS owned
+           JOIN cells AS cell
+             ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+           LEFT JOIN country_buildings AS building
+             ON building.campaign_id = owned.campaign_id
+            AND building.country_id = owned.country_id
+            AND building.cell_id = owned.cell_id
+           WHERE owned.campaign_id = $1
+             AND owned.country_id = $2
+             AND cell.x = $3 AND cell.y = $4
+           FOR UPDATE OF owned`,
+          [campaignId, member.country_id, worldX, worldY],
+        );
+        const target = targetResult.rows[0];
+        if (target === undefined) {
+          throw new CountrySetupValidationError('The selected cell does not belong to your country');
+        }
+        if (target.building_id !== null) {
+          throw new CountrySetupValidationError('The selected cell is already occupied by a building');
+        }
+        if (target.population < 1) {
+          throw new CountrySetupValidationError('The selected cell has no free resident to staff a building');
+        }
+
+        const inserted = await client.query<{ id: string }>(
+          `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id`,
+          [campaignId, member.country_id, target.id, buildingType],
+        );
+        const building = inserted.rows[0];
+        if (building === undefined) throw new Error('Building insert did not return an id');
+
+        const updatedCell = await client.query<{ population: number }>(
+          `UPDATE country_cells
+           SET population = population - 1
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3
+           RETURNING population`,
+          [campaignId, member.country_id, target.id],
+        );
+        const remainingResidents = updatedCell.rows[0]?.population;
+        if (remainingResidents === undefined) throw new Error('Building population update did not return a row');
+
+        await client.query(
+          `INSERT INTO game_events (
+             campaign_id, turn_number, event_type, payload, visibility
+           ) VALUES ($1, 1, 'building_constructed', $2, 'public')`,
+          [campaignId, {
+            countryId: member.country_id,
+            buildingId: building.id,
+            buildingType,
+            x: worldX,
+            y: worldY,
+          }],
+        );
+
+        const nextState = await buildSnapshot(
+          client,
+          campaignId,
+          campaign.map_width,
+          campaign.map_height,
+        );
+        const snapshotVersion = snapshot.version + 1;
+        await client.query(
+          `UPDATE world_snapshots
+           SET version = $2, state_schema_version = 1, ruleset_version = $3, state = $4
+           WHERE campaign_id = $1 AND turn_number = 1`,
+          [campaignId, snapshotVersion, campaign.ruleset_version, nextState],
+        );
+
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return {
+          id: building.id,
+          type: buildingType,
+          x: input.x,
+          y: input.y,
+          remainingResidents,
+          snapshotVersion,
+        };
+      } catch (error) {
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
         }
         throw error;
       } finally {
