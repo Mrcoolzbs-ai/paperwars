@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { OrderEnvelope, WorldSnapshot } from '@paper-wars/domain';
-import { toId } from '@paper-wars/shared';
+import { toId, toTurnNumber } from '@paper-wars/shared';
 import { describe, expect, it } from 'vitest';
 import {
   BASELINE_RULESET,
@@ -28,7 +28,7 @@ function createSnapshot(
 ): WorldSnapshot<BaselineWorldState> {
   return {
     campaignId: toId<'CampaignId'>(campaignId),
-    turnNumber: toId<'TurnNumber'>(1),
+    turnNumber: toTurnNumber(1),
     version: 4,
     stateSchemaVersion: 1,
     rulesetVersion: 'baseline-v1',
