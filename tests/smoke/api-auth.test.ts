@@ -148,6 +148,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         'another secure guest integration password',
       );
       const guest = await auth!.verifyEmail(guestChallenge.verificationToken);
+      const lobbyCampaign = await campaigns!.createCampaign(
+        body.user.id,
+        `lobby-api-${randomUUID()}`,
+        { mapWidth: 40, mapHeight: 30, mapSeed: 'lobby-api-world' },
+      );
       const openLobby = await app.inject({
         method: 'GET',
         url: '/campaigns/open',
@@ -158,13 +163,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         openLobby.json<{ campaigns: Array<{ id: string; playerCount: number }> }>().campaigns,
       ).toContainEqual(
         expect.objectContaining({
-          id: campaign.json<{ campaign: { id: string } }>().campaign.id,
+          id: lobbyCampaign.id,
           playerCount: 1,
         }),
       );
       const joined = await app.inject({
         method: 'POST',
-        url: `/campaigns/${campaign.json<{ campaign: { id: string } }>().campaign.id}/join`,
+        url: `/campaigns/${lobbyCampaign.id}/join`,
         headers: { authorization: `Bearer ${guest.accessToken}` },
       });
       expect(joined.statusCode).toBe(204);
@@ -177,7 +182,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         guestLobbyAfterJoin.json<{ campaigns: Array<{ id: string }> }>().campaigns,
       ).not.toContainEqual(
         expect.objectContaining({
-          id: campaign.json<{ campaign: { id: string } }>().campaign.id,
+          id: lobbyCampaign.id,
         }),
       );
 
