@@ -245,6 +245,29 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           deadline_at: expect.any(Date),
         });
 
+        const draws = await pool.query<{
+          domain: string;
+          draw_id: string;
+          min_value: string;
+          max_value: string;
+          value: string;
+        }>(
+          `SELECT domain, draw_id, min_value::text AS min_value,
+                  max_value::text AS max_value, value::text AS value
+           FROM random_draws WHERE campaign_id = $1 AND turn_number = 1`,
+          [fixture.campaignId],
+        );
+        expect(draws.rows).toHaveLength(1);
+        expect(draws.rows[0]).toMatchObject({
+          domain: 'worker-test',
+          draw_id: 'turn-roll',
+          min_value: '1',
+          max_value: '6',
+        });
+        const recordedRoll = Number(draws.rows[0]?.value);
+        expect(recordedRoll).toBeGreaterThanOrEqual(1);
+        expect(recordedRoll).toBeLessThanOrEqual(6);
+
         const snapshot = await pool.query<{
           version: number;
           state_schema_version: number;
@@ -256,7 +279,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(snapshot.rows[0]).toMatchObject({
           version: 1,
           state_schema_version: 1,
-          state: { value: 20 },
+          state: { value: 17 + recordedRoll },
         });
 
         const order = await pool.query<{
@@ -290,17 +313,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           {
             id: eventId,
             event_type: 'worker_test_turn',
-            payload: { roll: expect.any(Number) },
+            payload: { roll: recordedRoll },
             visibility: 'public',
           },
         ]);
-
-        const draws = await pool.query<{ domain: string; draw_id: string; value: string }>(
-          'SELECT domain, draw_id, value::text AS value FROM random_draws WHERE campaign_id = $1 AND turn_number = 1',
-          [fixture.campaignId],
-        );
-        expect(draws.rows).toHaveLength(1);
-        expect(draws.rows[0]).toMatchObject({ domain: 'worker-test', draw_id: 'turn-roll' });
 
         const economic = await pool.query<{ report: Record<string, unknown> }>(
           'SELECT report FROM economic_reports WHERE campaign_id = $1 AND turn_number = 1',
