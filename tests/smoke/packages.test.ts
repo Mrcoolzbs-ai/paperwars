@@ -26,6 +26,7 @@ describe('Stage 1.1 package smoke tests', () => {
       type: 'test.event',
       schemaVersion: 1,
       payload: { value: 7 },
+      visibility: 'public',
     };
     const repository: ReadRepository<string, string> = {
       async findById(id) {

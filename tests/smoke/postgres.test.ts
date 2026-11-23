@@ -70,6 +70,34 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           migration_name: '0005_email_verification_vk_id.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
+        {
+          migration_name: '0006_order_resolution.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0007_country_setup.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0008_social_system_creation.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0009_campaign_setup_enhancements.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0010_campaign_world_seed.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0011_player_social_system_library.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0012_private_event_recipients.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
       ]);
     });
 

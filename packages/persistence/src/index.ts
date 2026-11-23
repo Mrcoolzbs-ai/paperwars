@@ -16,3 +16,32 @@ export {
   drawWeightedAndRecord,
   RandomDrawConflictError,
 } from './postgres/random-draws.js';
+export {
+  confirmCampaignOrders,
+  getCampaignTurnStatus,
+  listCampaignEvents,
+  createCampaignOrder,
+  updateCampaignOrder,
+  deleteCampaignOrder,
+  listCampaignOrders,
+  listCampaignOrderResults,
+  closeOrders,
+  completeTurnJob,
+  StaleTurnJobLeaseError,
+  claimNextTurnJob,
+  renewTurnJobLease,
+  reapExpiredTurnJobs,
+  CampaignTurnProcessingError,
+} from './postgres/turn-processing.js';
+export type {
+  CampaignTurnProcessingErrorCode,
+  CampaignTurnStatusView,
+  CampaignEventView,
+  CampaignOrderView,
+  CampaignOrderResultView,
+  CreateCampaignOrderInput,
+  UpdateCampaignOrderInput,
+  ClosedTurnJob,
+  TurnJobLease,
+  ReapedTurnJobs,
+} from './postgres/turn-processing.js';

@@ -142,12 +142,142 @@ export const campaigns = pgTable(
     deadlineAt: timestamp('deadline_at', { withTimezone: true, mode: 'date' }),
     rulesetVersion: text('ruleset_version').notNull(),
     rngVersion: text('rng_version').notNull(),
+    mapWidth: integer('map_width'),
+    mapHeight: integer('map_height'),
+    mapSeed: text('map_seed')
+      .notNull()
+      .default(sql`substr(md5(random()::text || clock_timestamp()::text), 1, 16)`),
+    turnDurationHours: integer('turn_duration_hours').notNull().default(24),
     createdAt: createdAt(),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     check('campaigns_current_turn_positive', sql`${table.currentTurn} >= 1`),
     check('campaigns_status_check', sql`${table.status} in ('active', 'completed')`),
+    check(
+      'campaigns_map_dimensions_check',
+      sql`
+        (${table.mapWidth} is null and ${table.mapHeight} is null)
+        or (
+          ${table.mapWidth} is not null
+          and ${table.mapHeight} is not null
+          and ${table.mapWidth} >= 5
+          and ${table.mapHeight} >= 5
+        )
+      `,
+    ),
+  ],
+);
+
+export const socialSystems = pgTable(
+  'social_systems',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    systemType: text('system_type').notNull(),
+    name: text('name').notNull(),
+    originX: integer('origin_x'),
+    originY: integer('origin_y'),
+    traits: jsonb('traits').$type<readonly string[]>().notNull().default([]),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvalStatus: text('approval_status').notNull().default('approved'),
+    emblemDataUrl: text('emblem_data_url'),
+    principles: jsonb('principles')
+      .$type<
+        readonly {
+          readonly name: string;
+          readonly description: string;
+          readonly polarity: 'positive' | 'negative' | 'neutral';
+        }[]
+      >()
+      .notNull()
+      .default([]),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true, mode: 'date' }),
+    reviewReason: text('review_reason'),
+    creationKind: text('creation_kind').notNull().default('player_created'),
+    lifecycleStatus: text('lifecycle_status').notNull().default('active'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('social_systems_campaign_id_id_unique').on(table.campaignId, table.id),
+    uniqueIndex('social_systems_campaign_type_id_unique').on(
+      table.campaignId,
+      table.systemType,
+      table.id,
+    ),
+    index('social_systems_campaign_type_idx').on(table.campaignId, table.systemType),
+    index('social_systems_player_slot_idx')
+      .on(table.campaignId, table.systemType, table.approvalStatus)
+      .where(sql`${table.creationKind} = 'player_created' and ${table.lifecycleStatus} = 'active'`),
+    index('social_systems_creator_idx').on(
+      table.campaignId,
+      table.createdByUserId,
+      table.createdAt,
+    ),
+    check('social_systems_type_check', sql`${table.systemType} in ('religion', 'ideology')`),
+    check(
+      'social_systems_name_length_check',
+      sql`char_length(btrim(${table.name})) between 2 and 60`,
+    ),
+    check(
+      'social_systems_origin_pair_check',
+      sql`(${table.originX} is null and ${table.originY} is null) or (${table.originX} is not null and ${table.originY} is not null and ${table.originX} >= 0 and ${table.originY} >= 0)`,
+    ),
+    check('social_systems_traits_array_check', sql`jsonb_typeof(${table.traits}) = 'array'`),
+    check(
+      'social_systems_principles_array_check',
+      sql`jsonb_typeof(${table.principles}) = 'array'`,
+    ),
+    check(
+      'social_systems_approval_status_check',
+      sql`${table.approvalStatus} in ('pending', 'approved', 'rejected')`,
+    ),
+    check(
+      'social_systems_creation_kind_check',
+      sql`${table.creationKind} in ('player_created', 'schism', 'seeded')`,
+    ),
+    check(
+      'social_systems_lifecycle_status_check',
+      sql`${table.lifecycleStatus} in ('active', 'destroyed')`,
+    ),
+    check(
+      'social_systems_review_reason_length_check',
+      sql`${table.reviewReason} is null or char_length(${table.reviewReason}) <= 500`,
+    ),
+  ],
+);
+
+export const campaignSpawnReservations = pgTable(
+  'campaign_spawn_reservations',
+  {
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    centerX: integer('center_x').notNull(),
+    centerY: integer('center_y').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.campaignId, table.userId] }),
+    index('campaign_spawn_reservations_campaign_center_idx').on(
+      table.campaignId,
+      table.centerX,
+      table.centerY,
+    ),
+    check(
+      'campaign_spawn_reservations_centers_nonnegative',
+      sql`${table.centerX} >= 2 and ${table.centerY} >= 2`,
+    ),
   ],
 );
 
@@ -163,12 +293,41 @@ export const countries = pgTable(
       .references(() => users.id),
     name: text('name').notNull(),
     status: text('status').notNull().default('active'),
+    culture: text('culture').array().notNull().default([]),
+    government: text('government').notNull().default('monarchy'),
+    flagDataUrl: text('flag_data_url'),
+    officialSystemType: text('official_system_type'),
+    officialSystemId: uuid('official_system_id'),
+    setupCompleted: boolean('setup_completed').notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [
     uniqueIndex('countries_campaign_id_id_unique').on(table.campaignId, table.id),
     uniqueIndex('countries_campaign_owner_unique').on(table.campaignId, table.ownerUserId),
+    foreignKey({
+      name: 'countries_official_system_fk',
+      columns: [table.campaignId, table.officialSystemType, table.officialSystemId],
+      foreignColumns: [socialSystems.campaignId, socialSystems.systemType, socialSystems.id],
+    }),
     check('countries_status_check', sql`${table.status} in ('active', 'eliminated')`),
+    check(
+      'countries_official_system_pair_check',
+      sql`
+        (${table.officialSystemType} is null and ${table.officialSystemId} is null)
+        or (
+          ${table.officialSystemType} is not null
+          and ${table.officialSystemId} is not null
+          and ${table.officialSystemType} in ('religion', 'ideology')
+        )
+      `,
+    ),
+    check(
+      'countries_setup_official_system_check',
+      sql`
+        not ${table.setupCompleted}
+        or (${table.officialSystemType} is not null and ${table.officialSystemId} is not null)
+      `,
+    ),
   ],
 );
 
@@ -179,9 +338,79 @@ export const cells = pgTable(
     campaignId: uuid('campaign_id')
       .notNull()
       .references(() => campaigns.id, { onDelete: 'cascade' }),
+    x: integer('x'),
+    y: integer('y'),
     createdAt: createdAt(),
   },
-  (table) => [uniqueIndex('cells_campaign_id_id_unique').on(table.campaignId, table.id)],
+  (table) => [
+    uniqueIndex('cells_campaign_id_id_unique').on(table.campaignId, table.id),
+    uniqueIndex('cells_campaign_coordinates_unique').on(table.campaignId, table.x, table.y),
+    check(
+      'cells_coordinate_pair_check',
+      sql`
+        (${table.x} is null and ${table.y} is null)
+        or (
+          ${table.x} is not null
+          and ${table.y} is not null
+          and ${table.x} >= 0
+          and ${table.y} >= 0
+        )
+      `,
+    ),
+  ],
+);
+
+export const countryCells = pgTable(
+  'country_cells',
+  {
+    campaignId: uuid('campaign_id').notNull(),
+    countryId: uuid('country_id').notNull(),
+    cellId: uuid('cell_id').notNull(),
+    population: integer('population').notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.campaignId, table.countryId, table.cellId] }),
+    uniqueIndex('country_cells_campaign_cell_unique').on(table.campaignId, table.cellId),
+    foreignKey({
+      name: 'country_cells_country_fk',
+      columns: [table.campaignId, table.countryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'country_cells_cell_fk',
+      columns: [table.campaignId, table.cellId],
+      foreignColumns: [cells.campaignId, cells.id],
+    }).onDelete('cascade'),
+    check('country_cells_population_nonnegative', sql`${table.population} >= 0`),
+  ],
+);
+
+export const countryBuildings = pgTable(
+  'country_buildings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id').notNull(),
+    countryId: uuid('country_id').notNull(),
+    cellId: uuid('cell_id').notNull(),
+    buildingType: text('building_type').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('country_buildings_campaign_cell_unique').on(table.campaignId, table.cellId),
+    foreignKey({
+      name: 'country_buildings_country_cell_fk',
+      columns: [table.campaignId, table.countryId, table.cellId],
+      foreignColumns: [countryCells.campaignId, countryCells.countryId, countryCells.cellId],
+    }).onDelete('cascade'),
+    check(
+      'country_buildings_type_check',
+      sql`
+        ${table.buildingType} in (
+          'factory', 'field', 'gold_mine', 'capital', 'religious_building', 'science', 'barracks', 'tower'
+        )
+      `,
+    ),
+  ],
 );
 
 export const campaignMemberships = pgTable(
@@ -248,6 +477,10 @@ export const orders = pgTable(
     orderType: text('order_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     status: text('status').notNull().default('draft'),
+    resolutionStatus: text('resolution_status'),
+    resultCode: text('result_code'),
+    resultMessage: text('result_message'),
+    resultData: jsonb('result_data').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     finalizedAt: timestamp('finalized_at', { withTimezone: true, mode: 'date' }),
@@ -266,6 +499,15 @@ export const orders = pgTable(
       'orders_status_check',
       sql`${table.status} in ('draft', 'unconfirmed', 'confirmed', 'finalized', 'discarded')`,
     ),
+    check(
+      'orders_resolution_status_check',
+      sql`${table.resolutionStatus} is null or ${table.resolutionStatus} in ('accepted', 'rejected', 'superseded')`,
+    ),
+    check(
+      'orders_resolution_fields_check',
+      sql`(${table.resolutionStatus} is null and ${table.resultCode} is null and ${table.resultMessage} is null and ${table.resultData} is null)
+        or (${table.resolutionStatus} is not null and ${table.resultCode} is not null)`,
+    ),
   ],
 );
 
@@ -281,13 +523,30 @@ export const gameEvents = pgTable(
     eventType: text('event_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     visibility: text('visibility').notNull().default('public'),
+    recipientCountryId: uuid('recipient_country_id'),
     createdAt: createdAt(),
   },
   (table) => [
     index('game_events_campaign_turn_idx').on(table.campaignId, table.turnNumber),
+    index('game_events_campaign_recipient_turn_idx').on(
+      table.campaignId,
+      table.recipientCountryId,
+      table.turnNumber,
+      table.createdAt,
+    ),
+    foreignKey({
+      name: 'game_events_campaign_recipient_country_fk',
+      columns: [table.campaignId, table.recipientCountryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }),
     check('game_events_turn_positive', sql`${table.turnNumber} >= 1`),
     check('game_events_schema_version_positive', sql`${table.schemaVersion} >= 1`),
     check('game_events_visibility_check', sql`${table.visibility} in ('public', 'private')`),
+    check(
+      'game_events_visibility_recipient_check',
+      sql`(${table.visibility} = 'public' and ${table.recipientCountryId} is null)
+        or (${table.visibility} = 'private' and ${table.recipientCountryId} is not null)`,
+    ),
   ],
 );
 
@@ -320,7 +579,10 @@ export const randomSeeds = pgTable(
     check('random_seeds_commitment_hex', sql`${table.commitment} ~ '^[a-f0-9]{64}$'`),
     check(
       'random_seeds_revealed_at_check',
-      sql`(${table.status} = 'committed' and ${table.revealedAt} is null) or (${table.status} = 'revealed' and ${table.revealedAt} is not null)`,
+      sql`
+        (${table.status} = 'committed' and ${table.revealedAt} is null)
+        or (${table.status} = 'revealed' and ${table.revealedAt} is not null)
+      `,
     ),
     check('random_seeds_nonce_length', sql`octet_length(${table.nonce}) = 12`),
     check('random_seeds_auth_tag_length', sql`octet_length(${table.authTag}) = 16`),
@@ -477,7 +739,11 @@ export const discoveryHistory = pgTable(
     check('discovery_history_turn_positive', sql`${table.turnNumber} >= 1`),
     check(
       'discovery_history_event_type_check',
-      sql`${table.eventType} in ('discovered', 'investigated', 'transferred', 'captured', 'access_granted', 'access_revoked')`,
+      sql`
+        ${table.eventType} in (
+          'discovered', 'investigated', 'transferred', 'captured', 'access_granted', 'access_revoked'
+        )
+      `,
     ),
   ],
 );
@@ -506,11 +772,70 @@ export const discoveryAccess = pgTable(
     check('discovery_access_granted_turn_positive', sql`${table.grantedAtTurn} >= 1`),
     check(
       'discovery_access_status_consistency_check',
-      sql`(${table.status} = 'active' and ${table.revokedAtTurn} is null and ${table.revokedByEventId} is null) or (${table.status} = 'revoked' and ${table.revokedAtTurn} is not null and ${table.revokedByEventId} is not null)`,
+      sql`
+        (
+          ${table.status} = 'active'
+          and ${table.revokedAtTurn} is null
+          and ${table.revokedByEventId} is null
+        )
+        or (
+          ${table.status} = 'revoked'
+          and ${table.revokedAtTurn} is not null
+          and ${table.revokedByEventId} is not null
+        )
+      `,
     ),
     check(
       'discovery_access_revoked_turn_check',
       sql`${table.revokedAtTurn} is null or ${table.revokedAtTurn} >= ${table.grantedAtTurn}`,
+    ),
+  ],
+);
+
+export const playerSocialSystemLibrary = pgTable(
+  'player_social_system_library',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerUserId: uuid('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    systemType: text('system_type').notNull(),
+    name: text('name').notNull(),
+    principles: jsonb('principles')
+      .$type<
+        readonly {
+          readonly name: string;
+          readonly description: string;
+          readonly effect?: string;
+          readonly polarity: 'positive' | 'negative' | 'neutral';
+        }[]
+      >()
+      .notNull()
+      .default([]),
+    emblemDataUrl: text('emblem_data_url'),
+    sourceCampaignId: uuid('source_campaign_id').references(() => campaigns.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('player_social_system_library_owner_name_unique').on(
+      table.ownerUserId,
+      sql`lower(btrim(${table.name}))`,
+    ),
+    index('player_social_system_library_owner_updated_idx').on(table.ownerUserId, table.updatedAt),
+    check(
+      'player_social_system_library_type_check',
+      sql`${table.systemType} in ('religion', 'ideology')`,
+    ),
+    check(
+      'player_social_system_library_name_length_check',
+      sql`char_length(btrim(${table.name})) between 2 and 60`,
+    ),
+    check(
+      'player_social_system_library_principles_array_check',
+      sql`jsonb_typeof(${table.principles}) = 'array'`,
     ),
   ],
 );

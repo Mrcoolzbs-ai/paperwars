@@ -1,3 +1,5 @@
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createAuthService,
   createAccessTokenSigner,
@@ -6,6 +8,7 @@ import {
 } from '@paper-wars/auth';
 import { createPostgresPersistence } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
+import { createCountrySetupService } from '@paper-wars/world';
 import { createApp } from './app.js';
 import {
   createConsoleEmailSender,
@@ -108,6 +111,14 @@ if (vkIsConfigured) {
 
 const rulesetVersion = requiredEnv('RULESET_VERSION');
 const rngVersion = requiredEnv('RNG_VERSION');
+const socialSystemAdminUserIds = (process.env['SOCIAL_SYSTEM_ADMIN_USER_IDS'] ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (socialSystemAdminUserIds.some((userId) => !uuidPattern.test(userId))) {
+  throw new Error('SOCIAL_SYSTEM_ADMIN_USER_IDS must be a comma-separated list of UUIDs');
+}
 const seedKeyProvider = new EnvironmentSeedKeyProvider(process.env);
 const accessTokens = createAccessTokenSigner({
   secret: Buffer.from(encodedAccessSecret, 'hex'),
@@ -146,6 +157,14 @@ try {
     rngVersion,
   });
   const chatService = createChatService({ pool: persistence.pool });
+  const countrySetupService = createCountrySetupService({
+    pool: persistence.pool,
+    socialSystemAdminUserIds,
+  });
+  const webEntryPath =
+    process.env['NODE_ENV'] === 'production'
+      ? resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html')
+      : undefined;
 
   app = createApp({
     logger: true,
@@ -154,6 +173,8 @@ try {
     authService,
     campaignService,
     chatService,
+    countrySetupService,
+    ...(webEntryPath === undefined ? {} : { webEntryPath }),
     verificationEmailSender,
     appBaseUrl,
     ...(vkId === undefined ? {} : { vkId }),

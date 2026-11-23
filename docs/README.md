@@ -1,7 +1,7 @@
 # Документация Paper Wars: Rebirth
 
 **Documentation Baseline v1.0**  
-**Статус:** нормативная спецификация восстановлена по трём частям авторских материалов и зафиксирована в Markdown. Это документационный baseline, а не утверждение о готовности исполняемого приложения.
+**Статус:** игровые правила и технические контракты Baseline v1.0 сведены в Markdown. Это документационный baseline, а не утверждение о готовности исполняемого приложения. Исторические legacy-правила и часть архивных таблиц ещё требуют полной транскрипции и сверки.
 
 ## Нормативные правила
 
@@ -17,34 +17,43 @@
 - [Разведка, руины, золото и доступ к находкам](architecture/discovery.md).
 - [Информационная видимость и DTO-проекции](architecture/information-visibility.md).
 - [Аутентификация и lifecycle кампании](architecture/authentication.md).
-- [Мировой чат и чат кампании](architecture/chat.md).
+- [Религии и идеологии](architecture/social-systems.md).
+- [Графический Web-клиент](architecture/web-client.md) — карта мира, редактор стартовой территории и подключение к API.
 
 ## Лор
 
 - [Подтверждённый канон](lore/canon.md).
 - [Неподтверждённые сюжетные предложения](lore/unconfirmed-proposals.md).
 
-## План и полная восстановительная запись
+## Единая спецификация и план
 
+- [Единая спецификация проекта](SPECIFICATION.md) — главный вход в Baseline v1.0: игровые правила, архитектурные контракты, статус реализации и известные расхождения.
+- [Восстановительная запись](RECOVERED_SPECIFICATION.md) — исторический отчёт о реконструкции и её ограничениях на 21 ноября 2026 года.
 - [Дорожная карта разработки](roadmap.md) — этапы 0–9, зависимости и Definition of Done.
-- [Восстановленная спецификация](RECOVERED_SPECIFICATION.md) — сводная запись исходной реконструкции, включая архитектурные решения, границы восстановления и состояние репозитория.
 
 ## Первичные архивные материалы
 
 - [VK discussions export](../VK_discussions_205658089_2026-11-20.docx)
 - [VK wall export](../VK_wall_205658089_2026-11-20.docx)
 
-## Статус реализации на 21 ноября 2026 года
+## Статус реализации на 23 ноября 2026 года
 
-Документы остаются нормативным Baseline; часть технических контрактов уже реализована и проверена:
+Документация Baseline v1.0 находится в Markdown; единая точка входа — [SPECIFICATION.md](SPECIFICATION.md). Описание правила, наличие UI и работающий engine-контур — разные статусы; они не означают завершённости всей механики.
 
-- Stage 1.1 monorepo и базовый API skeleton merged в `main` (PR #3).
-- Stage 1.2 PostgreSQL/Drizzle schema, SQL migrations и integration tests merged (PR #4).
-- Stage 1.3 RNG/commit-reveal primitives, AES-256-GCM seed persistence, versioned key provider и random draw log merged (PR #5).
-- Stage 1.4 scrypt auth, access JWT, refresh rotation/replay revocation, authenticated campaign create/list и atomic campaign+membership+first seed merged (PR #6).
-- Stage 1.5 branded domain entities, order/event/snapshot/resolution contracts, versioned RulesetManifest и state compatibility migration merged (PR #7).
-- Чистый GitHub Actions CI: build, typecheck, lint, format-check и 55 тестов прошли на PostgreSQL 18.7.
+В `main` влиты Stage 1.1–1.5 (PR #3–#7): monorepo/API skeleton, PostgreSQL/Drizzle, RNG/commit-reveal, аутентификация, доменные контракты и manifest ruleset.
 
-Ещё не реализованы: participant/role management, auth rate limiting/audit, исполняемый Simulation Engine, turn Worker, closeOrders/finalization, Stage 2 country setup (Q24, карта и старт 7/18), игровые world DTO и Web-клиент. Q18–Q20 остаются PROPOSAL и не входят в канон.
+**Draft PR #15** ([feat(web): add Paper Wars browser client MVP](https://github.com/Mrcoolzbs-ai/paperwars/pull/15)) остаётся открытым в `stage-3-browser-client`, основан на `stage-2-country-setup`, не влит. Клиентский вертикальный срез (авторизация, кампании, seeded-карта, основание страны, культурные и социальные карточки) предварительно принят как отдельный ограниченный инкремент. Это не закрытие полного Stage 2 DoD.
 
-Изменения в действующих правилах после фиксации Baseline должны сопровождаться обновлением `new-rules.md`, `rule-provenance.md`, затронутой архитектуры и версии ruleset.
+В ветке PR #15 реализован начальный Stage 1.7: pure Simulation Engine проверяет совместимость ruleset/snapshot и finalized orders, вызывает подключённый resolver и самостоятельно ведёт журнал RNG draws. Concrete ruleset resolver и игровые эффекты ещё не подключены. Stage 1.7 прошёл CI: Build, Typecheck, Lint, Format check и 79/79 тестов в 15 файлах ([run 45078180497](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45078180497)).
+
+Инфраструктурный инкремент Stage 1.8 расширен: транзакционные order CRUD текущей страны/хода (черновик, изменение, удаление, список), отзыв прежнего подтверждения при редактировании, deadline guards на времени PostgreSQL, подтверждение всех приказов страны и атомарное `closeOrders`. API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId`, POST `/campaigns/:campaignId/orders/confirm`. Очередь включает TurnJob creation, claim через `SKIP LOCKED`, lease renewal, reaper с пятью переназначениями и fenced `completeTurnJob`. Типы приказов пока являются универсальными versioned envelopes; конкретные игровые схемы и эффекты не реализованы.
+
+Контрольный CI расширенного инкремента прошёл Build, Typecheck, Lint, Format check и **91/91 PostgreSQL/unit tests в 16 файлах** ([run 45113619602](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45113619602)). Проверены CRUD/ownership приказов, отзыв подтверждения после изменений, deadline guards, закрытие хода, выход участника, lease/reaper и fencing.
+
+Незавершённые части Stage 2 и последующих этапов:
+- приглашения второго игрока, полноценные membership/roles и обязательное административное согласование религий/идеологий (текущий автодоступ в PR #15 — известное расхождение с Baseline);
+- concrete ruleset schemas/validators и эффекты приказов строительства/колонизации;
+- экономика, население, сезоны, разведка/руины/золото, дипломатия, армия и полный цикл ходов;
+- полные DTO-проекции по видимости и защита закрытых данных.
+
+Границы и перечень предварительно принятых/незавершённых пунктов подробно описаны в [roadmap.md](roadmap.md) и [SPECIFICATION.md](SPECIFICATION.md). Q18–Q20 остаются PROPOSAL и не входят в канон.

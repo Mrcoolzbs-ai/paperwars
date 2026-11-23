@@ -8,4 +8,5 @@ export interface DomainEventEnvelope<TType extends string, TPayload> {
   readonly type: TType;
   readonly schemaVersion: number;
   readonly payload: TPayload;
+  readonly visibility: 'public' | 'private';
 }
