@@ -79,15 +79,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const email = `Auth-${randomUUID()}@Example.Test`;
       const password = 'a secure test password with enough length';
 
-      const challenge = await auth.register(`  ${email}  `, password);
-      expect(challenge.user.email).toBe(email.trim().toLowerCase());
-      await expect(auth.login(email, password)).rejects.toBeInstanceOf(EmailNotVerifiedError);
-      const registered = await auth.verifyEmail(challenge.verificationToken);
+      const registered = await createEmailLoginUser(auth, current.pool, `  ${email}  `, password);
+      expect(registered.user.email).toBe(email.trim().toLowerCase());
       expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
 
-      await expect(auth.register(email.toUpperCase(), password)).rejects.toBeInstanceOf(
-        EmailAlreadyRegisteredError,
+      const secondUser = await createEmailLoginUser(
+        auth,
+        current.pool,
+        `duplicate-target-${randomUUID()}@example.test`,
+        password,
       );
+      await expect(
+        auth.updateProfile(secondUser.user.id, secondUser.user.displayName, email.toUpperCase()),
+      ).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
       await expect(auth.login(email, 'wrong password long enough')).rejects.toBeInstanceOf(
         InvalidCredentialsError,
       );
@@ -126,8 +130,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrent = await registerVerifiedUser(
+      const concurrent = await createEmailLoginUser(
         auth,
+        current.pool,
         `concurrent-${randomUUID()}@example.test`,
         password,
       );
@@ -162,8 +167,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await registerVerifiedUser(
+      const user = await createEmailLoginUser(
         auth,
+        current.pool,
         `campaign-${randomUUID()}@example.test`,
         'another secure test password',
       );
@@ -231,15 +237,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const owner = await registerVerifiedUser(
+      const owner = await createEmailLoginUser(
         auth,
+        current.pool,
         `capacity-owner-${randomUUID()}@example.test`,
         'capacity owner password secure',
       );
       const guests = await Promise.all(
         Array.from({ length: 4 }, (_, index) =>
-          registerVerifiedUser(
+          createEmailLoginUser(
             auth,
+            current.pool,
             `capacity-guest-${index}-${randomUUID()}@example.test`,
             'capacity guest password secure',
           ),
