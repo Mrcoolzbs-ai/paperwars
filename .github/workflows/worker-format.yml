@@ -1,18 +1,21 @@
 name: Temporary Worker Prettier
 
 on:
-  push:
-    branches: [feat/baseline-order-resolver-worker]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   format:
+    if: github.event.pull_request.head.ref == 'feat/baseline-order-resolver-worker'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
@@ -35,5 +38,6 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add packages/worker/src/baseline-resolver.ts packages/worker/src/host.ts tests/smoke/baseline-resolver.test.ts tests/smoke/baseline-worker.test.ts
             git commit -m "style: format baseline worker implementation"
-            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+            target_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+            git push origin "HEAD:refs/heads/${target_branch}"
           fi
