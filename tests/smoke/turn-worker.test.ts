@@ -389,10 +389,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         await expect(worker.processNext()).rejects.toThrow(
           'Private game events must specify a valid recipientCountryId',
         );
-        const events = await pool.query(
-          'SELECT 1 FROM game_events WHERE campaign_id = $1',
-          [fixture.campaignId],
-        );
+        const events = await pool.query('SELECT 1 FROM game_events WHERE campaign_id = $1', [
+          fixture.campaignId,
+        ]);
         expect(events.rowCount).toBe(0);
       } finally {
         await removeFixture(fixture);
