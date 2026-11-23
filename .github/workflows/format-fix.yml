@@ -1,0 +1,48 @@
+name: Temporary Prettier Fix
+
+on:
+  push:
+    branches: [feat/game-client-mainline]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Format changed source files
+        run: >-
+          pnpm exec prettier --write
+          apps/api/src/app.ts
+          apps/web/scripts/build.mjs
+          packages/world/src/country-setup.ts
+          packages/world/src/types.ts
+          tests/smoke/api-auth.test.ts
+          tests/smoke/auth-campaign.test.ts
+          tests/smoke/campaign-visibility-api.test.ts
+          tests/smoke/country-setup-api.test.ts
+          tests/smoke/country-setup.test.ts
+      - name: Commit formatting
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add apps/api/src/app.ts apps/web/scripts/build.mjs packages/world/src/country-setup.ts packages/world/src/types.ts tests/smoke/api-auth.test.ts tests/smoke/auth-campaign.test.ts tests/smoke/campaign-visibility-api.test.ts tests/smoke/country-setup-api.test.ts tests/smoke/country-setup.test.ts
+            git commit -m "style: format game client integration"
+            git push
+          fi
