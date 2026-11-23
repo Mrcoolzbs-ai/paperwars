@@ -135,10 +135,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         method: 'POST',
         url: '/auth/password',
         headers: { authorization: `Bearer ${body.accessToken}` },
-        payload: {
-          currentPassword: password,
-          newPassword: 'a replacement API backup password',
-        },
+        payload: { currentPassword: password, newPassword: 'a replacement API backup password' },
       });
       expect(passwordUpdate.statusCode).toBe(204);
       const backupLogin = await app.inject({
