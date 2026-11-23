@@ -10,6 +10,9 @@
     librarySystems: [],
     availableSystems: [],
     pending: [],
+    isAdmin: false,
+    adminOverview: null,
+    adminCampaignDetail: null,
     countryProfile: null,
     turnStatus: null,
     orderResults: [],
@@ -667,6 +670,10 @@
   }
 
   function activateTab(tab) {
+    if (tab === 'admin' && !state.isAdmin) {
+      showToast('Административный доступ не настроен для этой учётной записи.', true);
+      return;
+    }
     $$('.workspace-tab').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
     $$('.tab-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== `tab-${tab}`));
     if (tab === 'systems') loadSystems();
@@ -675,7 +682,27 @@
       resetTerritoryGrid();
       refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
     }
-    if (tab === 'admin') loadPending();
+    if (tab === 'admin') {
+      loadAdminConsole();
+      if (state.campaign) loadPending();
+      else $('#pending-list').innerHTML = '<div class="empty-state compact">Открой кампанию, чтобы просмотреть её очередь модерации учений.</div>';
+    }
+  }
+
+  async function loadAdminAccess() {
+    state.isAdmin = false;
+    $('#admin-tab-label').classList.add('hidden');
+    try {
+      const result = await request('/admin/access');
+      state.isAdmin = result.isAdmin === true;
+    } catch {
+      state.isAdmin = false;
+    }
+    $('#admin-tab-label').classList.toggle('hidden', !state.isAdmin);
+    if (!state.isAdmin && $('.workspace-tab.active')?.dataset.tab === 'admin') {
+      activateTab('overview');
+    }
+    return state.isAdmin;
   }
 
   async function loadSystems() {
@@ -1367,6 +1394,7 @@
         state.token = data.accessToken;
         sessionStorage.setItem('pw_access_token', state.token);
         state.user = data.user;
+        await loadAdminAccess();
         showScreen('game');
 
         let campaignLoadError = null;
@@ -1419,6 +1447,10 @@
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
+      state.isAdmin = false;
+      state.adminOverview = null;
+      state.adminCampaignDetail = null;
+      $('#admin-tab-label').classList.add('hidden');
       sessionStorage.removeItem('pw_access_token');
       showScreen('auth');
       showToast('Сессия завершена.');
@@ -1561,6 +1593,11 @@
     $('#building-type').addEventListener('change', (event) => { state.selectedBuilding = event.target.value; });
     $('#country-form').addEventListener('submit', submitCountry);
     $('#refresh-pending').addEventListener('click', loadPending);
+    $('#refresh-admin').addEventListener('click', loadAdminConsole);
+    $('#admin-campaign-list').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-admin-campaign-id]');
+      if (button?.dataset.adminCampaignId) loadAdminCampaignDetail(button.dataset.adminCampaignId);
+    });
   }
 
   async function init() {
@@ -1576,6 +1613,7 @@
         showScreen('auth');
         return;
       }
+      await loadAdminAccess();
 
       // Authentication is already valid. A campaign-listing failure must not
       // erase the session or send the player back to the welcome screen.
