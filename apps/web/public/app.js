@@ -373,7 +373,12 @@
     state.countryProfile = null;
     state.turnStatus = null;
     state.orderResults = [];
+    state.turnRoomLoading = false;
     state.turnRoomError = '';
+    $('#workspace-turn-label').textContent = 'СВЕРКА';
+    $('#workspace-turn-number').textContent = 'ХОД ' + String(campaign.currentTurn || 1).padStart(2, '0');
+    $('#world-status-value').textContent = 'Загрузка';
+    $('#world-turn-value').textContent = String(campaign.currentTurn || 1).padStart(2, '0');
     state.orderResultsError = '';
     state.loadedSystemEmblemDataUrl = null;
     state.placements = {};
@@ -830,6 +835,22 @@
     if (refreshButton) refreshButton.disabled = state.turnRoomLoading;
 
     const status = state.turnStatus;
+    if (status) {
+      const turnLabel = String(status.currentTurn).padStart(2, '0');
+      const headerStatus = status.status === 'completed'
+        ? 'ЗАВЕРШЕНО'
+        : (status.turnJobStatus === 'processing'
+          ? 'ХОД ОБРАБАТЫВАЕТСЯ'
+          : (status.ordersAccepting ? 'ПРИЁМ ОТКРЫТ' : 'ПРИЁМ ЗАКРЫТ'));
+      $('#workspace-turn-label').textContent = headerStatus;
+      $('#workspace-turn-number').textContent = 'ХОД ' + turnLabel;
+      $('#world-status-value').textContent = status.status === 'completed'
+        ? 'Завершена'
+        : (status.turnJobStatus === 'processing'
+          ? 'Обработка'
+          : (status.ordersAccepting ? 'Приём приказов' : 'Ожидание'));
+      $('#world-turn-value').textContent = turnLabel;
+    }
     if (state.turnRoomLoading && !status) {
       statusHost.innerHTML = '<div class="turn-empty"><span class="turn-loading-mark">↻</span><strong>Сверяем состояние мира…</strong><p>Получаем текущий ход и личный статус приказов.</p></div>';
     } else if (state.turnRoomError) {
