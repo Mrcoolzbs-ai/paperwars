@@ -218,6 +218,26 @@ RETURNING id;
 
 Модификаторы применяются до MOVE, BATTLE и ECONOMY. Завершение сноса и восстановление шахты происходят в BUILD, поэтому их последствия учитываются в ECONOMY того же хода.
 
+
+### 6.12. Первый production resolver: baseline-v1 demolition subset
+
+Состояние на 23 ноября 2026 года:
+
+- \`packages/worker/src/baseline-resolver.ts\` регистрирует \`baseline-v1\`/\`rng-v1\` и поддерживает один конкретный order envelope: \`demolish_building\` с \`schemaVersion: 1\` и payload \`{x, y}\` в глобальных координатах snapshot.
+- У государства 3 ОД на ход; снос стоит 1 ОД. В текущем resolver учитываются только поддерживаемые приказы на снос, поскольку другие семейства команд пока возвращают \`UNSUPPORTED_ORDER_TYPE\` и не исполняются.
+- Валидация проверяет, что страна присутствует в snapshot, клетка входит в её владение, координаты являются неотрицательными безопасными целыми, на клетке есть здание и население может принять возвращаемого жителя.
+- Если несколько finalized demolition orders одной страны направлены на одну клетку, все такие приказы получают \`ORDER_CONFLICT\`. При превышении доступных 3 ОД все валидные приказы на снос этой страны в текущем resolver получают \`ACTION_POINTS_EXCEEDED\`; resolver не выбирает победителя по случайному или порядку вставки.
+- Принятый снос выполняется в фазе BUILD текущего resolved turn: \`buildingType\` становится \`null\`, население клетки увеличивается ровно на одного жителя, создаётся публичное \`building_demolished\` событие и личный order result \`BUILDING_DEMOLISHED\`. Механический эффект доступен в новом snapshot следующего хода.
+- Детерминированный event ID выводится из campaign/turn/order identity; само действие не потребляет RNG.
+- В этом инкременте экономическая фаза ещё не вычисляется. Отчёт содержит \`ECONOMY_PHASE_NOT_IMPLEMENTED\`, battleReports пуст, а это не означает, что произведены еда, золото или другие ресурсы.
+- Все неизвестные order types/schema versions получают явный rejected result. Ни API, ни Worker не подменяют отсутствующие правила no-op успехом.
+
+Production process:
+- \`packages/worker/src/host.ts\` запускает отдельный процесс \`@paper-wars/worker\` и строго проверяет \`RULESET_VERSION=baseline-v1\` и \`RNG_VERSION=rng-v1\`.
+- Root command: \`pnpm start:worker\`; package command: \`pnpm --filter @paper-wars/worker start\`. При деплое на Railway Worker должен быть отдельным service из того же репозитория, с общей \`DATABASE_URL\`, теми же версиями ruleset/RNG и идентичными \`SEED_ENCRYPTION_KEYS\`/\`SEED_ENCRYPTION_ACTIVE_KEY_VERSION\`, что и API.
+- Во время атомарной финализации Worker синхронизирует проекцию \`country_cells.population\` и \`country_buildings\` из next snapshot. Это нужно, потому что member-scoped map API читает реляционные таблицы, а не snapshot JSON. Вся синхронизация выполняется внутри той же транзакции, под fenced TurnJob lease.
+- Настройка Worker не открывает публичный HTTP endpoint. API и Worker разделяют очередь PostgreSQL, но имеют разные процессы и lifecycle.
+
 ### 6.11. Сезонная проверка шахт
 
 - `SEASONAL_EVENTS` с проверкой шахт выполняется только в конце шестого хода каждого сезона (при базовой схеме это ход, кратный 6; либо эквивалентный вычисляемый флаг ruleset).
