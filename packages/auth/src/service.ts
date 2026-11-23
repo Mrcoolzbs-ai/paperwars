@@ -78,9 +78,9 @@ interface RefreshTokenRow {
 
 function normalizeDisplayName(value: unknown): string {
   if (typeof value !== 'string') throw new AuthValidationError('Nickname must be a string');
-  const name = value.normalize('NFC').trim().replace(/\\s+/gu, ' ');
+  const name = value.normalize('NFC').trim().replace(/\s+/gu, ' ');
   const length = Array.from(name).length;
-  if (length < 2 || length > 32 || !/^[\\p{L}\\p{N}][\\p{L}\\p{N} ._-]*$/u.test(name)) {
+  if (length < 2 || length > 32 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(name)) {
     throw new AuthValidationError('Nickname must be 2–32 characters and use letters, numbers, spaces, dots, dashes or underscores');
   }
   return name;
