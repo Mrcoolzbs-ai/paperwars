@@ -427,6 +427,10 @@ export const orders = pgTable(
     orderType: text('order_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     status: text('status').notNull().default('draft'),
+    resolutionStatus: text('resolution_status'),
+    resultCode: text('result_code'),
+    resultMessage: text('result_message'),
+    resultData: jsonb('result_data').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     finalizedAt: timestamp('finalized_at', { withTimezone: true, mode: 'date' }),
@@ -444,6 +448,15 @@ export const orders = pgTable(
     check(
       'orders_status_check',
       sql`${table.status} in ('draft', 'unconfirmed', 'confirmed', 'finalized', 'discarded')`,
+    ),
+    check(
+      'orders_resolution_status_check',
+      sql`${table.resolutionStatus} is null or ${table.resolutionStatus} in ('accepted', 'rejected', 'superseded')`,
+    ),
+    check(
+      'orders_resolution_fields_check',
+      sql`(${table.resolutionStatus} is null and ${table.resultCode} is null and ${table.resultMessage} is null and ${table.resultData} is null)
+        or (${table.resolutionStatus} is not null and ${table.resultCode} is not null)`,
     ),
   ],
 );
