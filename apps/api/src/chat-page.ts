@@ -107,13 +107,24 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     chatPanel.classList.remove('hidden');
     $('logout').classList.remove('hidden');
   }
-  async function api(path, options) {
+  async function api(path, options, retried) {
     const opts = options || {};
     const headers = new Headers(opts.headers || {});
     if (state.token) headers.set('Authorization', 'Bearer ' + state.token);
     if (opts.body !== undefined) headers.set('Content-Type', 'application/json');
     const response = await fetch(path, { ...opts, headers, credentials: 'same-origin' });
     const body = response.status === 204 ? null : await response.json().catch(() => null);
+    if (response.status === 401 && state.token && path !== '/auth/refresh' && !retried) {
+      const refreshResponse = await fetch('/auth/refresh', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const refreshed = await refreshResponse.json().catch(() => null);
+      if (refreshResponse.ok && refreshed && typeof refreshed.accessToken === 'string') {
+        state.token = refreshed.accessToken;
+        return api(path, opts, true);
+      }
+    }
     if (!response.ok) {
       const error = new Error((body && body.message) || 'Запрос завершился ошибкой.');
       error.status = response.status;
