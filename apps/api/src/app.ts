@@ -119,7 +119,10 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
   }
   if (error instanceof CampaignTurnProcessingError) {
-    if (error.code === 'CAMPAIGN_NOT_FOUND') {
+    if (error.code === 'INVALID_ORDER') {
+      return reply.code(400).send({ error: error.code, message: error.message });
+    }
+    if (error.code === 'CAMPAIGN_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND') {
       return reply.code(404).send({ error: error.code, message: error.message });
     }
     if (error.code === 'NOT_ACTIVE_MEMBER') {
@@ -295,6 +298,73 @@ function registerCampaignRoutes(
       return sendAuthError(error, reply);
     }
   });
+
+  app.get('/campaigns/:campaignId/orders/mine', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const orders = await campaignService.listOrders(user.id, getCampaignId(request));
+      return reply.send({ orders });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/orders', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const order = await campaignService.createOrder(user.id, getCampaignId(request), {
+        type: body['type'],
+        schemaVersion: body['schemaVersion'],
+        payload: body['payload'],
+      });
+      return reply.code(201).send({ order });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.patch<{ Params: { campaignId: string; orderId: string } }>(
+    '/campaigns/:campaignId/orders/:orderId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const order = await campaignService.updateOrder(
+          user.id,
+          getCampaignId(request),
+          request.params.orderId,
+          {
+            ...(body['type'] === undefined ? {} : { type: body['type'] }),
+            ...(body['schemaVersion'] === undefined
+              ? {}
+              : { schemaVersion: body['schemaVersion'] }),
+            ...(body['payload'] === undefined ? {} : { payload: body['payload'] }),
+          },
+        );
+        return reply.send({ order });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
+  app.delete<{ Params: { campaignId: string; orderId: string } }>(
+    '/campaigns/:campaignId/orders/:orderId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await campaignService.deleteOrder(
+          user.id,
+          getCampaignId(request),
+          request.params.orderId,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
 
   app.post('/campaigns/:campaignId/orders/confirm', async (request, reply) => {
     try {
