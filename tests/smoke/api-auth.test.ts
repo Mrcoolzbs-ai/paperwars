@@ -155,8 +155,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaignId],
       );
 
-      const initialTurnCommitment =
-        campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment;
+      const campaignResponse = campaign.json<{ campaign: { firstTurnCommitment: string } }>();
+      const initialTurnCommitment = campaignResponse.campaign.firstTurnCommitment;
       const turnStatus = await app.inject({
         method: 'GET',
         url: `/campaigns/${campaignId}/turn`,
