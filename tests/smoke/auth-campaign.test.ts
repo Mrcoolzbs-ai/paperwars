@@ -6,6 +6,7 @@ import {
   createCampaignService,
   AuthValidationError,
   EmailAlreadyRegisteredError,
+  EmailNotVerifiedError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
@@ -14,6 +15,15 @@ import { createPostgresPersistence, runMigrations } from '@paper-wars/persistenc
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
+
+async function registerVerifiedUser(
+  auth: ReturnType<typeof createAuthService>,
+  email: string,
+  password: string,
+) {
+  const challenge = await auth.register(email, password);
+  return auth.verifyEmail(challenge.verificationToken);
+}
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'authentication and campaign lifecycle integration',
@@ -60,8 +70,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const email = `Auth-${randomUUID()}@Example.Test`;
       const password = 'a secure test password with enough length';
 
-      const registered = await auth.register(`  ${email}  `, password);
-      expect(registered.user.email).toBe(email.trim().toLowerCase());
+      const challenge = await auth.register(`  ${email}  `, password);
+      expect(challenge.user.email).toBe(email.trim().toLowerCase());
+      await expect(auth.login(email, password)).rejects.toBeInstanceOf(EmailNotVerifiedError);
+      const registered = await auth.verifyEmail(challenge.verificationToken);
       expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
 
       await expect(auth.register(email.toUpperCase(), password)).rejects.toBeInstanceOf(
@@ -105,7 +117,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrent = await auth.register(`concurrent-${randomUUID()}@example.test`, password);
+      const concurrent = await registerVerifiedUser(auth, `concurrent-${randomUUID()}@example.test`, password);
       const attempts = await Promise.allSettled([
         auth.refresh(concurrent.refreshToken),
         auth.refresh(concurrent.refreshToken),
@@ -137,7 +149,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await auth.register(
+      const user = await registerVerifiedUser(
+        auth,
         `campaign-${randomUUID()}@example.test`,
         'another secure test password',
       );
@@ -205,13 +218,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const owner = await auth.register(
+      const owner = await registerVerifiedUser(
+        auth,
         `capacity-owner-${randomUUID()}@example.test`,
         'capacity owner password secure',
       );
       const guests = await Promise.all(
         Array.from({ length: 4 }, (_, index) =>
-          auth.register(
+          registerVerifiedUser(
+            auth,
             `capacity-guest-${index}-${randomUUID()}@example.test`,
             'capacity guest password secure',
           ),
@@ -254,7 +269,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await auth.register(
+      const user = await registerVerifiedUser(
+        auth,
         `rollback-${randomUUID()}@example.test`,
         'transaction rollback password',
       );
