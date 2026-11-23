@@ -8,10 +8,7 @@ import {
 } from '@paper-wars/auth';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
-import {
-  createCountrySetupService,
-  recalculateCountryPopulations,
-} from '@paper-wars/world';
+import { createCountrySetupService, recalculateCountryPopulations } from '@paper-wars/world';
 import { createApp } from './app.js';
 
 function requiredEnv(name: string): string {
