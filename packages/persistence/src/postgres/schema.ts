@@ -39,8 +39,14 @@ export const users = pgTable(
   (table) => [
     uniqueIndex('users_email_ci_unique').on(sql`lower(${table.email})`),
     uniqueIndex('users_display_name_ci_unique').on(sql`lower(btrim(${table.displayName}))`),
-    check('users_email_normalized_check', sql`${table.email} is null or ${table.email} = lower(btrim(${table.email}))`),
-    check('users_display_name_length_check', sql`char_length(btrim(${table.displayName})) between 2 and 32`),
+    check(
+      'users_email_normalized_check',
+      sql`${table.email} is null or ${table.email} = lower(btrim(${table.email}))`,
+    ),
+    check(
+      'users_display_name_length_check',
+      sql`char_length(btrim(${table.displayName})) between 2 and 32`,
+    ),
     check('users_status_check', sql`${table.status} in ('active', 'disabled')`),
   ],
 );
