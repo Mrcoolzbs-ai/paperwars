@@ -114,7 +114,8 @@ export interface AvailableSocialSystem {
 export interface CampaignMapCountry {
   readonly id: string;
   readonly name: string;
-  readonly ownerUserId: string;
+  /** True only for the country owned by the requesting active member. */
+  readonly isMine: boolean;
   readonly flagDataUrl: string | null;
   readonly cells: ReadonlyArray<{
     readonly x: number;
@@ -125,7 +126,6 @@ export interface CampaignMapCountry {
 }
 
 export interface CampaignSpawnReservation {
-  readonly userId: string;
   readonly centerX: number;
   readonly centerY: number;
   readonly isMine: boolean;
