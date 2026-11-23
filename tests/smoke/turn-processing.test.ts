@@ -355,6 +355,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
 
         await expect(
+          confirmCampaignOrders(pool, fixture.campaignId, randomUUID()),
+        ).rejects.toMatchObject({ code: 'NOT_ACTIVE_MEMBER' });
+        await expect(
           confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!),
         ).rejects.toMatchObject({ code: 'ORDERS_DEADLINE_PASSED' });
         await expect(
