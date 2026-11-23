@@ -18,6 +18,10 @@ export {
 } from './postgres/random-draws.js';
 export {
   confirmCampaignOrders,
+  createCampaignOrder,
+  updateCampaignOrder,
+  deleteCampaignOrder,
+  listCampaignOrders,
   closeOrders,
   completeTurnJob,
   StaleTurnJobLeaseError,
@@ -28,6 +32,9 @@ export {
 } from './postgres/turn-processing.js';
 export type {
   CampaignTurnProcessingErrorCode,
+  CampaignOrderView,
+  CreateCampaignOrderInput,
+  UpdateCampaignOrderInput,
   ClosedTurnJob,
   TurnJobLease,
   ReapedTurnJobs,
