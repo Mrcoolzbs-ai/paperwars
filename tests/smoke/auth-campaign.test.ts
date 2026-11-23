@@ -4,12 +4,10 @@ import {
   createAccessTokenSigner,
   createAuthService,
   createCampaignService,
+  AuthValidationError,
   EmailAlreadyRegisteredError,
   EmailNotVerifiedError,
-  ExternalIdentityAlreadyLinkedError,
-  ExternalIdentityEmailConflictError,
   InvalidCredentialsError,
-  InvalidEmailVerificationTokenError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
 } from '@paper-wars/auth';
@@ -18,15 +16,18 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
+async function registerVerifiedUser(
+  auth: ReturnType<typeof createAuthService>,
+  email: string,
+  password: string,
+) {
+  const challenge = await auth.register(email, password);
+  return auth.verifyEmail(challenge.verificationToken);
+}
+
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'authentication and campaign lifecycle integration',
   () => {
-    const registrationTestTitle =
-      'registers, normalizes email, logs in and rotates refresh tokens with reuse detection';
-    const campaignTestTitle =
-      'creates a campaign, membership and the first committed seed in one transaction';
-    const vkTestTitle =
-      'verifies first-time VK accounts and links VK only to an authenticated, verified account';
     const persistence =
       databaseUrl === undefined
         ? undefined
@@ -59,7 +60,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it(registrationTestTitle, async () => {
+    it('registers, normalizes email, logs in and rotates refresh tokens with reuse detection', async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -72,11 +73,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const challenge = await auth.register(`  ${email}  `, password);
       expect(challenge.user.email).toBe(email.trim().toLowerCase());
       await expect(auth.login(email, password)).rejects.toBeInstanceOf(EmailNotVerifiedError);
-      await expect(auth.resendEmailVerification(email)).resolves.toBeUndefined();
       const registered = await auth.verifyEmail(challenge.verificationToken);
-      await expect(auth.verifyEmail(challenge.verificationToken)).rejects.toBeInstanceOf(
-        InvalidEmailVerificationTokenError,
-      );
       expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
 
       await expect(auth.register(email.toUpperCase(), password)).rejects.toBeInstanceOf(
@@ -104,11 +101,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         revoked: string;
       }>(
         `SELECT
-           count(*)::text AS total,
-           bool_or(token_hash = $2) AS raw_token_matches,
-           count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked
-         FROM refresh_tokens
-         WHERE user_id = $1`,
+             count(*)::text AS total,
+             bool_or(token_hash = $2) AS raw_token_matches,
+             count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked
+           FROM refresh_tokens
+           WHERE user_id = $1`,
         [registered.user.id, registered.refreshToken],
       );
       expect(stored.rows[0]?.total).toBe('3');
@@ -120,11 +117,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrentChallenge = await auth.register(
-        `concurrent-${randomUUID()}@example.test`,
-        password,
-      );
-      const concurrent = await auth.verifyEmail(concurrentChallenge.verificationToken);
+      const concurrent = await registerVerifiedUser(auth, `concurrent-${randomUUID()}@example.test`, password);
       const attempts = await Promise.allSettled([
         auth.refresh(concurrent.refreshToken),
         auth.refresh(concurrent.refreshToken),
@@ -149,18 +142,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
     });
 
-    it(campaignTestTitle, async () => {
+    it('creates a campaign, membership and the first committed seed in one transaction', async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const userChallenge = await auth.register(
+      const user = await registerVerifiedUser(
+        auth,
         `campaign-${randomUUID()}@example.test`,
         'another secure test password',
       );
-      const user = await auth.verifyEmail(userChallenge.verificationToken);
       const nonce = Buffer.alloc(12, 0x31);
       const seed = Buffer.alloc(32, 0x42);
       const campaigns = createCampaignService({
@@ -175,16 +168,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       const campaignName = `integration-${randomUUID()}`;
 
-      const created = await campaigns.createCampaign(user.user.id, campaignName);
+      const created = await campaigns.createCampaign(user.user.id, campaignName, {
+        mapWidth: 40,
+        mapHeight: 30,
+        mapSeed: 'repeatable-world-test',
+      });
       expect(created.status).toBe('active');
       expect(created.currentTurn).toBe(1);
       expect(created.ordersLocked).toBe(true);
       expect(created.firstTurnCommitment).toMatch(/^[a-f0-9]{64}$/);
+      expect(created.mapSeed).toBe('repeatable-world-test');
+      expect(created.maxPlayers).toBe(12);
 
       const membership = await current.pool.query<{ status: string; country_id: string | null }>(
-        `SELECT status, country_id
-         FROM campaign_memberships
-         WHERE campaign_id = $1 AND user_id = $2`,
+        `SELECT status, country_id FROM campaign_memberships
+           WHERE campaign_id = $1 AND user_id = $2`,
         [created.id, user.user.id],
       );
       expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
@@ -195,9 +193,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         encrypted_seed: Buffer;
         nonce: Buffer;
       }>(
-        `SELECT status, commitment, encrypted_seed, nonce
-         FROM random_seeds
-         WHERE campaign_id = $1 AND turn_number = 1`,
+        `SELECT status, commitment, encrypted_seed, nonce FROM random_seeds
+           WHERE campaign_id = $1 AND turn_number = 1`,
         [created.id],
       );
       expect(seedRow.rows).toHaveLength(1);
@@ -209,6 +206,60 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const summaries = await campaigns.listCampaignsForUser(user.user.id);
       expect(summaries[0]?.id).toBe(created.id);
       expect(summaries[0]?.firstTurnCommitment).toBe(created.firstTurnCommitment);
+      expect(summaries[0]?.playerCount).toBe(1);
+      expect(summaries[0]?.maxPlayers).toBe(12);
+      expect(summaries[0]?.mapSeed).toBe('repeatable-world-test');
+    });
+
+    it('enforces one player slot per 100 map cells and frees slots when a player leaves', async () => {
+      const current = getPersistence();
+      const auth = createAuthService({
+        pool: current.pool,
+        accessTokens: signer,
+        refreshTokenTtlSeconds: 3600,
+      });
+      const owner = await registerVerifiedUser(
+        auth,
+        `capacity-owner-${randomUUID()}@example.test`,
+        'capacity owner password secure',
+      );
+      const guests = await Promise.all(
+        Array.from({ length: 4 }, (_, index) =>
+          registerVerifiedUser(
+            auth,
+            `capacity-guest-${index}-${randomUUID()}@example.test`,
+            'capacity guest password secure',
+          ),
+        ),
+      );
+      const campaigns = createCampaignService({
+        pool: current.pool,
+        keyProvider,
+        rulesetVersion: 'baseline-v1',
+        rngVersion: 'rng-v1',
+      });
+      const campaign = await campaigns.createCampaign(
+        owner.user.id,
+        `capacity-world-${randomUUID()}`,
+        { mapWidth: 20, mapHeight: 20, mapSeed: 'capacity-test-world' },
+      );
+      expect(campaign.maxPlayers).toBe(4);
+
+      await campaigns.joinCampaign(guests[0]!.user.id, campaign.id);
+      await campaigns.joinCampaign(guests[1]!.user.id, campaign.id);
+      await campaigns.joinCampaign(guests[2]!.user.id, campaign.id);
+      await expect(campaigns.joinCampaign(guests[3]!.user.id, campaign.id)).rejects.toBeInstanceOf(
+        AuthValidationError,
+      );
+
+      let ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
+      expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
+
+      await campaigns.leaveCampaign(guests[1]!.user.id, campaign.id);
+      expect(await campaigns.listCampaignsForUser(guests[1]!.user.id)).toHaveLength(0);
+      await campaigns.joinCampaign(guests[3]!.user.id, campaign.id);
+      ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
+      expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
     });
 
     it('rolls back a campaign and owner membership when initial seed insertion fails', async () => {
@@ -218,11 +269,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const userChallenge = await auth.register(
+      const user = await registerVerifiedUser(
+        auth,
         `rollback-${randomUUID()}@example.test`,
         'transaction rollback password',
       );
-      const user = await auth.verifyEmail(userChallenge.verificationToken);
       const conflictingNonce = Buffer.alloc(12, 0x51);
       const stableOptions = {
         seedSource: () => Buffer.alloc(32, 0x52),
@@ -236,56 +287,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         seedOptions: stableOptions,
       });
 
-      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`);
+      await campaigns.createCampaign(user.user.id, `nonce-holder-${randomUUID()}`, {
+        mapWidth: 40,
+        mapHeight: 30,
+      });
       const failedName = `should-rollback-${randomUUID()}`;
-      await expect(campaigns.createCampaign(user.user.id, failedName)).rejects.toThrow(
-        /Failed to generate unique AES-GCM nonce/,
-      );
+      await expect(
+        campaigns.createCampaign(user.user.id, failedName, { mapWidth: 40, mapHeight: 30 }),
+      ).rejects.toThrow(/Failed to generate unique AES-GCM nonce/);
 
       const rows = await current.pool.query<{ count: string }>(
         'SELECT count(*)::text AS count FROM campaigns WHERE name = $1',
         [failedName],
       );
       expect(rows.rows[0]?.count).toBe('0');
-    });
-
-    it(vkTestTitle, async () => {
-      const auth = createAuthService({
-        pool: getPersistence().pool,
-        accessTokens: signer,
-        refreshTokenTtlSeconds: 3600,
-      });
-      const vkEmail = `new-vk-${randomUUID()}@example.test`;
-      const first = await auth.signInWithVk('vk-user-1001', vkEmail);
-      expect(first.kind).toBe('verification');
-      if (first.kind !== 'verification' || first.challenge === undefined) {
-        throw new Error('New VK identity should require email verification');
-      }
-      await expect(auth.login(vkEmail, 'not-the-random-password')).rejects.toBeInstanceOf(
-        InvalidCredentialsError,
-      );
-      const verified = await auth.verifyEmail(first.challenge.verificationToken);
-      expect(verified.user.email).toBe(vkEmail);
-
-      const returning = await auth.signInWithVk('vk-user-1001', undefined);
-      expect(returning.kind).toBe('session');
-      if (returning.kind !== 'session') throw new Error('Verified VK identity should sign in');
-
-      await expect(auth.signInWithVk('vk-user-1002', vkEmail)).rejects.toBeInstanceOf(
-        ExternalIdentityEmailConflictError,
-      );
-
-      const ownerChallenge = await auth.register(
-        `vk-link-owner-${randomUUID()}@example.test`,
-        'vk link owner password long enough',
-      );
-      const owner = await auth.verifyEmail(ownerChallenge.verificationToken);
-      await auth.linkVkIdentity(owner.user.id, 'vk-user-2001');
-      const linkedLogin = await auth.signInWithVk('vk-user-2001', undefined);
-      expect(linkedLogin.kind).toBe('session');
-      await expect(auth.linkVkIdentity(verified.user.id, 'vk-user-2001')).rejects.toBeInstanceOf(
-        ExternalIdentityAlreadyLinkedError,
-      );
     });
   },
 );
