@@ -88,7 +88,12 @@ export interface StartBuildingPlacement {
 }
 
 export type AdditionalBuildingType =
-  'factory' | 'field' | 'religious_building' | 'science' | 'barracks' | 'tower';
+  | 'factory'
+  | 'field'
+  | 'religious_building'
+  | 'science'
+  | 'barracks'
+  | 'tower';
 
 export interface BuildBuildingInput {
   readonly buildingType: unknown;
