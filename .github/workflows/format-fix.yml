@@ -23,7 +23,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
       - name: Format changed source files
@@ -47,5 +46,3 @@ jobs:
             git commit -m "style: format game client integration"
             git push
           fi
-
-# Trigger the one-time formatter now that this workflow is present on the default branch.
