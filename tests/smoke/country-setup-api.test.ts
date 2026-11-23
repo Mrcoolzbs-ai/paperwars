@@ -12,6 +12,15 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
+async function registerVerified(
+  auth: ReturnType<typeof createAuthService>,
+  email: string,
+  password: string,
+) {
+  const challenge = await auth.register(email, password);
+  return auth.verifyEmail(challenge.verificationToken);
+}
+
 const RELIGION_BUILDINGS: ReadonlyArray<StartBuildingPlacement> = [
   { type: 'factory', x: 0, y: 0 },
   { type: 'factory', x: 1, y: 0 },
@@ -66,11 +75,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rulesetVersion: 'baseline-v1',
         rngVersion: 'rng-v1',
       });
-      const admin = await auth.register(
+      const admin = await registerVerified(auth,
         `social-system-admin-${randomUUID()}@example.test`,
         'social system api admin password',
       );
-      const member = await auth.register(
+      const member = await registerVerified(auth,
         `social-system-member-${randomUUID()}@example.test`,
         'social system api member password',
       );
