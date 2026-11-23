@@ -18,6 +18,7 @@ export {
 } from './postgres/random-draws.js';
 export {
   confirmCampaignOrders,
+  getCampaignTurnStatus,
   createCampaignOrder,
   updateCampaignOrder,
   deleteCampaignOrder,
@@ -32,6 +33,7 @@ export {
 } from './postgres/turn-processing.js';
 export type {
   CampaignTurnProcessingErrorCode,
+  CampaignTurnStatusView,
   CampaignOrderView,
   CreateCampaignOrderInput,
   UpdateCampaignOrderInput,
