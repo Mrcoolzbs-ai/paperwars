@@ -705,6 +705,191 @@
     return state.isAdmin;
   }
 
+  function adminJsonDetails(title, records) {
+    const rows = Array.isArray(records) ? records : [];
+    return '<details class="admin-data-details"><summary><span>' +
+      escapeHtml(title) + '</span><b>' + rows.length + '</b></summary><pre>' +
+      escapeHtml(JSON.stringify(rows, null, 2)) + '</pre></details>';
+  }
+
+  function renderAdminOverview() {
+    const overview = state.adminOverview;
+    if (!overview) return;
+    const totals = overview.totals || {};
+    const statItems = [
+      ['АККАУНТЫ', totals.userCount],
+      ['КАМПАНИИ', totals.campaignCount],
+      ['АКТИВНЫЕ МИРЫ', totals.activeCampaignCount],
+      ['ЗАДАНИЯ WORKER', totals.queuedTurnJobCount],
+    ];
+    $('#admin-overview-stats').innerHTML = statItems.map((item) =>
+      '<div class="admin-stat"><span>' + item[0] + '</span><strong>' +
+      escapeHtml(item[1] ?? 0) + '</strong></div>'
+    ).join('');
+
+    const campaigns = overview.campaigns || [];
+    $('#admin-campaign-count').textContent = String(campaigns.length);
+    $('#admin-campaign-list').innerHTML = campaigns.length ? campaigns.map((campaign) =>
+      '<button class="admin-campaign-item ' +
+      (state.adminCampaignDetail?.campaign?.id === campaign.id ? 'selected' : '') +
+      '" type="button" data-admin-campaign-id="' + escapeHtml(campaign.id) + '">' +
+      '<span class="admin-campaign-item-main"><strong>' + escapeHtml(campaign.name) + '</strong>' +
+      '<small>Ход ' + escapeHtml(campaign.currentTurn) + ' · ' +
+      escapeHtml(campaign.mapWidth || '—') + ' × ' + escapeHtml(campaign.mapHeight || '—') +
+      ' · ' + escapeHtml(campaign.status) + '</small><small>Игроки ' +
+      escapeHtml(campaign.activeMemberCount) + ' · страны ' +
+      escapeHtml(campaign.countryCount) + '</small></span>' +
+      '<span class="admin-campaign-item-state ' +
+      (campaign.ordersLocked ? 'locked' : 'open') + '">' +
+      (campaign.ordersLocked ? 'LOCKED' : 'OPEN') + '</span></button>'
+    ).join('') : '<div class="empty-state compact">Кампаний пока нет.</div>';
+
+    const users = overview.users || [];
+    $('#admin-user-count').textContent = String(users.length);
+    $('#admin-user-list').innerHTML = users.length ?
+      '<div class="admin-user-table">' + users.map((user) =>
+        '<div class="admin-user-row"><div><strong>' + escapeHtml(user.email) +
+        '</strong><small>' + escapeHtml(user.id) + '</small></div><span class="admin-user-status ' +
+        (user.status === 'active' ? 'active' : 'inactive') + '">' +
+        escapeHtml(user.status) + '</span><small>' +
+        escapeHtml(user.campaignMembershipCount ?? 0) + ' камп. · ' +
+        escapeHtml(user.countryCount ?? 0) + ' стран</small></div>'
+      ).join('') + '</div>' :
+      '<div class="empty-state compact">Пользователей пока нет.</div>';
+  }
+
+  function renderAdminCampaignDetail() {
+    const detail = state.adminCampaignDetail;
+    const host = $('#admin-campaign-detail');
+    if (!detail) {
+      host.classList.add('hidden');
+      return;
+    }
+    host.classList.remove('hidden');
+    const campaign = detail.campaign;
+    const members = detail.members || [];
+    const orders = detail.orders || [];
+    const countries = detail.countries || [];
+    const canForceClose = campaign.status === 'active' && !campaign.ordersLocked;
+    const memberRows = members.length ? members.map((member) =>
+      '<tr><td><strong>' + escapeHtml(member.email) + '</strong><small>' +
+      escapeHtml(member.userId) + '</small></td><td>' +
+      escapeHtml(member.membershipStatus) + '</td><td>' +
+      escapeHtml(member.countryName || 'Не основано') + '</td><td>' +
+      (member.ordersConfirmed ? 'Да' : 'Нет') + '</td></tr>'
+    ).join('') : '<tr><td colspan="4">Нет участников</td></tr>';
+
+    host.innerHTML =
+      '<div class="admin-detail-header"><div><div class="panel-kicker">ПОЛНОЕ ДОСЬЕ КАМПАНИИ</div>' +
+      '<h2>' + escapeHtml(campaign.name) + '</h2><p class="muted">' +
+      escapeHtml(campaign.id) + ' · ' + escapeHtml(campaign.rulesetVersion) +
+      ' · RNG ' + escapeHtml(campaign.rngVersion) + '</p></div><div class="admin-detail-actions">' +
+      '<span class="admin-user-status ' + (campaign.status === 'active' ? 'active' : 'inactive') + '">' +
+      (campaign.status === 'completed' ? 'Завершена' : 'Активна') + '</span>' +
+      (canForceClose ? '<button id="admin-force-close" class="button button-danger" type="button">Завершить ход досрочно</button>' : '') +
+      '</div></div>' +
+      '<div class="admin-detail-metrics">' +
+      '<div><span>ТЕКУЩИЙ ХОД</span><strong>' + escapeHtml(campaign.currentTurn) + '</strong></div>' +
+      '<div><span>ПРИЁМ ПРИКАЗОВ</span><strong>' + (campaign.ordersLocked ? 'Закрыт' : 'Открыт') + '</strong></div>' +
+      '<div><span>ДЕДЛАЙН</span><strong>' + escapeHtml(formatTurnDate(campaign.deadlineAt)) + '</strong></div>' +
+      '<div><span>ИГРОКИ / СТРАНЫ</span><strong>' +
+      members.filter((member) => member.membershipStatus === 'active').length + ' / ' +
+      countries.length + '</strong></div></div>' +
+      '<div class="admin-member-section"><div class="panel-heading"><div><div class="panel-kicker">УЧАСТНИКИ</div>' +
+      '<h3>Игроки и подтверждения</h3></div><span class="count-chip">' + members.length +
+      '</span></div><div class="admin-member-table-wrap"><table class="admin-member-table">' +
+      '<thead><tr><th>Аккаунт</th><th>Членство</th><th>Государство</th><th>Подтверждение</th></tr></thead>' +
+      '<tbody>' + memberRows + '</tbody></table></div></div>' +
+      '<div class="admin-raw-grid">' +
+      adminJsonDetails('Государства', detail.countries) +
+      adminJsonDetails('Социальные системы', detail.socialSystems) +
+      adminJsonDetails('Приказы всех игроков · с payload и результатами', detail.orders) +
+      adminJsonDetails('Все события · включая приватные', detail.events) +
+      adminJsonDetails('Находки и скрытые результаты', detail.discoveries) +
+      adminJsonDetails('История находок', detail.discoveryHistory) +
+      adminJsonDetails('Права доступа к находкам', detail.discoveryAccess) +
+      adminJsonDetails('Экономические отчёты', detail.economicReports) +
+      adminJsonDetails('Боевые отчёты', detail.battleReports) +
+      adminJsonDetails('История снимков мира', detail.snapshots) +
+      adminJsonDetails('Последний полный WorldState', detail.latestSnapshot ? [detail.latestSnapshot] : []) +
+      adminJsonDetails('Задания Worker и lease', detail.turnJobs) +
+      adminJsonDetails('Журнал RNG draws', detail.randomDraws) +
+      adminJsonDetails('Commitments seed (без ciphertext и ключей)', detail.seedCommitments) +
+      adminJsonDetails('Журнал административных действий', detail.auditLogs) +
+      '</div><p class="admin-privacy-note">Панель показывает игровые секреты и приватные данные выбранной кампании. Пароли, password hashes, refresh-токены и зашифрованные seed не выдаются. Полные seed остаются под действующим reveal-gating.</p>';
+
+    const forceButton = $('#admin-force-close', host);
+    if (forceButton) {
+      forceButton.addEventListener('click', () =>
+        forceCloseAdminTurn(campaign.id, campaign.currentTurn)
+      );
+    }
+  }
+
+  async function loadAdminCampaignDetail(campaignId) {
+    const host = $('#admin-campaign-detail');
+    host.classList.remove('hidden');
+    host.innerHTML = '<div class="turn-empty"><strong>Загружаем досье кампании…</strong>' +
+      '<p>Собираем данные участников, приказов, событий и отчётов.</p></div>';
+    try {
+      const response = await request('/admin/campaigns/' + encodeURIComponent(campaignId));
+      state.adminCampaignDetail = response.campaign;
+      renderAdminOverview();
+      renderAdminCampaignDetail();
+      host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+      host.innerHTML = '<div class="turn-empty turn-empty-error"><strong>Не удалось открыть кампанию</strong><p>' +
+        escapeHtml(error.message) + '</p></div>';
+    }
+  }
+
+  async function forceCloseAdminTurn(campaignId, expectedTurnNumber) {
+    const confirmed = window.confirm(
+      'Досрочно закрыть ход ' + expectedTurnNumber +
+      '? Все подтверждённые приказы будут отправлены в обработку, а неподтверждённые draft/unconfirmed приказы будут сняты. Отменить действие нельзя.',
+    );
+    if (!confirmed) return;
+    const button = $('#admin-force-close');
+    if (button) button.disabled = true;
+    try {
+      const response = await request(
+        '/admin/campaigns/' + encodeURIComponent(campaignId) + '/turn/force-close',
+        {
+          method: 'POST',
+          body: JSON.stringify({ expectedTurnNumber }),
+        },
+      );
+      showToast('Ход ' + response.turnJob.turnNumber + ' закрыт досрочно. Worker поставлен в очередь.');
+      await loadAdminConsole();
+    } catch (error) {
+      showToast(error.message || 'Не удалось закрыть ход.', true);
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function loadAdminConsole() {
+    if (!state.isAdmin) return;
+    const campaignHost = $('#admin-campaign-list');
+    campaignHost.innerHTML = '<div class="turn-empty"><strong>Загружаем панель…</strong>' +
+      '<p>Получаем список игроков и кампаний.</p></div>';
+    try {
+      const data = await request('/admin/overview');
+      state.adminOverview = data.overview;
+      renderAdminOverview();
+      if (!state.adminCampaignDetail && state.adminOverview.campaigns?.length) {
+        await loadAdminCampaignDetail(state.adminOverview.campaigns[0].id);
+      } else if (state.adminCampaignDetail?.campaign?.id) {
+        await loadAdminCampaignDetail(state.adminCampaignDetail.campaign.id);
+      } else {
+        renderAdminCampaignDetail();
+      }
+    } catch (error) {
+      campaignHost.innerHTML = '<div class="turn-empty turn-empty-error"><strong>Административный обзор недоступен</strong><p>' +
+        escapeHtml(error.message) + '</p></div>';
+      $('#admin-user-list').innerHTML = '';
+    }
+  }
+
   async function loadSystems() {
     if (!state.campaign) return;
     try {
