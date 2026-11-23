@@ -47,7 +47,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('returns only active-access discoveries and public or explicitly addressed events', async () => {
+    it('scopes discovery and event DTOs to each campaign member', async () => {
       const pool = getPool();
       const auth = createAuthService({
         pool,
@@ -311,7 +311,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           expect(ownerEvents.map((event) => event['type'])).toEqual(
             expect.arrayContaining(['public.announcement', 'private.owner_reward']),
           );
-          expect(ownerEvents.some((event) => event['type'] === 'private.member_reward')).toBe(false);
+          expect(
+            ownerEvents.some((event) => event['type'] === 'private.member_reward'),
+          ).toBe(false);
           expect(ownerEvents.every((event) => !('recipientCountryId' in event))).toBe(true);
           expect(JSON.stringify(ownerEvents)).not.toContain('member-only information');
 
@@ -327,7 +329,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           expect(memberEvents.map((event) => event['type'])).toEqual(
             expect.arrayContaining(['public.announcement', 'private.member_reward']),
           );
-          expect(memberEvents.some((event) => event['type'] === 'private.owner_reward')).toBe(false);
+          expect(
+            memberEvents.some((event) => event['type'] === 'private.owner_reward'),
+          ).toBe(false);
           expect(JSON.stringify(memberEvents)).not.toContain('owner-only information');
 
           const outsiderEvents = await app.inject({
