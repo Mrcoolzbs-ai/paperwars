@@ -1191,9 +1191,19 @@
     state.orderResultsError = '';
     renderTurnRoom();
     try {
+      const previousTurn = state.turnStatus?.currentTurn;
       const turnData = await request('/campaigns/' + campaignId + '/turn');
       if (state.campaign?.id !== campaignId) return;
       state.turnStatus = turnData.turn || null;
+      if (
+        previousTurn !== undefined &&
+        state.turnStatus?.currentTurn !== undefined &&
+        previousTurn !== state.turnStatus.currentTurn
+      ) {
+        await loadCampaignMap();
+        if (state.campaign?.id !== campaignId) return;
+        if (state.turnStatus.countryId) await loadCountryProfile();
+      }
       if (state.turnStatus?.countryId) {
         try {
           const resultsData = await request('/campaigns/' + campaignId + '/orders/results');
@@ -1216,6 +1226,7 @@
       if (state.campaign?.id === campaignId) {
         state.turnRoomLoading = false;
         renderTurnRoom();
+        renderTurnOrders();
       }
     }
   }
