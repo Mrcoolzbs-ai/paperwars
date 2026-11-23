@@ -147,9 +147,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         expect(map.statusCode).toBe(200);
-        expect(
-          map.json<{ map: { reservations: Array<{ isMine: boolean }> } }>().map.reservations,
-        ).toContainEqual(expect.objectContaining({ isMine: true }));
+        const reservationMap = map.json<{
+          map: {
+            reservations: Array<{ centerX: number; centerY: number; isMine: boolean }>;
+          };
+        }>().map;
+        expect(reservationMap.reservations).toContainEqual(
+          expect.objectContaining({ isMine: true }),
+        );
+        expect(reservationMap.reservations[0]).not.toHaveProperty('userId');
         const submitted = await app.inject({
           method: 'POST',
           url: `/campaigns/${campaign.id}/social-systems`,
@@ -343,6 +349,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           map: {
             countries: Array<{
               id: string;
+              isMine: boolean;
               cells: Array<{
                 x: number;
                 y: number;
@@ -355,6 +362,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const ownedCountry = countryMap.countries.find(
           (item) => item.id === createdCountry.json<{ country: { id: string } }>().country.id,
         );
+        expect(ownedCountry).toMatchObject({ id: createdCountry.json<{ country: { id: string } }>().country.id, isMine: true });
+        expect(ownedCountry).not.toHaveProperty('ownerUserId');
         expect(ownedCountry?.cells).toHaveLength(25);
         const buildingCounts = (ownedCountry?.cells || []).reduce<Record<string, number>>(
           (counts, cell) => {
