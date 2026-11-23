@@ -255,8 +255,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(snapshot.rows[0]).toMatchObject({
           version: 1,
           state_schema_version: 1,
-          state: { value: 20 },
         });
+        expect(draws.rows[0]?.value).toMatch(/^\\d+$/);
+        expect(snapshot.rows[0]?.state.value).toBe(17 + Number(draws.rows[0]?.value));
 
         const order = await pool.query<{
           status: string;
