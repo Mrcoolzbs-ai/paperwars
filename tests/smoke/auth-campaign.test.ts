@@ -5,7 +5,11 @@ import {
   createAuthService,
   createCampaignService,
   EmailAlreadyRegisteredError,
+  EmailNotVerifiedError,
+  ExternalIdentityAlreadyLinkedError,
+  ExternalIdentityEmailConflictError,
   InvalidCredentialsError,
+  InvalidEmailVerificationTokenError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
 } from '@paper-wars/auth';
@@ -59,8 +63,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const email = `Auth-${randomUUID()}@Example.Test`;
       const password = 'a secure test password with enough length';
 
-      const registered = await auth.register(`  ${email}  `, password);
-      expect(registered.user.email).toBe(email.trim().toLowerCase());
+      const challenge = await auth.register(`  ${email}  `, password);
+      expect(challenge.user.email).toBe(email.trim().toLowerCase());
+      await expect(auth.login(email, password)).rejects.toBeInstanceOf(EmailNotVerifiedError);
+      await expect(auth.resendEmailVerification(email)).resolves.toBeUndefined();
+      const registered = await auth.verifyEmail(challenge.verificationToken);
+      await expect(auth.verifyEmail(challenge.verificationToken)).rejects.toBeInstanceOf(
+        InvalidEmailVerificationTokenError,
+      );
       expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
 
       await expect(auth.register(email.toUpperCase(), password)).rejects.toBeInstanceOf(
@@ -104,7 +114,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrent = await auth.register(`concurrent-${randomUUID()}@example.test`, password);
+      const concurrentChallenge = await auth.register(`concurrent-${randomUUID()}@example.test`, password);
+      const concurrent = await auth.verifyEmail(concurrentChallenge.verificationToken);
       const attempts = await Promise.allSettled([
         auth.refresh(concurrent.refreshToken),
         auth.refresh(concurrent.refreshToken),
@@ -136,10 +147,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await auth.register(
+      const userChallenge = await auth.register(
         `campaign-${randomUUID()}@example.test`,
         'another secure test password',
       );
+      const user = await auth.verifyEmail(userChallenge.verificationToken);
       const nonce = Buffer.alloc(12, 0x31);
       const seed = Buffer.alloc(32, 0x42);
       const campaigns = createCampaignService({
@@ -193,10 +205,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await auth.register(
+      const userChallenge = await auth.register(
         `rollback-${randomUUID()}@example.test`,
         'transaction rollback password',
       );
+      const user = await auth.verifyEmail(userChallenge.verificationToken);
       const conflictingNonce = Buffer.alloc(12, 0x51);
       const stableOptions = {
         seedSource: () => Buffer.alloc(32, 0x52),
@@ -222,5 +235,45 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
       expect(rows.rows[0]?.count).toBe('0');
     });
+
+    it('verifies first-time VK accounts and links VK only to an authenticated, verified account', async () => {
+      const auth = createAuthService({
+        pool: getPersistence().pool,
+        accessTokens: signer,
+        refreshTokenTtlSeconds: 3600,
+      });
+      const vkEmail = `new-vk-${randomUUID()}@example.test`;
+      const first = await auth.signInWithVk('vk-user-1001', vkEmail);
+      expect(first.kind).toBe('verification');
+      if (first.kind !== 'verification' || first.challenge === undefined) {
+        throw new Error('New VK identity should require email verification');
+      }
+      await expect(auth.login(vkEmail, 'not-the-random-password')).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
+      const verified = await auth.verifyEmail(first.challenge.verificationToken);
+      expect(verified.user.email).toBe(vkEmail);
+
+      const returning = await auth.signInWithVk('vk-user-1001', undefined);
+      expect(returning.kind).toBe('session');
+      if (returning.kind !== 'session') throw new Error('Verified VK identity should sign in');
+
+      await expect(
+        auth.signInWithVk('vk-user-1002', vkEmail),
+      ).rejects.toBeInstanceOf(ExternalIdentityEmailConflictError);
+
+      const ownerChallenge = await auth.register(
+        `vk-link-owner-${randomUUID()}@example.test`,
+        'vk link owner password long enough',
+      );
+      const owner = await auth.verifyEmail(ownerChallenge.verificationToken);
+      await auth.linkVkIdentity(owner.user.id, 'vk-user-2001');
+      const linkedLogin = await auth.signInWithVk('vk-user-2001', undefined);
+      expect(linkedLogin.kind).toBe('session');
+      await expect(
+        auth.linkVkIdentity(verified.user.id, 'vk-user-2001'),
+      ).rejects.toBeInstanceOf(ExternalIdentityAlreadyLinkedError);
+    });
+
   },
 );

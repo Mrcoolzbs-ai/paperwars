@@ -54,7 +54,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const [owner, member, outsider] = await Promise.all([
+      const challenges = await Promise.all([
         authService.register(
           'chat-owner-' + randomUUID() + '@example.test',
           'secure chat owner integration password',
@@ -68,6 +68,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           'secure chat outsider integration password',
         ),
       ]);
+      const [owner, member, outsider] = await Promise.all(
+        challenges.map((challenge) => authService.verifyEmail(challenge.verificationToken)),
+      );
       const campaignService = createCampaignService({
         pool,
         keyProvider,
