@@ -275,7 +275,9 @@ function assertResolutionEvents<
       );
     }
     if (event.visibility === 'public' && recipientCountryId !== undefined) {
-      throw new TurnWorkerInvariantError('Public game events must not specify a recipientCountryId');
+      throw new TurnWorkerInvariantError(
+        'Public game events must not specify a recipientCountryId',
+      );
     }
     assertJsonRecord(event.payload, `Event ${event.type} payload`);
   }
