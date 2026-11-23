@@ -90,6 +90,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const campaign = await campaignService.createCampaign(
         owner.user.id,
         'chat-campaign-' + randomUUID(),
+        {
+          mapWidth: 40,
+          mapHeight: 30,
+          turnDurationHours: 4,
+          mapSeed: 'chat-' + randomUUID().replaceAll('-', ''),
+        },
       );
       const app = createApp({
         authService,
