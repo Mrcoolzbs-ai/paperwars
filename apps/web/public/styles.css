@@ -595,3 +595,17 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .open-campaign-card .button{width:100%}
 .open-campaign-empty{grid-column:1/-1;border:1px dashed #405344;padding:22px;text-align:center;color:#91a08f;font-size:12px;line-height:1.7}
 @media(max-width:700px){.open-campaigns-panel{padding:20px}.open-campaign-grid{grid-template-columns:1fr}}
+
+.country-action-panel{margin-top:22px;padding:28px}
+.country-action-panel h2{margin:10px 0 7px}
+.construction-grid{display:grid;grid-template-columns:repeat(5,minmax(42px,64px));gap:7px;margin:20px 0 12px;justify-content:start}
+.construction-cell{aspect-ratio:1;border:1px solid #536552;background:linear-gradient(145deg,#26352a,#1b291f);color:#dfc28d;display:grid;place-items:center;position:relative;min-width:0;padding:4px;font:600 18px "DM Mono",monospace;transition:border .18s,background .18s,transform .18s}
+.construction-cell:hover:not(:disabled){border-color:var(--gold2);background:#344535;transform:translateY(-1px)}
+.construction-cell.selected{outline:2px solid var(--gold2);outline-offset:1px;background:#3a4630}
+.construction-cell.occupied{background:#151d18;border-color:#34443a;color:#b19b72}
+.construction-cell.water{background:linear-gradient(145deg,#173b4e,#112c3a);border-color:#2d5b6c;color:#81a9ba}
+.construction-cell:disabled{cursor:not-allowed;opacity:.82}
+.construction-cell small{position:absolute;bottom:3px;right:4px;font:8px "DM Mono",monospace;color:#9ba99c}
+.construction-selection{color:#d2b17a;font-size:12px;margin:10px 0 16px;min-height:18px}
+.construction-form{display:grid;grid-template-columns:minmax(180px,260px) minmax(220px,1fr);gap:14px;align-items:end}
+@media(max-width:600px){.country-action-panel{padding:20px}.construction-grid{grid-template-columns:repeat(5,minmax(42px,1fr));width:100%;max-width:320px}.construction-form{grid-template-columns:1fr}.construction-form button{width:100%}}
