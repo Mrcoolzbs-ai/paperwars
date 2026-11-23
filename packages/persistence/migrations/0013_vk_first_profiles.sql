@@ -8,7 +8,7 @@ ALTER TABLE users
   ADD COLUMN display_name TEXT;
 
 UPDATE users
-SET display_name = 'Игрок-' || upper(substr(replace(id::text, '-', ''), 1, 16))
+SET display_name = 'Игрок-' || upper(substr(replace(id::text, '-', ''), 1, 26))
 WHERE display_name IS NULL;
 
 ALTER TABLE users
