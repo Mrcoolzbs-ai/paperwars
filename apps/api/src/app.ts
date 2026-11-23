@@ -299,6 +299,16 @@ function registerCampaignRoutes(
     }
   });
 
+  app.get('/campaigns/:campaignId/turn', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turn = await campaignService.getTurnStatus(user.id, getCampaignId(request));
+      return reply.send({ turn });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.get('/campaigns/:campaignId/orders/mine', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
