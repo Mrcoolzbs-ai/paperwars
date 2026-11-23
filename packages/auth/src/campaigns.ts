@@ -347,10 +347,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           id: string;
           current_turn: number;
           orders_locked: boolean;
-        }>(
-          'SELECT id, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
-          [campaignId],
-        );
+        }>('SELECT id, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
+          campaignId,
+        ]);
         const target = campaign.rows[0];
         if (target === undefined) {
           throw new AuthValidationError('Campaign does not exist');
