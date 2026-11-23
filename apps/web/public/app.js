@@ -1080,6 +1080,14 @@
     if (!list || !select || !addButton || !confirmButton || !pointsLabel) return;
 
     const status = state.turnStatus;
+    const setupPanel = $('#country-action-panel');
+    const initialSetupWindow = Boolean(
+      state.countryProfile &&
+      status?.status === 'active' &&
+      status.currentTurn === 1 &&
+      status.ordersLocked,
+    );
+    if (setupPanel) setupPanel.classList.toggle('hidden', !initialSetupWindow);
     const accepting = Boolean(status?.ordersAccepting && status.countryId);
     const confirmed = Boolean(status?.ordersConfirmed);
     const activeOrders = state.orders.filter((order) =>
