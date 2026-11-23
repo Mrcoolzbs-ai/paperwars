@@ -730,7 +730,7 @@
       }
     } else if (!anyCountryOwnsCell) {
       content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
-      content += '<small>Координата задаёт центр предполагаемой колонии. Проверка правил и границ выполняется при разрешении приказа.</small>';
+      content += '<small>Выбрана клетка-цель; состав и границы района проверит симуляция.</small>';
     } else {
       content += '<p class="map-context-note">Нельзя отдать приказ на клетку другого государства.</p>';
     }
