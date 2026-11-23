@@ -1,10 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  createAccessTokenSigner,
-  createAdminService,
-  createAuthService,
-} from '@paper-wars/auth';
+import { createAccessTokenSigner, createAdminService, createAuthService } from '@paper-wars/auth';
 import { createApp } from '@paper-wars/api';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 
@@ -85,7 +81,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         if (ownerCountryId === undefined) throw new Error('Admin country insert failed');
 
         const playerCountry = await pool.query<{ id: string }>(
-          'INSERT INTO countries (campaign_id, owner_user_id, name, setup_completed) VALUES ($1, $2, $3, TRUE) RETURNING id',
+          'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
           [campaignId, player.user.id, 'Player Realm'],
         );
         playerCountryId = playerCountry.rows[0]?.id;
@@ -128,12 +124,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
            ) VALUES
              ($1, 1, 'public.announcement', $2, 'public', NULL),
              ($1, 1, 'private.secret', $3, 'private', $4)`,
-          [
-            campaignId,
-            { text: 'public' },
-            { reward: 'private-admin-inspection' },
-            playerCountryId,
-          ],
+          [campaignId, { text: 'public' }, { reward: 'private-admin-inspection' }, playerCountryId],
         );
 
         const discoveryCell = await pool.query<{ id: string }>(
@@ -237,19 +228,25 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const detail = detailResponse.json().campaign;
         expect(detail.members).toHaveLength(2);
         expect(detail.orders).toHaveLength(2);
-        expect(detail.orders.map((order: { payload: Record<string, unknown> }) => order.payload)).toEqual(
+        expect(
+          detail.orders.map((order: { payload: Record<string, unknown> }) => order.payload),
+        ).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ privateInstruction: 'admin-order-payload' }),
             expect.objectContaining({ privateInstruction: 'player-order-payload' }),
           ]),
         );
         expect(detail.events).toHaveLength(2);
-        expect(detail.events.some((event: { visibility: string }) => event.visibility === 'private')).toBe(true);
+        expect(
+          detail.events.some((event: { visibility: string }) => event.visibility === 'private'),
+        ).toBe(true);
         expect(detail.discoveries).toHaveLength(1);
         expect(detail.discoveryHistory).toHaveLength(1);
         expect(detail.economicReports[0].report).toMatchObject({ privateTreasury: 9876 });
         expect(detail.battleReports[0].report).toMatchObject({ hiddenBattlePlan: 'north-front' });
-        expect(detail.latestSnapshot.state).toMatchObject({ hiddenWorldState: 'admin-can-inspect' });
+        expect(detail.latestSnapshot.state).toMatchObject({
+          hiddenWorldState: 'admin-can-inspect',
+        });
         expect(JSON.stringify(detail)).not.toContain('password_hash');
         expect(JSON.stringify(detail)).not.toContain('refresh_tokens');
 
@@ -296,7 +293,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           turn_number: number;
           details: Record<string, unknown>;
         }>(
-          'SELECT actor_user_id, action, turn_number, details FROM admin_audit_logs WHERE campaign_id = $1',
+          `SELECT actor_user_id, action, turn_number, details
+           FROM admin_audit_logs
+           WHERE campaign_id = $1`,
           [campaignId],
         );
         expect(audit.rows).toHaveLength(1);
