@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
+import { createPostgresPersistence } from '@paper-wars/persistence';
 import { hashPassword, type AuthService, type AuthSession } from '@paper-wars/auth';
 
 export async function createEmailLoginUser(
-  pool: Pool,
+  pool: ReturnType<typeof createPostgresPersistence>['pool'],
   auth: AuthService,
   email: string,
   password: string,
