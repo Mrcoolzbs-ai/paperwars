@@ -8,7 +8,11 @@ export type CampaignTurnProcessingErrorCode =
   | 'SNAPSHOT_NOT_FOUND'
   | 'NO_ACTIVE_MEMBERS'
   | 'ORDERS_NOT_READY'
-  | 'TURN_JOB_ALREADY_EXISTS';
+  | 'TURN_JOB_ALREADY_EXISTS'
+  | 'INVALID_ORDER'
+  | 'COUNTRY_NOT_REGISTERED'
+  | 'ORDER_NOT_FOUND'
+  | 'ORDER_NOT_EDITABLE';
 
 export class CampaignTurnProcessingError extends Error {
   constructor(
@@ -20,6 +24,31 @@ export class CampaignTurnProcessingError extends Error {
   }
 }
 
+export interface CampaignOrderView {
+  readonly id: string;
+  readonly campaignId: string;
+  readonly countryId: string;
+  readonly turnNumber: number;
+  readonly type: string;
+  readonly schemaVersion: number;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly status: 'draft' | 'unconfirmed' | 'confirmed' | 'finalized' | 'discarded';
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface CreateCampaignOrderInput {
+  readonly type: unknown;
+  readonly schemaVersion?: unknown;
+  readonly payload: unknown;
+}
+
+export interface UpdateCampaignOrderInput {
+  readonly type?: unknown;
+  readonly schemaVersion?: unknown;
+  readonly payload?: unknown;
+}
+
 export interface ClosedTurnJob {
   readonly id: string;
   readonly campaignId: string;
@@ -27,6 +56,178 @@ export interface ClosedTurnJob {
   readonly snapshotVersion: number;
   readonly finalizedOrderCount: number;
   readonly discardedOrderCount: number;
+}
+
+interface WritableOrderContext {
+  readonly turnNumber: number;
+  readonly countryId: string;
+}
+
+function assertUuid(value: string, field: 'campaign' | 'order'): void {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  ) {
+    throw new CampaignTurnProcessingError(
+      field === 'campaign' ? 'CAMPAIGN_NOT_FOUND' : 'ORDER_NOT_FOUND',
+      field === 'campaign' ? 'Campaign does not exist' : 'Order does not exist',
+    );
+  }
+}
+
+function normalizeOrderType(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order type must be a string');
+  }
+  const type = value.trim();
+  if (type.length < 1 || type.length > 80) {
+    throw new CampaignTurnProcessingError(
+      'INVALID_ORDER',
+      'Order type must contain between 1 and 80 characters',
+    );
+  }
+  return type;
+}
+
+function normalizeOrderSchemaVersion(value: unknown): number {
+  const version = value === undefined ? 1 : value;
+  if (!Number.isSafeInteger(version) || (version as number) < 1) {
+    throw new CampaignTurnProcessingError(
+      'INVALID_ORDER',
+      'Order schemaVersion must be a positive safe integer',
+    );
+  }
+  return version as number;
+}
+
+function normalizeOrderPayload(value: unknown): Readonly<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order payload must be a JSON object');
+  }
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order payload must be JSON serializable');
+  }
+  if (serialized === undefined) {
+    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order payload must be JSON serializable');
+  }
+  const normalized: unknown = JSON.parse(serialized);
+  if (typeof normalized !== 'object' || normalized === null || Array.isArray(normalized)) {
+    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order payload must be a JSON object');
+  }
+  return normalized as Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The caller must already hold the campaign FOR SHARE lock. Membership is
+ * locked second and supplies the only country id the user may submit orders for.
+ */
+async function lockWritableOrderContext(
+  client: PoolClient,
+  campaignId: string,
+  userId: string,
+): Promise<WritableOrderContext> {
+  const campaign = await client.query<{
+    id: string;
+    status: string;
+    current_turn: number;
+    orders_locked: boolean;
+  }>(
+    'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR SHARE',
+    [campaignId],
+  );
+  const row = campaign.rows[0];
+  if (row === undefined) {
+    throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Campaign does not exist');
+  }
+  if (row.status !== 'active') {
+    throw new CampaignTurnProcessingError('CAMPAIGN_NOT_ACTIVE', 'Campaign is not active');
+  }
+  if (row.orders_locked) {
+    throw new CampaignTurnProcessingError(
+      'ORDERS_ALREADY_LOCKED',
+      'Orders for this turn are already locked',
+    );
+  }
+
+  const membership = await client.query<{
+    status: string;
+    country_id: string | null;
+  }>(
+    `SELECT status, country_id
+     FROM campaign_memberships
+     WHERE campaign_id = $1 AND user_id = $2
+     FOR UPDATE`,
+    [campaignId, userId],
+  );
+  const member = membership.rows[0];
+  if (member?.status !== 'active') {
+    throw new CampaignTurnProcessingError(
+      'NOT_ACTIVE_MEMBER',
+      'Only an active campaign member can manage orders',
+    );
+  }
+  if (member.country_id === null) {
+    throw new CampaignTurnProcessingError(
+      'COUNTRY_NOT_REGISTERED',
+      'Register a country before creating orders',
+    );
+  }
+
+  return { turnNumber: row.current_turn, countryId: member.country_id };
+}
+
+async function withdrawOrderConfirmation(
+  client: PoolClient,
+  campaignId: string,
+  userId: string,
+  countryId: string,
+  turnNumber: number,
+): Promise<void> {
+  await client.query(
+    `UPDATE campaign_memberships
+     SET orders_confirmed = FALSE
+     WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+    [campaignId, userId],
+  );
+  await client.query(
+    `UPDATE orders
+     SET status = 'draft', updated_at = clock_timestamp()
+     WHERE campaign_id = $1
+       AND country_id = $2
+       AND turn_number = $3
+       AND status = 'confirmed'`,
+    [campaignId, countryId, turnNumber],
+  );
+}
+
+interface OrderDbRow {
+  readonly id: string;
+  readonly campaign_id: string;
+  readonly country_id: string;
+  readonly turn_number: number;
+  readonly order_type: string;
+  readonly schema_version: number;
+  readonly payload: Record<string, unknown>;
+  readonly status: CampaignOrderView['status'];
+  readonly created_at: Date;
+  readonly updated_at: Date;
+}
+
+function toCampaignOrder(row: OrderDbRow): CampaignOrderView {
+  return {
+    id: row.id,
+    campaignId: row.campaign_id,
+    countryId: row.country_id,
+    turnNumber: row.turn_number,
+    type: row.order_type,
+    schemaVersion: row.schema_version,
+    payload: row.payload,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 /**
@@ -67,19 +268,44 @@ export async function confirmCampaignOrders(
       );
     }
 
-    const membership = await client.query<{ user_id: string }>(
-      `UPDATE campaign_memberships
-       SET orders_confirmed = TRUE
+    const membership = await client.query<{ country_id: string | null }>(
+      `SELECT country_id
+       FROM campaign_memberships
        WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'
-       RETURNING user_id`,
+       FOR UPDATE`,
       [campaignId, userId],
     );
-    if (membership.rowCount !== 1) {
+    const member = membership.rows[0];
+    if (member === undefined) {
       throw new CampaignTurnProcessingError(
         'NOT_ACTIVE_MEMBER',
         'Only an active campaign member can confirm orders',
       );
     }
+    if (member.country_id === null) {
+      throw new CampaignTurnProcessingError(
+        'COUNTRY_NOT_REGISTERED',
+        'Register a country before confirming orders',
+      );
+    }
+
+    await client.query(
+      `UPDATE orders
+       SET status = 'confirmed', updated_at = clock_timestamp()
+       WHERE campaign_id = $1
+         AND country_id = $2
+         AND turn_number = (
+           SELECT current_turn FROM campaigns WHERE id = $1
+         )
+         AND status IN ('draft', 'unconfirmed')`,
+      [campaignId, member.country_id],
+    );
+    await client.query(
+      `UPDATE campaign_memberships
+       SET orders_confirmed = TRUE
+       WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+      [campaignId, userId],
+    );
 
     await client.query('COMMIT');
     transactionOpen = false;
@@ -249,6 +475,246 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
       finalizedOrderCount: finalized.rowCount ?? finalized.rows.length,
       discardedOrderCount: discarded.rowCount ?? discarded.rows.length,
     };
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Lists the current participant's orders for the campaign's current turn.
+ */
+export async function listCampaignOrders(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+): Promise<readonly CampaignOrderView[]> {
+  assertUuid(campaignId, 'campaign');
+  const membership = await pool.query<{ country_id: string | null; status: string }>(
+    'SELECT country_id, status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+    [campaignId, userId],
+  );
+  const member = membership.rows[0];
+  if (member?.status !== 'active') {
+    throw new CampaignTurnProcessingError(
+      'NOT_ACTIVE_MEMBER',
+      'Only an active campaign member can view orders',
+    );
+  }
+  if (member.country_id === null) {
+    throw new CampaignTurnProcessingError(
+      'COUNTRY_NOT_REGISTERED',
+      'Register a country before viewing orders',
+    );
+  }
+
+  const result = await pool.query<OrderDbRow>(
+    `SELECT o.id, o.campaign_id, o.country_id, o.turn_number, o.order_type,
+            o.schema_version, o.payload, o.status, o.created_at, o.updated_at
+     FROM orders AS o
+     JOIN campaigns AS c ON c.id = o.campaign_id
+     WHERE o.campaign_id = $1
+       AND o.country_id = $2
+       AND o.turn_number = c.current_turn
+     ORDER BY o.created_at, o.id`,
+    [campaignId, member.country_id],
+  );
+  return result.rows.map(toCampaignOrder);
+}
+
+/** Creates an editable draft and withdraws any previous member confirmation. */
+export async function createCampaignOrder(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+  input: CreateCampaignOrderInput,
+): Promise<CampaignOrderView> {
+  assertUuid(campaignId, 'campaign');
+  const type = normalizeOrderType(input?.type);
+  const schemaVersion = normalizeOrderSchemaVersion(input?.schemaVersion);
+  const payload = normalizeOrderPayload(input?.payload);
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const context = await lockWritableOrderContext(client, campaignId, userId);
+    await withdrawOrderConfirmation(
+      client,
+      campaignId,
+      userId,
+      context.countryId,
+      context.turnNumber,
+    );
+    const result = await client.query<OrderDbRow>(
+      `INSERT INTO orders (
+         campaign_id, country_id, turn_number, order_type, schema_version, payload, status
+       ) VALUES ($1, $2, $3, $4, $5, $6, 'draft')
+       RETURNING id, campaign_id, country_id, turn_number, order_type,
+                 schema_version, payload, status, created_at, updated_at`,
+      [campaignId, context.countryId, context.turnNumber, type, schemaVersion, payload],
+    );
+    const row = result.rows[0];
+    if (row === undefined) throw new Error('Order insert did not return a row');
+
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return toCampaignOrder(row);
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Updates only the member's own editable order and withdraws their confirmation. */
+export async function updateCampaignOrder(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+  orderId: string,
+  input: UpdateCampaignOrderInput,
+): Promise<CampaignOrderView> {
+  assertUuid(campaignId, 'campaign');
+  assertUuid(orderId, 'order');
+  if (input === null || typeof input !== 'object' || Object.keys(input).length === 0) {
+    throw new CampaignTurnProcessingError(
+      'INVALID_ORDER',
+      'At least one order field must be supplied',
+    );
+  }
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const context = await lockWritableOrderContext(client, campaignId, userId);
+    const existing = await client.query<{ status: CampaignOrderView['status'] }>(
+      `SELECT status FROM orders
+       WHERE id = $1 AND campaign_id = $2 AND country_id = $3 AND turn_number = $4
+       FOR UPDATE`,
+      [orderId, campaignId, context.countryId, context.turnNumber],
+    );
+    const order = existing.rows[0];
+    if (order === undefined) {
+      throw new CampaignTurnProcessingError('ORDER_NOT_FOUND', 'Order does not exist');
+    }
+    if (!['draft', 'unconfirmed', 'confirmed'].includes(order.status)) {
+      throw new CampaignTurnProcessingError(
+        'ORDER_NOT_EDITABLE',
+        'Only draft or confirmed orders can be edited',
+      );
+    }
+
+    await withdrawOrderConfirmation(
+      client,
+      campaignId,
+      userId,
+      context.countryId,
+      context.turnNumber,
+    );
+    const values = {
+      type: input.type === undefined ? undefined : normalizeOrderType(input.type),
+      schemaVersion:
+        input.schemaVersion === undefined
+          ? undefined
+          : normalizeOrderSchemaVersion(input.schemaVersion),
+      payload: input.payload === undefined ? undefined : normalizeOrderPayload(input.payload),
+    };
+    const result = await client.query<OrderDbRow>(
+      `UPDATE orders
+       SET order_type = COALESCE($5, order_type),
+           schema_version = COALESCE($6, schema_version),
+           payload = COALESCE($7::jsonb, payload),
+           status = 'draft',
+           updated_at = clock_timestamp()
+       WHERE id = $1 AND campaign_id = $2 AND country_id = $3 AND turn_number = $4
+       RETURNING id, campaign_id, country_id, turn_number, order_type,
+                 schema_version, payload, status, created_at, updated_at`,
+      [
+        orderId,
+        campaignId,
+        context.countryId,
+        context.turnNumber,
+        values.type ?? null,
+        values.schemaVersion ?? null,
+        values.payload === undefined ? null : JSON.stringify(values.payload),
+      ],
+    );
+    const row = result.rows[0];
+    if (row === undefined) throw new Error('Order update did not return a row');
+
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return toCampaignOrder(row);
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Deletes only the member's own draft/unconfirmed/confirmed order. */
+export async function deleteCampaignOrder(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+  orderId: string,
+): Promise<void> {
+  assertUuid(campaignId, 'campaign');
+  assertUuid(orderId, 'order');
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const context = await lockWritableOrderContext(client, campaignId, userId);
+    const existing = await client.query<{ status: CampaignOrderView['status'] }>(
+      `SELECT status FROM orders
+       WHERE id = $1 AND campaign_id = $2 AND country_id = $3 AND turn_number = $4
+       FOR UPDATE`,
+      [orderId, campaignId, context.countryId, context.turnNumber],
+    );
+    const order = existing.rows[0];
+    if (order === undefined) {
+      throw new CampaignTurnProcessingError('ORDER_NOT_FOUND', 'Order does not exist');
+    }
+    if (!['draft', 'unconfirmed', 'confirmed'].includes(order.status)) {
+      throw new CampaignTurnProcessingError(
+        'ORDER_NOT_EDITABLE',
+        'Only draft or confirmed orders can be deleted',
+      );
+    }
+
+    await withdrawOrderConfirmation(
+      client,
+      campaignId,
+      userId,
+      context.countryId,
+      context.turnNumber,
+    );
+    await client.query('DELETE FROM orders WHERE id = $1 AND campaign_id = $2', [
+      orderId,
+      campaignId,
+    ]);
+    await client.query('COMMIT');
+    transactionOpen = false;
   } catch (error) {
     if (transactionOpen) {
       await client.query('ROLLBACK');
