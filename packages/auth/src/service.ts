@@ -359,7 +359,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           };
         } else {
           const userId = randomUUID();
-          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 8).toUpperCase();
+          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 16).toUpperCase();
           const created = await client.query<{ id: string; email: string | null; display_name: string }>(
             `INSERT INTO users (id, email, password_hash, display_name)
              VALUES ($1, NULL, NULL, $2)
