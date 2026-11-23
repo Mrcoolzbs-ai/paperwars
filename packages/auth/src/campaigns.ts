@@ -9,9 +9,11 @@ import {
   createCampaignOrder,
   deleteCampaignOrder,
   listCampaignOrders,
+  listCampaignOrderResults,
   updateCampaignOrder,
   createCommittedSeed,
   type CampaignOrderView,
+  type CampaignOrderResultView,
   type CampaignTurnStatusView,
   type CampaignEventView,
   type CreateCampaignOrderInput,
@@ -83,6 +85,10 @@ export interface CampaignService {
   getTurnStatus(userId: string, campaignId: string): Promise<CampaignTurnStatusView>;
   listEvents(userId: string, campaignId: string): Promise<readonly CampaignEventView[]>;
   listOrders(userId: string, campaignId: string): Promise<readonly CampaignOrderView[]>;
+  listOrderResults(
+    userId: string,
+    campaignId: string,
+  ): Promise<readonly CampaignOrderResultView[]>;
   createOrder(
     userId: string,
     campaignId: string,
@@ -121,6 +127,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
 
     async listOrders(userId, campaignId) {
       return listCampaignOrders(options.pool, campaignId, userId);
+    },
+
+    async listOrderResults(userId, campaignId) {
+      return listCampaignOrderResults(options.pool, campaignId, userId);
     },
 
     async createOrder(userId, campaignId, input) {
