@@ -31,7 +31,8 @@ describe('VK ID OAuth 2.1 integration', () => {
     expect(url.searchParams.get('app_id')).toBe(options.appId);
     expect(url.searchParams.get('redirect_uri')).toBe(options.redirectUri);
     expect(url.searchParams.get('response_type')).toBe('code');
-    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('code_challenge_method')).toBe('s256');
+    expect(url.searchParams.get('sdk_type')).toBe('vkid');
     expect(url.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(start.stateCookie).toContain('HttpOnly');
     expect(start.stateCookie).toContain('SameSite=Lax');

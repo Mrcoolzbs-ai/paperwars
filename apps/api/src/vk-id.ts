@@ -116,10 +116,11 @@ export function createVkAuthorizationStart(
   url.searchParams.set('app_id', options.appId);
   url.searchParams.set('redirect_uri', options.redirectUri);
   url.searchParams.set('response_type', 'code');
+  url.searchParams.set('sdk_type', 'vkid');
   url.searchParams.set('scope', 'email');
   url.searchParams.set('state', state);
   url.searchParams.set('code_challenge', codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('code_challenge_method', 's256');
   url.searchParams.set('prompt', 'login consent');
 
   const cookieParts = [
