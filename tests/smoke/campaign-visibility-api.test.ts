@@ -243,6 +243,26 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           ],
         );
 
+        await pool.query(
+          `INSERT INTO orders (
+             campaign_id, country_id, turn_number, order_type, schema_version, payload,
+             status, resolution_status, result_code, result_message, result_data, finalized_at
+           ) VALUES
+             ($1, $2, 1, 'construction', 1, $3, 'finalized', 'accepted',
+              'BUILDING_PLACED', 'Owner build resolved', $4, clock_timestamp()),
+             ($1, $5, 1, 'colonization', 1, $6, 'finalized', 'rejected',
+              'TARGET_UNAVAILABLE', 'Member target unavailable', $7, clock_timestamp())`,
+          [
+            campaign.id,
+            ownerCountryId,
+            { x: 3, y: 4, buildingType: 'factory' },
+            { hiddenReward: 'owner-private-result-data' },
+            memberCountryId,
+            { x: 10, y: 10, hiddenTarget: 'member-private-payload' },
+            { hiddenReward: 'member-private-result-data' },
+          ],
+        );
+
         const countrySetup = createCountrySetupService({ pool });
         const app = createApp({
           rulesetVersion: 'baseline-v1',
@@ -295,6 +315,56 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             },
           ]);
 
+          const ownerOrderResultsResponse = await app.inject({
+            method: 'GET',
+            url: `/campaigns/${campaign.id}/orders/results`,
+            headers: { authorization: 'Bearer ' + owner.accessToken },
+          });
+          expect(ownerOrderResultsResponse.statusCode).toBe(200);
+          const ownerOrderResults = ownerOrderResultsResponse.json<{
+            results: Array<Record<string, unknown>>;
+          }>().results;
+          expect(ownerOrderResults).toHaveLength(1);
+          expect(ownerOrderResults[0]).toMatchObject({
+            turnNumber: 1,
+            type: 'construction',
+            status: 'finalized',
+            resolutionStatus: 'accepted',
+            resultCode: 'BUILDING_PLACED',
+            finalizedAt: expect.any(String),
+          });
+          expect(ownerOrderResults[0]).not.toHaveProperty('payload');
+          expect(ownerOrderResults[0]).not.toHaveProperty('resultData');
+          expect(ownerOrderResults[0]).not.toHaveProperty('resultMessage');
+          expect(ownerOrderResults[0]).not.toHaveProperty('countryId');
+          expect(JSON.stringify(ownerOrderResults)).not.toContain('owner-private-result-data');
+          expect(JSON.stringify(ownerOrderResults)).not.toContain('member-private-result-data');
+
+          const memberOrderResultsResponse = await app.inject({
+            method: 'GET',
+            url: `/campaigns/${campaign.id}/orders/results`,
+            headers: { authorization: 'Bearer ' + member.accessToken },
+          });
+          expect(memberOrderResultsResponse.statusCode).toBe(200);
+          const memberOrderResults = memberOrderResultsResponse.json<{
+            results: Array<Record<string, unknown>>;
+          }>().results;
+          expect(memberOrderResults).toHaveLength(1);
+          expect(memberOrderResults[0]).toMatchObject({
+            turnNumber: 1,
+            type: 'colonization',
+            status: 'finalized',
+            resolutionStatus: 'rejected',
+            resultCode: 'TARGET_UNAVAILABLE',
+            finalizedAt: expect.any(String),
+          });
+          expect(memberOrderResults[0]).not.toHaveProperty('payload');
+          expect(memberOrderResults[0]).not.toHaveProperty('resultData');
+          expect(memberOrderResults[0]).not.toHaveProperty('resultMessage');
+          expect(memberOrderResults[0]).not.toHaveProperty('countryId');
+          expect(JSON.stringify(memberOrderResults)).not.toContain('owner-private-result-data');
+          expect(JSON.stringify(memberOrderResults)).not.toContain('member-private-result-data');
+
           const ownerEventsResponse = await app.inject({
             method: 'GET',
             url: `/campaigns/${campaign.id}/events`,
@@ -329,6 +399,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             false,
           );
           expect(JSON.stringify(memberEvents)).not.toContain('owner-only information');
+
+          const outsiderOrderResults = await app.inject({
+            method: 'GET',
+            url: `/campaigns/${campaign.id}/orders/results`,
+            headers: { authorization: 'Bearer ' + outsider.accessToken },
+          });
+          expect(outsiderOrderResults.statusCode).toBe(403);
 
           const outsiderEvents = await app.inject({
             method: 'GET',
