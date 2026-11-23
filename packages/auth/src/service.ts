@@ -81,7 +81,9 @@ function normalizeDisplayName(value: unknown): string {
   const name = value.normalize('NFC').trim().replace(/\s+/gu, ' ');
   const length = Array.from(name).length;
   if (length < 2 || length > 32 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(name)) {
-    throw new AuthValidationError('Nickname must be 2–32 characters and use letters, numbers, spaces, dots, dashes or underscores');
+    throw new AuthValidationError(
+      'Nickname must be 2–32 characters and use letters, numbers, spaces, dots, dashes or underscores',
+    );
   }
   return name;
 }
@@ -304,7 +306,10 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
 
     async updatePassword(userId, currentPassword, newPassword) {
       validatePassword(newPassword);
-      const found = await options.pool.query<{ email: string | null; password_hash: string | null }>(
+      const found = await options.pool.query<{
+        email: string | null;
+        password_hash: string | null;
+      }>(
         `SELECT email, password_hash
          FROM users
          WHERE id = $1 AND status = 'active'`,
@@ -316,7 +321,10 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         throw new AuthValidationError('Сначала укажите резервный email в профиле');
       }
       if (row.password_hash !== null) {
-        if (typeof currentPassword !== 'string' || !(await verifyPassword(currentPassword, row.password_hash))) {
+        if (
+          typeof currentPassword !== 'string' ||
+          !(await verifyPassword(currentPassword, row.password_hash))
+        ) {
           throw new InvalidCredentialsError();
         }
       }
@@ -360,7 +368,11 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         } else {
           const userId = randomUUID();
           const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 16).toUpperCase();
-          const created = await client.query<{ id: string; email: string | null; display_name: string }>(
+          const created = await client.query<{
+            id: string;
+            email: string | null;
+            display_name: string;
+          }>(
             `INSERT INTO users (id, email, password_hash, display_name)
              VALUES ($1, NULL, NULL, $2)
              RETURNING id, email, display_name`,
