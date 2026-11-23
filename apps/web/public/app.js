@@ -727,7 +727,10 @@
   function startChatPolling() {
     stopChatPolling();
     state.chatPollTimer = window.setInterval(() => {
-      if ($('.workspace-tab.active')?.dataset.tab === 'chat' && !document.hidden) {
+      if (
+        (state.worldChatOnly || $('.workspace-tab.active')?.dataset.tab === 'chat') &&
+        !document.hidden
+      ) {
         void loadChatMessages();
       }
     }, 5000);
@@ -901,7 +904,11 @@
     $('.workspace-header').classList.remove('hidden');
     $('.workspace-nav').classList.remove('hidden');
     $('#chat-back-to-lobby').classList.add('hidden');
-    await loadCampaigns();
+    try {
+      await loadCampaigns();
+    } catch (error) {
+      showToast('Не удалось обновить список кампаний: ' + error.message, true);
+    }
     showScreen('game');
   }
 
