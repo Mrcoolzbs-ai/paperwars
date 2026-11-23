@@ -752,12 +752,7 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   }
 
   if (options.authService !== undefined && options.adminService !== undefined) {
-    registerAdminRoutes(
-      app,
-      options.authService,
-      options.adminService,
-      options.adminUserIds ?? [],
-    );
+    registerAdminRoutes(app, options.authService, options.adminService, options.adminUserIds ?? []);
   }
 
   return app;
