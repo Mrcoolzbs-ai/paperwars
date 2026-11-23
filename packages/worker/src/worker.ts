@@ -13,6 +13,8 @@ import {
   completeTurnJob,
   createCommittedSeed,
   loadSeedForWorker,
+  reapExpiredTurnJobs,
+  renewTurnJobLease,
   revealCampaignSeeds,
   type CreateCommittedSeedOptions,
   type TurnJobLease,
@@ -395,7 +397,6 @@ async function persistResolution<TEvent extends DomainEvent<string, Readonly<Rec
           orderResult.orderId,
           lease.campaignId,
           lease.turnNumber,
-          lease.generation,
           orderResult.status,
           orderResult.resultCode,
           orderResult.message ?? null,
@@ -490,6 +491,7 @@ export function createTurnWorker<
 
   return {
     async processNext(): Promise<TurnWorkerResult<TEvent>> {
+      await reapExpiredTurnJobs(config.pool);
       const lease = await claimNextTurnJob(config.pool, config.workerId);
       if (lease === null) return { status: 'idle' };
 
@@ -507,6 +509,10 @@ export function createTurnWorker<
         random,
         resolver: config.resolver,
       });
+      const renewedLease = await renewTurnJobLease(config.pool, lease);
+      if (renewedLease === null) {
+        throw new TurnWorkerInvariantError('TurnJob lease expired or was fenced during resolution');
+      }
       await persistResolution(
         config.pool,
         config.keyProvider,
