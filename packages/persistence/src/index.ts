@@ -42,6 +42,7 @@ export type {
   CreateCampaignOrderInput,
   UpdateCampaignOrderInput,
   ClosedTurnJob,
+  CloseOrdersOptions,
   TurnJobLease,
   ReapedTurnJobs,
 } from './postgres/turn-processing.js';
