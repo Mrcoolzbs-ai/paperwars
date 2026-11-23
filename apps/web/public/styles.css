@@ -895,3 +895,16 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
   .admin-raw-grid { grid-template-columns: 1fr; }
   .admin-stat { padding: 12px; }
 }
+
+.admin-global-records {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.admin-global-records .admin-data-details {
+  max-height: 310px;
+}
+@media (max-width: 940px) {
+  .admin-global-records { grid-template-columns: 1fr; }
+}
