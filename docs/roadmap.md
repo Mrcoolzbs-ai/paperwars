@@ -185,8 +185,11 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] Fencing token `generation` не сбрасывается при переназначении.
 - [x] `completeTurnJob` выполняет fenced final UPDATE и требует ровно одну строку по id/worker/generation/status/live lease; иначе выбрасывает ошибку для rollback вызывающей транзакции.
 - [x] Явный порядок блокировок в `closeOrders`: campaigns → world_snapshots → turn_jobs → memberships/orders.
-- [ ] Полноценный Worker должен исполнить resolver и в той же транзакции сохранить следующий snapshot, events, random log, economic/battle reports, next seed и completed TurnJob.
-- [ ] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
+- [x] `createTurnWorker().processNext()` загружает campaign/snapshot/finalized orders/committed seed, вызывает injected resolver и проверяет результат.
+- [x] В одной PostgreSQL-транзакции сохраняются следующий snapshot, events, random draw log, order results, economic/battle reports, next seed и fenced completion TurnJob.
+- [x] При завершении кампании следующий seed не создаётся, `current_turn` остаётся на завершённом ходе, orders остаются locked, существующие seeds переводятся в revealed.
+- [x] `runTurnWorkerLoop` последовательно обрабатывает задания, опрашивает пустую очередь, делает backoff после временной ошибки и корректно останавливается между заданиями по `AbortSignal`.
+- [ ] Добавить production host/entrypoint, который связывает Worker с конкретной версионированной реализацией ruleset resolver и управляет жизненным циклом процесса.
 
 Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId` и POST `/campaigns/:campaignId/orders/confirm`. Хранение order envelope универсально (type/schemaVersion/JSON payload) и пока не валидирует конкретные игровые команды или их эффекты. PostgreSQL integration tests покрывают CRUD/ownership, withdrawal confirmation, deadline, атомарное закрытие, конкурентные закрытия, leave semantics, lease, retry limit и fencing.
 
