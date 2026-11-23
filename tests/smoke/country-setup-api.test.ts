@@ -5,21 +5,13 @@ import {
   createAuthService,
   createCampaignService,
 } from '@paper-wars/auth';
+import { createEmailLoginUser } from '../helpers/auth.js';
 import { createApp } from '@paper-wars/api';
 import { createCountrySetupService, type StartBuildingPlacement } from '@paper-wars/world';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
-
-async function registerVerified(
-  auth: ReturnType<typeof createAuthService>,
-  email: string,
-  password: string,
-) {
-  const challenge = await auth.register(email, password);
-  return auth.verifyEmail(challenge.verificationToken);
-}
 
 const RELIGION_BUILDINGS: ReadonlyArray<StartBuildingPlacement> = [
   { type: 'factory', x: 0, y: 0 },
@@ -75,12 +67,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rulesetVersion: 'baseline-v1',
         rngVersion: 'rng-v1',
       });
-      const admin = await registerVerified(
+      const admin = await createEmailLoginUser(
+        persistence.pool,
         auth,
         `social-system-admin-${randomUUID()}@example.test`,
         'social system api admin password',
       );
-      const member = await registerVerified(
+      const member = await createEmailLoginUser(
+        persistence.pool,
         auth,
         `social-system-member-${randomUUID()}@example.test`,
         'social system api member password',

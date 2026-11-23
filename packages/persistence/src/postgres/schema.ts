@@ -29,44 +29,25 @@ export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    email: text('email').notNull(),
-    passwordHash: text('password_hash').notNull(),
-    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true, mode: 'date' }),
+    email: text('email'),
+    passwordHash: text('password_hash'),
+    displayName: text('display_name').notNull(),
     status: text('status').notNull().default('active'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('users_email_ci_unique').on(sql`lower(${table.email})`),
-    check('users_email_normalized_check', sql`${table.email} = lower(btrim(${table.email}))`),
-    check('users_status_check', sql`${table.status} in ('active', 'disabled')`),
-  ],
-);
-
-export const emailVerificationTokens = pgTable(
-  'email_verification_tokens',
-  {
-    id: uuid('id').primaryKey(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    tokenHash: text('token_hash').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
-    usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
-  },
-  (table) => [
-    uniqueIndex('email_verification_tokens_hash_unique').on(table.tokenHash),
-    index('email_verification_tokens_user_created_idx').on(table.userId, table.createdAt),
-    index('email_verification_tokens_expiry_idx')
-      .on(table.expiresAt)
-      .where(sql`${table.usedAt} is null`),
-    check('email_verification_tokens_hash_check', sql`${table.tokenHash} ~ '^[a-f0-9]{64}$'`),
-    check('email_verification_tokens_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    uniqueIndex('users_display_name_ci_unique').on(sql`lower(btrim(${table.displayName}))`),
     check(
-      'email_verification_tokens_used_at_check',
-      sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`,
+      'users_email_normalized_check',
+      sql`${table.email} is null or ${table.email} = lower(btrim(${table.email}))`,
     ),
+    check(
+      'users_display_name_length_check',
+      sql`char_length(btrim(${table.displayName})) between 2 and 32`,
+    ),
+    check('users_status_check', sql`${table.status} in ('active', 'disabled')`),
   ],
 );
 

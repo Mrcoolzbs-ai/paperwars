@@ -135,31 +135,33 @@ async function listMessages(
     scope === 'world'
       ? await client.query<ChatMessageRow>(
           `SELECT
-             id,
-             scope,
-             campaign_id AS "campaignId",
-             'Игрок ' || upper(left(replace(user_id::text, '-', ''), 6)) AS "authorLabel",
-             message,
-             created_at AS "createdAt",
-             user_id = $1::uuid AS "isMine"
-           FROM chat_messages
-           WHERE scope = 'world'
-           ORDER BY created_at DESC, id DESC
+             m.id,
+             m.scope,
+             m.campaign_id AS "campaignId",
+             u.display_name AS "authorLabel",
+             m.message,
+             m.created_at AS "createdAt",
+             m.user_id = $1::uuid AS "isMine"
+           FROM chat_messages AS m
+           JOIN users AS u ON u.id = m.user_id
+           WHERE m.scope = 'world'
+           ORDER BY m.created_at DESC, m.id DESC
            LIMIT $2`,
           [userId, messageLimit],
         )
       : await client.query<ChatMessageRow>(
           `SELECT
-             id,
-             scope,
-             campaign_id AS "campaignId",
-             'Игрок ' || upper(left(replace(user_id::text, '-', ''), 6)) AS "authorLabel",
-             message,
-             created_at AS "createdAt",
-             user_id = $1::uuid AS "isMine"
-           FROM chat_messages
-           WHERE scope = 'campaign' AND campaign_id = $2
-           ORDER BY created_at DESC, id DESC
+             m.id,
+             m.scope,
+             m.campaign_id AS "campaignId",
+             u.display_name AS "authorLabel",
+             m.message,
+             m.created_at AS "createdAt",
+             m.user_id = $1::uuid AS "isMine"
+           FROM chat_messages AS m
+           JOIN users AS u ON u.id = m.user_id
+           WHERE m.scope = 'campaign' AND m.campaign_id = $2
+           ORDER BY m.created_at DESC, m.id DESC
            LIMIT $3`,
           [userId, campaignId, messageLimit],
         );
@@ -188,11 +190,17 @@ async function insertMessage(
   if (row === undefined) {
     throw new Error('Chat message insert did not return a row');
   }
+  const author = await client.query<{ readonly display_name: string }>(
+    'SELECT display_name FROM users WHERE id = $1',
+    [userId],
+  );
+  const authorLabel = author.rows[0]?.display_name;
+  if (authorLabel === undefined) throw new Error('Chat author profile was not found');
   return {
     id: row.id,
     scope,
     campaignId,
-    authorLabel: 'Игрок ' + userId.replace(/-/g, '').slice(0, 6).toUpperCase(),
+    authorLabel,
     message,
     createdAt: row.created_at,
     isMine: true,

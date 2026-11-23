@@ -3,12 +3,9 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import {
   AuthValidationError,
   ChatServiceError,
+  DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
-  EmailNotVerifiedError,
   ExternalIdentityAlreadyLinkedError,
-  ExternalIdentityEmailConflictError,
-  ExternalIdentityEmailRequiredError,
-  InvalidEmailVerificationTokenError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
@@ -39,8 +36,6 @@ import {
   type SocialSystemReviewInput,
 } from '@paper-wars/world';
 import { CHAT_PAGE_HTML } from './chat-page.js';
-import type { VerificationEmailSender } from './email.js';
-import { VERIFY_EMAIL_PAGE_HTML } from './verify-email-page.js';
 import { completeVkAuthorization, createVkAuthorizationStart, type VkIdOptions } from './vk-id.js';
 
 export interface CreateAppOptions {
@@ -51,8 +46,6 @@ export interface CreateAppOptions {
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
   readonly chatService?: ChatService;
-  readonly verificationEmailSender?: VerificationEmailSender;
-  readonly appBaseUrl?: string;
   readonly vkId?: VkIdOptions;
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
@@ -64,7 +57,11 @@ interface RecordBody {
 }
 
 interface AuthRouteSession {
-  readonly user: { readonly id: string; readonly email: string };
+  readonly user: {
+    readonly id: string;
+    readonly email: string | null;
+    readonly displayName: string;
+  };
   readonly accessToken: string;
   readonly accessTokenExpiresAt: Date;
   readonly refreshToken: string;
@@ -140,25 +137,13 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     }
     return reply.code(409).send({ error: error.code, message: error.message });
   }
-  if (
-    error instanceof EmailAlreadyRegisteredError ||
-    error instanceof ExternalIdentityEmailConflictError
-  ) {
+  if (error instanceof EmailAlreadyRegisteredError) {
     return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED', message: error.message });
   }
-  if (error instanceof EmailNotVerifiedError) {
-    return reply.code(403).send({
-      error: 'EMAIL_NOT_VERIFIED',
-      message: 'Подтвердите email по ссылке из письма.',
-    });
+  if (error instanceof DisplayNameAlreadyTakenError) {
+    return reply.code(409).send({ error: 'NICKNAME_ALREADY_TAKEN', message: error.message });
   }
-  if (error instanceof InvalidEmailVerificationTokenError) {
-    return reply.code(400).send({ error: 'INVALID_VERIFICATION_TOKEN', message: error.message });
-  }
-  if (
-    error instanceof ExternalIdentityEmailRequiredError ||
-    error instanceof ExternalIdentityAlreadyLinkedError
-  ) {
+  if (error instanceof ExternalIdentityAlreadyLinkedError) {
     return reply.code(409).send({ error: 'VK_IDENTITY_CONFLICT', message: error.message });
   }
   if (
@@ -206,106 +191,11 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
 
-function createVerificationUrl(baseUrl: string, token: string): string {
-  const url = new URL('/verify-email', baseUrl);
-  url.searchParams.set('token', token);
-  return url.toString();
-}
-
-async function deliverVerificationEmail(
-  sender: VerificationEmailSender | undefined,
-  baseUrl: string,
-  email: string,
-  token: string,
-): Promise<void> {
-  if (sender === undefined) throw new Error('Email verification delivery is not configured');
-  await sender.sendVerificationEmail(email, createVerificationUrl(baseUrl, token));
-}
-
 function registerAuthRoutes(
   app: FastifyInstance,
   authService: AuthService,
   secureCookies: boolean,
-  verificationEmailSender: VerificationEmailSender | undefined,
-  appBaseUrl: string,
 ): void {
-  app.post('/auth/register', async (request, reply) => {
-    try {
-      if (verificationEmailSender === undefined) {
-        return reply.code(503).send({ error: 'EMAIL_DELIVERY_NOT_CONFIGURED' });
-      }
-      const body = asRecord(request.body);
-      const challenge = await authService.register(body['email'], body['password']);
-      try {
-        await deliverVerificationEmail(
-          verificationEmailSender,
-          appBaseUrl,
-          challenge.user.email,
-          challenge.verificationToken,
-        );
-      } catch (error) {
-        request.log.error({ err: error }, 'Registration verification email delivery failed');
-        return reply.code(503).send({
-          error: 'VERIFICATION_EMAIL_FAILED',
-          message: 'Не удалось отправить письмо. Попробуйте запросить его повторно.',
-        });
-      }
-      return reply.code(202).send({
-        verificationRequired: true,
-        message: 'Письмо с подтверждением отправлено на указанный адрес.',
-      });
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
-
-  app.post('/auth/resend-verification', async (request, reply) => {
-    try {
-      if (verificationEmailSender === undefined) {
-        return reply.code(503).send({ error: 'EMAIL_DELIVERY_NOT_CONFIGURED' });
-      }
-      const body = asRecord(request.body);
-      const challenge = await authService.resendEmailVerification(body['email']);
-      if (challenge !== undefined) {
-        try {
-          await deliverVerificationEmail(
-            verificationEmailSender,
-            appBaseUrl,
-            challenge.user.email,
-            challenge.verificationToken,
-          );
-        } catch (error) {
-          request.log.error({ err: error }, 'Resent verification email delivery failed');
-          return reply.code(503).send({ error: 'VERIFICATION_EMAIL_FAILED' });
-        }
-      }
-      return reply.code(202).send({
-        message:
-          'Если аккаунт ожидает подтверждения, письмо будет отправлено. Подождите не менее минуты перед повторным запросом.',
-      });
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
-
-  app.post('/auth/verify-email', async (request, reply) => {
-    try {
-      const body = asRecord(request.body);
-      if (typeof body['token'] !== 'string') {
-        throw new AuthValidationError('Verification token is required');
-      }
-      const session = await authService.verifyEmail(body['token']);
-      setRefreshCookie(reply, session, secureCookies);
-      return reply.send({
-        user: session.user,
-        accessToken: session.accessToken,
-        accessTokenExpiresAt: session.accessTokenExpiresAt,
-      });
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
-
   app.post('/auth/login', async (request, reply) => {
     try {
       const body = asRecord(request.body);
@@ -324,9 +214,7 @@ function registerAuthRoutes(
   app.post('/auth/refresh', async (request, reply) => {
     try {
       const refreshToken = getRefreshCookie(request);
-      if (refreshToken === undefined) {
-        throw new InvalidRefreshTokenError();
-      }
+      if (refreshToken === undefined) throw new InvalidRefreshTokenError();
       const session = await authService.refresh(refreshToken);
       setRefreshCookie(reply, session, secureCookies);
       return reply.send({
@@ -343,9 +231,7 @@ function registerAuthRoutes(
   app.post('/auth/logout', async (request, reply) => {
     try {
       const refreshToken = getRefreshCookie(request);
-      if (refreshToken !== undefined) {
-        await authService.logout(refreshToken);
-      }
+      if (refreshToken !== undefined) await authService.logout(refreshToken);
       clearRefreshCookie(reply, secureCookies);
       return reply.code(204).send();
     } catch (error) {
@@ -362,17 +248,48 @@ function registerAuthRoutes(
       return sendAuthError(error, reply);
     }
   });
+
+  app.get('/auth/profile', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const profile = await authService.getProfile(user.id);
+      return reply.send({ profile });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.put('/auth/profile', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const profile = await authService.updateProfile(user.id, body['displayName'], body['email']);
+      return reply.send({ profile });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/auth/password', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      await authService.updatePassword(user.id, body['currentPassword'], body['newPassword']);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
 }
+
 function registerVkRoutes(
   app: FastifyInstance,
   authService: AuthService,
   secureCookies: boolean,
-  verificationEmailSender: VerificationEmailSender | undefined,
-  appBaseUrl: string,
   vkId: VkIdOptions | undefined,
 ): void {
   app.get('/auth/vk/start', async (_request, reply) => {
-    if (vkId === undefined) return reply.redirect('/verify-email?error=vk-unavailable');
+    if (vkId === undefined) return reply.redirect('/?authError=vk-unavailable');
     const start = createVkAuthorizationStart(vkId, secureCookies);
     reply.header('Set-Cookie', start.stateCookie);
     return reply.redirect(start.authorizationUrl);
@@ -391,7 +308,7 @@ function registerVkRoutes(
   });
 
   app.get('/auth/vk/callback', async (request, reply) => {
-    if (vkId === undefined) return reply.redirect('/verify-email?error=vk-unavailable');
+    if (vkId === undefined) return reply.redirect('/?authError=vk-unavailable');
     try {
       const query = request.query as RecordBody;
       const code = query['code'];
@@ -408,31 +325,14 @@ function registerVkRoutes(
       });
       if (result.linkUserId !== undefined) {
         await authService.linkVkIdentity(result.linkUserId, result.providerUserId);
-        return reply.redirect('/chat?vk=linked');
+        return reply.redirect('/?vk=linked');
       }
-      const authResult = await authService.signInWithVk(result.providerUserId, result.email);
-      if (authResult.kind === 'session') {
-        setRefreshCookie(reply, authResult.session, secureCookies);
-        return reply.redirect('/chat');
-      }
-      if (authResult.challenge !== undefined) {
-        await deliverVerificationEmail(
-          verificationEmailSender,
-          appBaseUrl,
-          authResult.challenge.user.email,
-          authResult.challenge.verificationToken,
-        );
-      }
-      return reply.redirect('/verify-email?sent=1');
+      const session = await authService.signInWithVk(result.providerUserId);
+      setRefreshCookie(reply, session, secureCookies);
+      return reply.redirect('/');
     } catch (error) {
-      if (error instanceof ExternalIdentityEmailConflictError) {
-        return reply.redirect('/verify-email?error=vk-email-exists');
-      }
-      if (error instanceof ExternalIdentityEmailRequiredError) {
-        return reply.redirect('/verify-email?error=vk-no-email');
-      }
       request.log.warn({ err: error }, 'VK ID authentication failed');
-      return reply.redirect('/chat?authError=vk-failed');
+      return reply.redirect('/?authError=vk-failed');
     } finally {
       const currentCookies = reply.getHeader('Set-Cookie');
       const existingCookies = Array.isArray(currentCookies)
@@ -947,13 +847,6 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
     return reply.type('text/html; charset=utf-8').send(CHAT_PAGE_HTML);
   });
 
-  app.get('/verify-email', async (_request, reply) => {
-    reply.header('Cache-Control', 'no-store');
-    reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'no-referrer');
-    return reply.type('text/html; charset=utf-8').send(VERIFY_EMAIL_PAGE_HTML);
-  });
-
   app.get('/health', async () => ({
     status: 'ok',
     apiContractVersion: 'browser-auth-v2',
@@ -963,22 +856,8 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   }));
 
   if (options.authService !== undefined) {
-    const appBaseUrl = options.appBaseUrl ?? 'http://127.0.0.1:3000';
-    registerAuthRoutes(
-      app,
-      options.authService,
-      options.secureCookies ?? false,
-      options.verificationEmailSender,
-      appBaseUrl,
-    );
-    registerVkRoutes(
-      app,
-      options.authService,
-      options.secureCookies ?? false,
-      options.verificationEmailSender,
-      appBaseUrl,
-      options.vkId,
-    );
+    registerAuthRoutes(app, options.authService, options.secureCookies ?? false);
+    registerVkRoutes(app, options.authService, options.secureCookies ?? false, options.vkId);
   }
 
   if (options.authService !== undefined && options.campaignService !== undefined) {

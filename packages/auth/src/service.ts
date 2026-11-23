@@ -8,13 +8,11 @@ import {
   verifyPassword,
 } from './password.js';
 import {
+  AuthValidationError,
+  DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
-  EmailNotVerifiedError,
   ExternalIdentityAlreadyLinkedError,
-  ExternalIdentityEmailConflictError,
-  ExternalIdentityEmailRequiredError,
   InvalidCredentialsError,
-  InvalidEmailVerificationTokenError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
 } from './errors.js';
@@ -22,7 +20,13 @@ import type { AccessTokenSigner, AccessTokenPairPart } from './access-tokens.js'
 
 export interface AuthUser {
   readonly id: string;
-  readonly email: string;
+  readonly email: string | null;
+  readonly displayName: string;
+}
+
+export interface AuthProfile extends AuthUser {
+  readonly hasPassword: boolean;
+  readonly hasVk: boolean;
 }
 
 export interface AuthSession {
@@ -33,31 +37,20 @@ export interface AuthSession {
   readonly refreshTokenExpiresAt: Date;
 }
 
-export interface EmailVerificationChallenge {
-  readonly user: AuthUser;
-  readonly verificationToken: string;
-  readonly verificationTokenExpiresAt: Date;
-}
-
-export type ExternalAuthResult =
-  | { readonly kind: 'session'; readonly session: AuthSession }
-  | { readonly kind: 'verification'; readonly challenge?: EmailVerificationChallenge };
-
 export interface AuthServiceOptions {
   readonly pool: Pool;
   readonly accessTokens: AccessTokenSigner;
   readonly refreshTokenTtlSeconds: number;
-  readonly emailVerificationTokenTtlSeconds?: number;
   readonly clock?: () => Date;
 }
 
 export interface AuthService {
-  register(email: unknown, password: unknown): Promise<EmailVerificationChallenge>;
-  resendEmailVerification(email: unknown): Promise<EmailVerificationChallenge | undefined>;
-  verifyEmail(rawToken: string): Promise<AuthSession>;
   login(email: unknown, password: unknown): Promise<AuthSession>;
-  signInWithVk(providerUserId: string, email: unknown): Promise<ExternalAuthResult>;
+  signInWithVk(providerUserId: string): Promise<AuthSession>;
   linkVkIdentity(userId: string, providerUserId: string): Promise<void>;
+  getProfile(userId: string): Promise<AuthProfile>;
+  updateProfile(userId: string, displayName: unknown, email: unknown): Promise<AuthProfile>;
+  updatePassword(userId: string, currentPassword: unknown, newPassword: unknown): Promise<void>;
   refresh(rawRefreshToken: string): Promise<AuthSession>;
   logout(rawRefreshToken: string): Promise<void>;
   authenticateAccessToken(rawAccessToken: string): Promise<AuthUser>;
@@ -65,22 +58,34 @@ export interface AuthService {
 
 interface UserRow {
   readonly id: string;
-  readonly email: string;
-  readonly password_hash: string;
+  readonly email: string | null;
+  readonly password_hash: string | null;
   readonly status: string;
-  readonly email_verified_at: Date | null;
+  readonly display_name: string;
 }
 
 interface RefreshTokenRow {
   readonly id: string;
   readonly user_id: string;
-  readonly email: string;
+  readonly email: string | null;
+  readonly display_name: string;
   readonly user_status: string;
-  readonly email_verified_at: Date | null;
   readonly family_id: string;
   readonly expires_at: Date;
   readonly used_at: Date | null;
   readonly revoked_at: Date | null;
+}
+
+function normalizeDisplayName(value: unknown): string {
+  if (typeof value !== 'string') throw new AuthValidationError('Nickname must be a string');
+  const name = value.normalize('NFC').trim().replace(/\s+/gu, ' ');
+  const length = Array.from(name).length;
+  if (length < 2 || length > 32 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(name)) {
+    throw new AuthValidationError(
+      'Nickname must be 2–32 characters and use letters, numbers, spaces, dots, dashes or underscores',
+    );
+  }
+  return name;
 }
 
 function hashRefreshToken(rawToken: string): string {
@@ -165,64 +170,6 @@ async function revokeFamily(client: PoolClient, familyId: string, at: Date): Pro
   );
 }
 
-interface EmailVerificationTokenRow {
-  readonly id: string;
-  readonly user_id: string;
-  readonly email: string;
-  readonly user_status: string;
-  readonly email_verified_at: Date | null;
-  readonly expires_at: Date;
-  readonly used_at: Date | null;
-}
-
-async function issueEmailVerificationChallenge(
-  client: PoolClient,
-  user: AuthUser,
-  now: Date,
-  ttlSeconds: number,
-): Promise<EmailVerificationChallenge> {
-  const verificationToken = makeRefreshToken();
-  const expiresAt = addSeconds(now, ttlSeconds);
-  await client.query(
-    `UPDATE email_verification_tokens
-     SET used_at = COALESCE(used_at, $2)
-     WHERE user_id = $1 AND used_at IS NULL`,
-    [user.id, now],
-  );
-  await client.query(
-    `INSERT INTO email_verification_tokens (
-       id, user_id, token_hash, created_at, expires_at
-     ) VALUES ($1, $2, $3, $4, $5)`,
-    [randomUUID(), user.id, hashRefreshToken(verificationToken), now, expiresAt],
-  );
-  return {
-    user,
-    verificationToken,
-    verificationTokenExpiresAt: expiresAt,
-  };
-}
-
-async function maybeIssueEmailVerificationChallenge(
-  client: PoolClient,
-  user: AuthUser,
-  now: Date,
-  ttlSeconds: number,
-): Promise<EmailVerificationChallenge | undefined> {
-  const recent = await client.query<{ created_at: Date }>(
-    `SELECT created_at
-     FROM email_verification_tokens
-     WHERE user_id = $1
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [user.id],
-  );
-  const lastIssuedAt = recent.rows[0]?.created_at;
-  if (lastIssuedAt !== undefined && now.getTime() - lastIssuedAt.getTime() < 60_000) {
-    return undefined;
-  }
-  return issueEmailVerificationChallenge(client, user, now, ttlSeconds);
-}
-
 export function createAuthService(options: AuthServiceOptions): AuthService {
   if (
     !Number.isSafeInteger(options.refreshTokenTtlSeconds) ||
@@ -233,155 +180,8 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
   }
 
   const clock = options.clock ?? (() => new Date());
-  const emailVerificationTtlSeconds = options.emailVerificationTokenTtlSeconds ?? 86_400;
-  if (
-    !Number.isSafeInteger(emailVerificationTtlSeconds) ||
-    emailVerificationTtlSeconds < 300 ||
-    emailVerificationTtlSeconds > 604_800
-  ) {
-    throw new RangeError(
-      'Email verification token TTL must be an integer between 300 and 604800 seconds',
-    );
-  }
 
   return {
-    async register(emailInput, passwordInput) {
-      const email = normalizeEmail(emailInput);
-      validatePassword(passwordInput);
-      const passwordHash = await hashPassword(passwordInput);
-      const client = await options.pool.connect();
-      let transactionOpen = false;
-
-      try {
-        await client.query('BEGIN');
-        transactionOpen = true;
-        const inserted = await client.query<{ id: string; email: string }>(
-          `INSERT INTO users (email, password_hash)
-           VALUES ($1, $2)
-           RETURNING id, email`,
-          [email, passwordHash],
-        );
-        const row = inserted.rows[0];
-        if (row === undefined) throw new Error('User insert did not return a row');
-        const challenge = await issueEmailVerificationChallenge(
-          client,
-          { id: row.id, email: row.email },
-          clock(),
-          emailVerificationTtlSeconds,
-        );
-        await client.query('COMMIT');
-        transactionOpen = false;
-        return challenge;
-      } catch (error) {
-        if (transactionOpen) await client.query('ROLLBACK');
-        const databaseError = error as { code?: string; constraint?: string };
-        if (
-          databaseError.code === '23505' &&
-          databaseError.constraint === 'users_email_ci_unique'
-        ) {
-          throw new EmailAlreadyRegisteredError();
-        }
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-
-    async resendEmailVerification(emailInput) {
-      const email = normalizeEmail(emailInput);
-      const client = await options.pool.connect();
-      let transactionOpen = false;
-      try {
-        await client.query('BEGIN');
-        transactionOpen = true;
-        const found = await client.query<{
-          id: string;
-          email: string;
-          status: string;
-          email_verified_at: Date | null;
-        }>(
-          `SELECT id, email, status, email_verified_at
-           FROM users WHERE email = $1 FOR UPDATE`,
-          [email],
-        );
-        const row = found.rows[0];
-        let challenge: EmailVerificationChallenge | undefined;
-        if (row !== undefined && row.status === 'active' && row.email_verified_at === null) {
-          challenge = await maybeIssueEmailVerificationChallenge(
-            client,
-            { id: row.id, email: row.email },
-            clock(),
-            emailVerificationTtlSeconds,
-          );
-        }
-        await client.query('COMMIT');
-        transactionOpen = false;
-        return challenge;
-      } catch (error) {
-        if (transactionOpen) await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-
-    async verifyEmail(rawToken) {
-      if (!isValidRefreshToken(rawToken)) throw new InvalidEmailVerificationTokenError();
-      const client = await options.pool.connect();
-      let transactionOpen = false;
-      try {
-        await client.query('BEGIN');
-        transactionOpen = true;
-        const now = clock();
-        const selected = await client.query<EmailVerificationTokenRow>(
-          `SELECT evt.id, evt.user_id, evt.expires_at, evt.used_at,
-                  u.email, u.status AS user_status, u.email_verified_at
-           FROM email_verification_tokens AS evt
-           JOIN users AS u ON u.id = evt.user_id
-           WHERE evt.token_hash = $1
-           FOR UPDATE OF evt, u`,
-          [hashRefreshToken(rawToken)],
-        );
-        const row = selected.rows[0];
-        if (
-          row === undefined ||
-          row.used_at !== null ||
-          row.expires_at.getTime() <= now.getTime() ||
-          row.user_status !== 'active'
-        ) {
-          throw new InvalidEmailVerificationTokenError();
-        }
-        await client.query(
-          `UPDATE users
-           SET email_verified_at = COALESCE(email_verified_at, $2), updated_at = $2
-           WHERE id = $1`,
-          [row.user_id, now],
-        );
-        await client.query(
-          `UPDATE email_verification_tokens
-           SET used_at = $2
-           WHERE user_id = $1 AND used_at IS NULL`,
-          [row.user_id, now],
-        );
-        const session = await createSession(
-          client,
-          { id: row.user_id, email: row.email },
-          randomUUID(),
-          options.accessTokens,
-          options.refreshTokenTtlSeconds,
-          now,
-        );
-        await client.query('COMMIT');
-        transactionOpen = false;
-        return session;
-      } catch (error) {
-        if (transactionOpen) await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-
     async login(emailInput, passwordInput) {
       const email = normalizeEmail(emailInput);
       if (typeof passwordInput !== 'string' || Buffer.byteLength(passwordInput, 'utf8') > 1024) {
@@ -389,7 +189,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       }
 
       const found = await options.pool.query<UserRow>(
-        'SELECT id, email, password_hash, status, email_verified_at FROM users WHERE email = $1',
+        'SELECT id, email, password_hash, status, display_name FROM users WHERE email = $1',
         [email],
       );
       const row = found.rows[0];
@@ -400,17 +200,18 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       if (row === undefined || row.status !== 'active' || !passwordMatches) {
         throw new InvalidCredentialsError();
       }
-      if (row.email_verified_at === null) throw new EmailNotVerifiedError();
 
       const client = await options.pool.connect();
       let transactionOpen = false;
       try {
         await client.query('BEGIN');
         transactionOpen = true;
-        const locked = await client.query<{ id: string; email: string; status: string }>(
-          'SELECT id, email, status FROM users WHERE id = $1 FOR UPDATE',
-          [row.id],
-        );
+        const locked = await client.query<{
+          id: string;
+          email: string | null;
+          display_name: string;
+          status: string;
+        }>('SELECT id, email, display_name, status FROM users WHERE id = $1 FOR UPDATE', [row.id]);
         const userRow = locked.rows[0];
         if (userRow === undefined || userRow.status !== 'active') {
           throw new InvalidCredentialsError();
@@ -418,7 +219,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
 
         const session = await createSession(
           client,
-          { id: userRow.id, email: userRow.email },
+          { id: userRow.id, email: userRow.email, displayName: userRow.display_name },
           randomUUID(),
           options.accessTokens,
           options.refreshTokenTtlSeconds,
@@ -438,7 +239,103 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       }
     },
 
-    async signInWithVk(providerUserId, emailInput) {
+    async getProfile(userId) {
+      const result = await options.pool.query<{
+        id: string;
+        email: string | null;
+        display_name: string;
+        has_password: boolean;
+        has_vk: boolean;
+      }>(
+        `SELECT u.id, u.email, u.display_name,
+                (u.password_hash IS NOT NULL) AS has_password,
+                EXISTS (
+                  SELECT 1 FROM auth_identities ai
+                  WHERE ai.user_id = u.id AND ai.provider = 'vk'
+                ) AS has_vk
+         FROM users u
+         WHERE u.id = $1 AND u.status = 'active'`,
+        [userId],
+      );
+      const row = result.rows[0];
+      if (row === undefined) throw new InvalidCredentialsError();
+      return {
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+        hasPassword: row.has_password,
+        hasVk: row.has_vk,
+      };
+    },
+
+    async updateProfile(userId, displayNameInput, emailInput) {
+      const displayName = normalizeDisplayName(displayNameInput);
+      const email =
+        emailInput === null || (typeof emailInput === 'string' && emailInput.trim() === '')
+          ? null
+          : normalizeEmail(emailInput);
+      try {
+        const updated = await options.pool.query(
+          `UPDATE users
+           SET display_name = $2,
+               email = $3,
+               password_hash = CASE WHEN $3::text IS NULL THEN NULL ELSE password_hash END,
+               updated_at = $4
+           WHERE id = $1 AND status = 'active'`,
+          [userId, displayName, email, clock()],
+        );
+        if ((updated.rowCount ?? 0) !== 1) throw new InvalidCredentialsError();
+      } catch (error) {
+        const databaseError = error as { code?: string; constraint?: string };
+        if (
+          databaseError.code === '23505' &&
+          databaseError.constraint === 'users_email_ci_unique'
+        ) {
+          throw new EmailAlreadyRegisteredError();
+        }
+        if (
+          databaseError.code === '23505' &&
+          databaseError.constraint === 'users_display_name_ci_unique'
+        ) {
+          throw new DisplayNameAlreadyTakenError();
+        }
+        throw error;
+      }
+      return this.getProfile(userId);
+    },
+
+    async updatePassword(userId, currentPassword, newPassword) {
+      validatePassword(newPassword);
+      const found = await options.pool.query<{
+        email: string | null;
+        password_hash: string | null;
+      }>(
+        `SELECT email, password_hash
+         FROM users
+         WHERE id = $1 AND status = 'active'`,
+        [userId],
+      );
+      const row = found.rows[0];
+      if (row === undefined) throw new InvalidCredentialsError();
+      if (row.email === null) {
+        throw new AuthValidationError('Сначала укажите резервный email в профиле');
+      }
+      if (row.password_hash !== null) {
+        if (
+          typeof currentPassword !== 'string' ||
+          !(await verifyPassword(currentPassword, row.password_hash))
+        ) {
+          throw new InvalidCredentialsError();
+        }
+      }
+      const passwordHash = await hashPassword(newPassword);
+      await options.pool.query(
+        'UPDATE users SET password_hash = $2, updated_at = $3 WHERE id = $1',
+        [userId, passwordHash, clock()],
+      );
+    },
+
+    async signInWithVk(providerUserId) {
       const subject = providerUserId.trim();
       if (subject.length === 0 || subject.length > 256) throw new InvalidCredentialsError();
       const client = await options.pool.connect();
@@ -448,11 +345,11 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         transactionOpen = true;
         const linked = await client.query<{
           id: string;
-          email: string;
+          email: string | null;
+          display_name: string;
           status: string;
-          email_verified_at: Date | null;
         }>(
-          `SELECT u.id, u.email, u.status, u.email_verified_at
+          `SELECT u.id, u.email, u.display_name, u.status
            FROM auth_identities AS ai
            JOIN users AS u ON u.id = ai.user_id
            WHERE ai.provider = 'vk' AND ai.provider_user_id = $1
@@ -460,78 +357,55 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           [subject],
         );
         const linkedUser = linked.rows[0];
+        let user: AuthUser;
         if (linkedUser !== undefined) {
           if (linkedUser.status !== 'active') throw new InvalidCredentialsError();
-          if (linkedUser.email_verified_at === null) {
-            const challenge = await maybeIssueEmailVerificationChallenge(
-              client,
-              { id: linkedUser.id, email: linkedUser.email },
-              clock(),
-              emailVerificationTtlSeconds,
-            );
-            await client.query('COMMIT');
-            transactionOpen = false;
-            return { kind: 'verification', ...(challenge === undefined ? {} : { challenge }) };
-          }
-          const session = await createSession(
-            client,
-            { id: linkedUser.id, email: linkedUser.email },
-            randomUUID(),
-            options.accessTokens,
-            options.refreshTokenTtlSeconds,
-            clock(),
+          user = {
+            id: linkedUser.id,
+            email: linkedUser.email,
+            displayName: linkedUser.display_name,
+          };
+        } else {
+          const userId = randomUUID();
+          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
+          const created = await client.query<{
+            id: string;
+            email: string | null;
+            display_name: string;
+          }>(
+            `INSERT INTO users (id, email, password_hash, display_name)
+             VALUES ($1, NULL, NULL, $2)
+             RETURNING id, email, display_name`,
+            [userId, displayName],
           );
-          await client.query('COMMIT');
-          transactionOpen = false;
-          return { kind: 'session', session };
+          const row = created.rows[0];
+          if (row === undefined) throw new Error('VK user insert did not return a row');
+          const identityInserted = await client.query<{ user_id: string }>(
+            `INSERT INTO auth_identities (user_id, provider, provider_user_id)
+             VALUES ($1, 'vk', $2)
+             ON CONFLICT (provider, provider_user_id) DO NOTHING
+             RETURNING user_id`,
+            [row.id, subject],
+          );
+          if (identityInserted.rows[0] === undefined) {
+            throw new ExternalIdentityAlreadyLinkedError();
+          }
+          user = { id: row.id, email: row.email, displayName: row.display_name };
         }
 
-        if (typeof emailInput !== 'string' || emailInput.trim().length === 0) {
-          throw new ExternalIdentityEmailRequiredError();
-        }
-        const email = normalizeEmail(emailInput);
-        const existingEmail = await client.query<{ id: string }>(
-          'SELECT id FROM users WHERE email = $1 FOR UPDATE',
-          [email],
-        );
-        if (existingEmail.rows[0] !== undefined) throw new ExternalIdentityEmailConflictError();
-        const passwordHash = await hashPassword(randomBytes(32).toString('base64url'));
-        const created = await client.query<{ id: string; email: string }>(
-          `INSERT INTO users (email, password_hash)
-           VALUES ($1, $2)
-           RETURNING id, email`,
-          [email, passwordHash],
-        );
-        const user = created.rows[0];
-        if (user === undefined) throw new Error('VK user insert did not return a row');
-        const identityInserted = await client.query<{ user_id: string }>(
-          `INSERT INTO auth_identities (user_id, provider, provider_user_id)
-           VALUES ($1, 'vk', $2)
-           ON CONFLICT (provider, provider_user_id) DO NOTHING
-           RETURNING user_id`,
-          [user.id, subject],
-        );
-        if (identityInserted.rows[0] === undefined) {
-          throw new ExternalIdentityAlreadyLinkedError();
-        }
-        const challenge = await issueEmailVerificationChallenge(
+        const session = await createSession(
           client,
-          { id: user.id, email: user.email },
+          user,
+          randomUUID(),
+          options.accessTokens,
+          options.refreshTokenTtlSeconds,
           clock(),
-          emailVerificationTtlSeconds,
         );
         await client.query('COMMIT');
         transactionOpen = false;
-        return { kind: 'verification', challenge };
+        return session;
       } catch (error) {
         if (transactionOpen) await client.query('ROLLBACK');
-        const databaseError = error as { code?: string; constraint?: string };
-        if (
-          databaseError.code === '23505' &&
-          databaseError.constraint === 'users_email_ci_unique'
-        ) {
-          throw new ExternalIdentityEmailConflictError();
-        }
         throw error;
       } finally {
         client.release();
@@ -546,13 +420,12 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       try {
         await client.query('BEGIN');
         transactionOpen = true;
-        const account = await client.query<{ status: string; email_verified_at: Date | null }>(
-          'SELECT status, email_verified_at FROM users WHERE id = $1 FOR UPDATE',
+        const account = await client.query<{ status: string }>(
+          'SELECT status FROM users WHERE id = $1 FOR UPDATE',
           [userId],
         );
         const user = account.rows[0];
         if (user === undefined || user.status !== 'active') throw new InvalidCredentialsError();
-        if (user.email_verified_at === null) throw new EmailNotVerifiedError();
         const currentIdentity = await client.query<{ provider_user_id: string }>(
           `SELECT provider_user_id FROM auth_identities
            WHERE user_id = $1 AND provider = 'vk'
@@ -605,7 +478,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         }
 
         const selected = await client.query<RefreshTokenRow>(
-          `SELECT rt.id, rt.user_id, u.email, u.status AS user_status, u.email_verified_at,
+          `SELECT rt.id, rt.user_id, u.email, u.display_name, u.status AS user_status,
                   rt.family_id, rt.expires_at, rt.used_at, rt.revoked_at
            FROM refresh_tokens AS rt
            JOIN users AS u ON u.id = rt.user_id
@@ -626,11 +499,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           throw new RefreshTokenReuseDetectedError();
         }
 
-        if (
-          row.expires_at.getTime() <= now.getTime() ||
-          row.user_status !== 'active' ||
-          row.email_verified_at === null
-        ) {
+        if (row.expires_at.getTime() <= now.getTime() || row.user_status !== 'active') {
           await revokeFamily(client, row.family_id, now);
           await client.query('COMMIT');
           transactionOpen = false;
@@ -658,7 +527,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         await client.query('COMMIT');
         transactionOpen = false;
         return {
-          user: { id: row.user_id, email: row.email },
+          user: { id: row.user_id, email: row.email, displayName: row.display_name },
           accessToken: access.accessToken,
           accessTokenExpiresAt: access.accessTokenExpiresAt,
           refreshToken: replacement,
@@ -703,17 +572,21 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
 
     async authenticateAccessToken(rawAccessToken) {
       const claims = options.accessTokens.verify(rawAccessToken);
-      const result = await options.pool.query<{ id: string; email: string }>(
-        `SELECT id, email
+      const result = await options.pool.query<{
+        id: string;
+        email: string | null;
+        display_name: string;
+      }>(
+        `SELECT id, email, display_name
          FROM users
-         WHERE id = $1 AND status = 'active' AND email_verified_at IS NOT NULL`,
+         WHERE id = $1 AND status = 'active'`,
         [claims.sub],
       );
       const row = result.rows[0];
       if (row === undefined) {
         throw new InvalidCredentialsError();
       }
-      return { id: row.id, email: row.email };
+      return { id: row.id, email: row.email, displayName: row.display_name };
     },
   };
 }

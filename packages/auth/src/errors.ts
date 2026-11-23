@@ -40,27 +40,6 @@ export class UnauthenticatedError extends Error {
   }
 }
 
-export class EmailNotVerifiedError extends Error {
-  constructor() {
-    super('Email address must be verified before signing in');
-    this.name = 'EmailNotVerifiedError';
-  }
-}
-
-export class InvalidEmailVerificationTokenError extends Error {
-  constructor() {
-    super('Email verification token is invalid or expired');
-    this.name = 'InvalidEmailVerificationTokenError';
-  }
-}
-
-export class ExternalIdentityEmailConflictError extends Error {
-  constructor() {
-    super('This VK account uses an email that is already registered. Sign in first, then link VK');
-    this.name = 'ExternalIdentityEmailConflictError';
-  }
-}
-
 export class ExternalIdentityAlreadyLinkedError extends Error {
   constructor() {
     super('This VK account is already linked to another Paper Wars account');
@@ -68,9 +47,9 @@ export class ExternalIdentityAlreadyLinkedError extends Error {
   }
 }
 
-export class ExternalIdentityEmailRequiredError extends Error {
+export class DisplayNameAlreadyTakenError extends Error {
   constructor() {
-    super('VK ID did not provide an email address. Use email registration first');
-    this.name = 'ExternalIdentityEmailRequiredError';
+    super('This nickname is already in use');
+    this.name = 'DisplayNameAlreadyTakenError';
   }
 }

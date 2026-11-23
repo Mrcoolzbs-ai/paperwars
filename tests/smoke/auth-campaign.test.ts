@@ -4,9 +4,10 @@ import {
   createAccessTokenSigner,
   createAuthService,
   createCampaignService,
+  hashPassword,
+  DisplayNameAlreadyTakenError,
   AuthValidationError,
   EmailAlreadyRegisteredError,
-  EmailNotVerifiedError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
@@ -16,13 +17,20 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
-async function registerVerifiedUser(
+async function createEmailLoginUser(
   auth: ReturnType<typeof createAuthService>,
+  pool: ReturnType<typeof createPostgresPersistence>['pool'],
   email: string,
   password: string,
 ) {
-  const challenge = await auth.register(email, password);
-  return auth.verifyEmail(challenge.verificationToken);
+  const normalizedEmail = email.trim().toLowerCase();
+  const userId = randomUUID();
+  await pool.query(
+    `INSERT INTO users (id, email, password_hash, display_name)
+     VALUES ($1, $2, $3, $4)`,
+    [userId, normalizedEmail, await hashPassword(password), `Test-${userId.slice(0, 8)}`],
+  );
+  return auth.login(normalizedEmail, password);
 }
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
@@ -70,15 +78,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const email = `Auth-${randomUUID()}@Example.Test`;
       const password = 'a secure test password with enough length';
 
-      const challenge = await auth.register(`  ${email}  `, password);
-      expect(challenge.user.email).toBe(email.trim().toLowerCase());
-      await expect(auth.login(email, password)).rejects.toBeInstanceOf(EmailNotVerifiedError);
-      const registered = await auth.verifyEmail(challenge.verificationToken);
+      const registered = await createEmailLoginUser(auth, current.pool, `  ${email}  `, password);
+      expect(registered.user.email).toBe(email.trim().toLowerCase());
       expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
 
-      await expect(auth.register(email.toUpperCase(), password)).rejects.toBeInstanceOf(
-        EmailAlreadyRegisteredError,
+      const secondUser = await createEmailLoginUser(
+        auth,
+        current.pool,
+        `duplicate-target-${randomUUID()}@example.test`,
+        password,
       );
+      await expect(
+        auth.updateProfile(secondUser.user.id, secondUser.user.displayName, email.toUpperCase()),
+      ).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
       await expect(auth.login(email, 'wrong password long enough')).rejects.toBeInstanceOf(
         InvalidCredentialsError,
       );
@@ -101,11 +113,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         revoked: string;
       }>(
         `SELECT
-             count(*)::text AS total,
-             bool_or(token_hash = $2) AS raw_token_matches,
-             count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked
-           FROM refresh_tokens
-           WHERE user_id = $1`,
+               count(*)::text AS total,
+               bool_or(token_hash = $2) AS raw_token_matches,
+               count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked
+             FROM refresh_tokens
+             WHERE user_id = $1`,
         [registered.user.id, registered.refreshToken],
       );
       expect(stored.rows[0]?.total).toBe('3');
@@ -117,8 +129,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrent = await registerVerifiedUser(
+      const concurrent = await createEmailLoginUser(
         auth,
+        current.pool,
         `concurrent-${randomUUID()}@example.test`,
         password,
       );
@@ -146,6 +159,46 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
     });
 
+    it('creates VK-only profiles and enables optional email/password backup login', async () => {
+      const current = getPersistence();
+      const auth = createAuthService({
+        pool: current.pool,
+        accessTokens: signer,
+        refreshTokenTtlSeconds: 3600,
+      });
+      const session = await auth.signInWithVk(`vk-${randomUUID()}`);
+      expect(session.user.email).toBeNull();
+      expect(session.user.displayName).toMatch(/^Игрок-/);
+
+      const initial = await auth.getProfile(session.user.id);
+      expect(initial).toMatchObject({ hasVk: true, hasPassword: false, email: null });
+
+      const email = `backup-${randomUUID()}@example.test`;
+      const nickname = `Commander-${randomUUID().slice(0, 8)}`;
+      const updated = await auth.updateProfile(session.user.id, nickname, email);
+      expect(updated).toMatchObject({ displayName: nickname, email, hasVk: true });
+
+      const password = 'a secure backup password';
+      await auth.updatePassword(session.user.id, null, password);
+      const emailLogin = await auth.login(email, password);
+      expect(emailLogin.user.id).toBe(session.user.id);
+      expect(emailLogin.user.displayName).toBe(nickname);
+
+      const another = await auth.signInWithVk(`vk-${randomUUID()}`);
+      await expect(auth.updateProfile(another.user.id, nickname, null)).rejects.toBeInstanceOf(
+        DisplayNameAlreadyTakenError,
+      );
+      expect(await auth.authenticateAccessToken(session.accessToken)).toMatchObject({
+        id: session.user.id,
+        email,
+        displayName: nickname,
+      });
+
+      const cleared = await auth.updateProfile(session.user.id, nickname, null);
+      expect(cleared).toMatchObject({ email: null, hasPassword: false });
+      await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
+    });
+
     it('creates a campaign, membership and the first committed seed in one transaction', async () => {
       const current = getPersistence();
       const auth = createAuthService({
@@ -153,8 +206,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await registerVerifiedUser(
+      const user = await createEmailLoginUser(
         auth,
+        current.pool,
         `campaign-${randomUUID()}@example.test`,
         'another secure test password',
       );
@@ -186,7 +240,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       const membership = await current.pool.query<{ status: string; country_id: string | null }>(
         `SELECT status, country_id FROM campaign_memberships
-           WHERE campaign_id = $1 AND user_id = $2`,
+             WHERE campaign_id = $1 AND user_id = $2`,
         [created.id, user.user.id],
       );
       expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
@@ -198,7 +252,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         nonce: Buffer;
       }>(
         `SELECT status, commitment, encrypted_seed, nonce FROM random_seeds
-           WHERE campaign_id = $1 AND turn_number = 1`,
+             WHERE campaign_id = $1 AND turn_number = 1`,
         [created.id],
       );
       expect(seedRow.rows).toHaveLength(1);
@@ -222,15 +276,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const owner = await registerVerifiedUser(
+      const owner = await createEmailLoginUser(
         auth,
+        current.pool,
         `capacity-owner-${randomUUID()}@example.test`,
         'capacity owner password secure',
       );
       const guests = await Promise.all(
         Array.from({ length: 4 }, (_, index) =>
-          registerVerifiedUser(
+          createEmailLoginUser(
             auth,
+            current.pool,
             `capacity-guest-${index}-${randomUUID()}@example.test`,
             'capacity guest password secure',
           ),
@@ -273,8 +329,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const user = await registerVerifiedUser(
+      const user = await createEmailLoginUser(
         auth,
+        current.pool,
         `rollback-${randomUUID()}@example.test`,
         'transaction rollback password',
       );

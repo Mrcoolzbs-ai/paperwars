@@ -6,6 +6,7 @@ import {
   createCampaignService,
   createChatService,
 } from '@paper-wars/auth';
+import { createEmailLoginUser } from '../helpers/auth.js';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { createApp } from '@paper-wars/api';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
@@ -54,28 +55,31 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const challenges = await Promise.all([
-        authService.register(
+      const users = await Promise.all([
+        createEmailLoginUser(
+          pool,
+          authService,
           'chat-owner-' + randomUUID() + '@example.test',
           'secure chat owner integration password',
         ),
-        authService.register(
+        createEmailLoginUser(
+          pool,
+          authService,
           'chat-member-' + randomUUID() + '@example.test',
           'secure chat member integration password',
         ),
-        authService.register(
+        createEmailLoginUser(
+          pool,
+          authService,
           'chat-outsider-' + randomUUID() + '@example.test',
           'secure chat outsider integration password',
         ),
       ]);
-      const verifiedUsers = await Promise.all(
-        challenges.map((challenge) => authService.verifyEmail(challenge.verificationToken)),
-      );
-      const owner = verifiedUsers[0];
-      const member = verifiedUsers[1];
-      const outsider = verifiedUsers[2];
+      const owner = users[0];
+      const member = users[1];
+      const outsider = users[2];
       if (owner === undefined || member === undefined || outsider === undefined) {
-        throw new Error('Expected all three verified chat users');
+        throw new Error('Expected all three chat users');
       }
       const campaignService = createCampaignService({
         pool,
@@ -122,7 +126,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(worldPost.json().message).toMatchObject({
           scope: 'world',
           campaignId: null,
-          authorLabel: 'Игрок ' + outsider.user.id.replace(/-/g, '').slice(0, 6).toUpperCase(),
+          authorLabel: outsider.user.displayName,
           message: 'Всем привет из мирового чата.',
           isMine: true,
         });

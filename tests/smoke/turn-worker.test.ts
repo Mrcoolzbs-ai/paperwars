@@ -80,8 +80,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       try {
         const userResult = await pool.query<{ id: string }>(
-          'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
-          [`worker-${randomUUID()}@example.test`, 'test-password-hash'],
+          'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id',
+          [
+            `worker-${randomUUID()}@example.test`,
+            'test-password-hash',
+            `WorkerPlayer-${randomUUID().slice(0, 8)}`,
+          ],
         );
         const userId = userResult.rows[0]?.id;
         if (userId === undefined) throw new Error('User insert did not return an id');

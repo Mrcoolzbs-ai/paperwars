@@ -32,6 +32,7 @@ describe('VK ID OAuth 2.1 integration', () => {
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('code_challenge_method')).toBe('s256');
     expect(url.searchParams.get('sdk_type')).toBe('vkid');
+    expect(url.searchParams.get('scope')).toBeNull();
     expect(url.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(start.stateCookie).toContain('HttpOnly');
     expect(start.stateCookie).toContain('SameSite=Lax');
@@ -73,7 +74,6 @@ describe('VK ID OAuth 2.1 integration', () => {
     );
     expect(result).toEqual({
       providerUserId: '42',
-      email: 'player@example.test',
     });
     expect(calls.map((url) => url.pathname)).toEqual(['/oauth2/auth', '/oauth2/user_info']);
   });

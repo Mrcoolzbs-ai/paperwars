@@ -4,12 +4,26 @@ import {
   createAccessTokenSigner,
   createAuthService,
   createCampaignService,
+  hashPassword,
 } from '@paper-wars/auth';
 import { createApp } from '@paper-wars/api';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
+
+async function createBackupAccount(
+  pool: ReturnType<typeof createPostgresPersistence>['pool'],
+  email: string,
+  password: string,
+): Promise<void> {
+  const id = randomUUID();
+  await pool.query(
+    `INSERT INTO users (id, email, password_hash, display_name)
+     VALUES ($1, $2, $3, $4)`,
+    [id, email.toLowerCase(), await hashPassword(password), `API-${id.slice(0, 8)}`],
+  );
+}
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'authentication and campaign HTTP API',
@@ -49,17 +63,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             rulesetVersion: 'baseline-v1',
             rngVersion: 'rng-v1',
           });
-    const verificationLinks: string[] = [];
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
       secureCookies: false,
-      appBaseUrl: 'https://paper-wars.test',
-      verificationEmailSender: {
-        async sendVerificationEmail(_email, verificationUrl) {
-          verificationLinks.push(verificationUrl);
-        },
-      },
       ...(auth === undefined ? {} : { authService: auth }),
       ...(campaigns === undefined ? {} : { campaignService: campaigns }),
     });
@@ -75,45 +82,27 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
     it('sets an HttpOnly SameSite refresh cookie and keeps the raw token out of JSON', async () => {
       const email = `api-${randomUUID()}@example.test`;
-      const registration = await app.inject({
-        method: 'POST',
-        url: '/auth/register',
-        payload: { email, password: 'an api integration test password' },
-      });
-      expect(registration.statusCode).toBe(202);
-      expect(registration.json()).toMatchObject({ verificationRequired: true });
-      expect(registration.body).not.toContain('refreshToken');
-      const unverifiedLogin = await app.inject({
-        method: 'POST',
-        url: '/auth/login',
-        payload: { email, password: 'an api integration test password' },
-      });
-      expect(unverifiedLogin.statusCode).toBe(403);
-      expect(unverifiedLogin.json()).toMatchObject({ error: 'EMAIL_NOT_VERIFIED' });
-
-      const verificationUrl = verificationLinks[0];
-      if (verificationUrl === undefined) throw new Error('Verification email was not captured');
-      const verificationToken = new URL(verificationUrl).searchParams.get('token');
-      if (verificationToken === null) throw new Error('Verification token was missing');
+      const password = 'an api integration test password';
+      await createBackupAccount(persistence!.pool, email, password);
       const response = await app.inject({
         method: 'POST',
-        url: '/auth/verify-email',
-        payload: { token: verificationToken },
+        url: '/auth/login',
+        payload: { email, password },
       });
       expect(response.statusCode).toBe(200);
+      expect(response.body).not.toContain('refreshToken');
       const body = response.json<{
-        user: { id: string; email: string };
+        user: { id: string; email: string | null; displayName: string };
         accessToken: string;
         accessTokenExpiresAt: string;
       }>();
       expect(body.user.email).toBe(email);
       expect(body.accessToken.length).toBeGreaterThan(40);
-      expect(response.body).not.toContain('refreshToken');
 
       const setCookieHeader = response.headers['set-cookie'];
       const cookieHeader = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
       if (cookieHeader === undefined) {
-        throw new Error('Registration response did not set a refresh cookie');
+        throw new Error('Login response did not set a refresh cookie');
       }
       expect(cookieHeader).toContain('HttpOnly');
       expect(cookieHeader).toContain('SameSite=Strict');
@@ -123,6 +112,38 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       if (cookie === undefined) {
         throw new Error('Refresh cookie header was empty');
       }
+
+      const profileRead = await app.inject({
+        method: 'GET',
+        url: '/auth/profile',
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(profileRead.statusCode).toBe(200);
+      expect(
+        profileRead.json<{ profile: { hasPassword: boolean; displayName: string } }>().profile,
+      ).toMatchObject({ hasPassword: true, displayName: body.user.displayName });
+
+      const profileUpdate = await app.inject({
+        method: 'PUT',
+        url: '/auth/profile',
+        headers: { authorization: `Bearer ${body.accessToken}` },
+        payload: { displayName: `Updated-${randomUUID().slice(0, 8)}`, email },
+      });
+      expect(profileUpdate.statusCode).toBe(200);
+
+      const passwordUpdate = await app.inject({
+        method: 'POST',
+        url: '/auth/password',
+        headers: { authorization: `Bearer ${body.accessToken}` },
+        payload: { currentPassword: password, newPassword: 'a replacement API backup password' },
+      });
+      expect(passwordUpdate.statusCode).toBe(204);
+      const backupLogin = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password: 'a replacement API backup password' },
+      });
+      expect(backupLogin.statusCode).toBe(200);
 
       const me = await app.inject({
         method: 'GET',
@@ -143,11 +164,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment,
       ).toMatch(/^[a-f0-9]{64}$/);
 
-      const guestChallenge = await auth!.register(
-        `lobby-guest-${randomUUID()}@example.test`,
-        'another secure guest integration password',
-      );
-      const guest = await auth!.verifyEmail(guestChallenge.verificationToken);
+      const guestEmail = `lobby-guest-${randomUUID()}@example.test`;
+      const guestPassword = 'another secure guest integration password';
+      await createBackupAccount(persistence!.pool, guestEmail, guestPassword);
+      const guest = await auth!.login(guestEmail, guestPassword);
       const lobbyCampaign = await campaigns!.createCampaign(
         body.user.id,
         `lobby-api-${randomUUID()}`,

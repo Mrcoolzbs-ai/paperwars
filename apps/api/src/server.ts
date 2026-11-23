@@ -10,11 +10,6 @@ import { createPostgresPersistence, runMigrations } from '@paper-wars/persistenc
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createCountrySetupService } from '@paper-wars/world';
 import { createApp } from './app.js';
-import {
-  createConsoleEmailSender,
-  createResendEmailSender,
-  type VerificationEmailSender,
-} from './email.js';
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -54,25 +49,6 @@ const parsedBaseUrl = new URL(appBaseUrl);
 if (process.env['NODE_ENV'] === 'production' && parsedBaseUrl.protocol !== 'https:') {
   throw new Error('APP_BASE_URL must use HTTPS in production');
 }
-const resendApiKey = process.env['RESEND_API_KEY'];
-const emailFrom = process.env['EMAIL_FROM'];
-const hasResendApiKey = resendApiKey !== undefined && resendApiKey.trim().length > 0;
-const hasEmailFrom = emailFrom !== undefined && emailFrom.trim().length > 0;
-if (hasResendApiKey !== hasEmailFrom) {
-  throw new Error('Configure both RESEND_API_KEY and EMAIL_FROM');
-}
-let verificationEmailSender: VerificationEmailSender;
-if (hasResendApiKey && hasEmailFrom) {
-  verificationEmailSender = createResendEmailSender({
-    apiKey: resendApiKey,
-    from: emailFrom,
-  });
-} else if (process.env['NODE_ENV'] === 'production') {
-  throw new Error('RESEND_API_KEY and EMAIL_FROM must be configured in production');
-} else {
-  verificationEmailSender = createConsoleEmailSender((message) => console.info(message));
-}
-
 const vkAppId = process.env['VK_ID_APP_ID'];
 const vkRedirectUri = process.env['VK_ID_REDIRECT_URI'];
 const vkCookieSecret = process.env['VK_ID_COOKIE_SECRET'];
@@ -149,7 +125,6 @@ try {
     pool: persistence.pool,
     accessTokens,
     refreshTokenTtlSeconds: integerEnv('REFRESH_TOKEN_TTL_SECONDS', 2_592_000),
-    emailVerificationTokenTtlSeconds: integerEnv('EMAIL_VERIFICATION_TOKEN_TTL_SECONDS', 86_400),
   });
   const campaignService = createCampaignService({
     pool: persistence.pool,
@@ -176,8 +151,6 @@ try {
     chatService,
     countrySetupService,
     ...(webEntryPath === undefined ? {} : { webEntryPath }),
-    verificationEmailSender,
-    appBaseUrl,
     ...(vkId === undefined ? {} : { vkId }),
     secureCookies: process.env['NODE_ENV'] === 'production',
   });
