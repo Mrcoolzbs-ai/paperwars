@@ -90,7 +90,8 @@ describe('browser client', () => {
     expect(script.body).toContain('Building symbols are rendered after country labels');
     expect(script.body).toContain("ctx.fillText('З'");
     expect(script.body).toContain('Эффект: ');
-    expect(script.body).toContain('Игровые действия пока недоступны');
+    expect(script.body).toContain('Доступно строительство зданий');
+    expect(script.body).toContain('countries/mine/buildings');
     expect(script.body).not.toContain('build-country-building');
     expect(stylesheet.statusCode).toBe(200);
     expect(stylesheet.headers['content-type']).toContain('text/css');
@@ -108,7 +109,7 @@ describe('browser client', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       status: 'ok',
-      apiContractVersion: 'browser-auth-v1',
+      apiContractVersion: 'browser-auth-v2',
       engineVersion: '0.1.0',
     });
   });
