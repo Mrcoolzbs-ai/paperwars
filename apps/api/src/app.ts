@@ -119,13 +119,13 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
   }
   if (error instanceof CampaignTurnProcessingError) {
-    const statusCode =
-      error.code === 'CAMPAIGN_NOT_FOUND'
-        ? 404
-        : error.code === 'NOT_ACTIVE_MEMBER'
-          ? 403
-          : 409;
-    return reply.code(statusCode).send({ error: error.code, message: error.message });
+    if (error.code === 'CAMPAIGN_NOT_FOUND') {
+      return reply.code(404).send({ error: error.code, message: error.message });
+    }
+    if (error.code === 'NOT_ACTIVE_MEMBER') {
+      return reply.code(403).send({ error: error.code, message: error.message });
+    }
+    return reply.code(409).send({ error: error.code, message: error.message });
   }
   if (error instanceof EmailAlreadyRegisteredError) {
     return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED' });
