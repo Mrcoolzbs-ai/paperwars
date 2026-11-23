@@ -71,4 +71,6 @@ process.once('SIGTERM', () => {
   });
 });
 
-console.info('[paper-wars-worker] Started as ' + workerId + ' using ' + rulesetVersion + '/' + rngVersion);
+console.info(
+  '[paper-wars-worker] Started as ' + workerId + ' using ' + rulesetVersion + '/' + rngVersion,
+);

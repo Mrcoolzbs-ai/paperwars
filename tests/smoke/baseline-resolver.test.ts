@@ -70,7 +70,10 @@ function createOrder(
   };
 }
 
-function resolve(orders: readonly OrderEnvelope<Record<string, unknown>>[], snapshot = createSnapshot()) {
+function resolve(
+  orders: readonly OrderEnvelope<Record<string, unknown>>[],
+  snapshot = createSnapshot(),
+) {
   return baselineTurnResolver({
     snapshot,
     orders,
@@ -153,9 +156,11 @@ describe('baseline-v1 deterministic action resolver', () => {
     const resolution = resolve([first, second]);
 
     expect(resolution.orderResults).toHaveLength(2);
-    expect(resolution.orderResults.every((item) =>
-      item.status === 'rejected' && item.resultCode === 'ORDER_CONFLICT',
-    )).toBe(true);
+    expect(
+      resolution.orderResults.every(
+        (item) => item.status === 'rejected' && item.resultCode === 'ORDER_CONFLICT',
+      ),
+    ).toBe(true);
     expect(resolution.nextState.countries[0]?.cells[0]?.buildingType).toBe('factory');
     expect(resolution.events).toHaveLength(0);
   });
@@ -170,10 +175,12 @@ describe('baseline-v1 deterministic action resolver', () => {
 
     expect(resolution.orderResults.every((item) => item.status === 'accepted')).toBe(true);
     expect(resolution.events).toHaveLength(3);
-    expect(resolution.nextState.countries[0]?.cells.slice(0, 3).map((cell) => ({
-      buildingType: cell.buildingType,
-      population: cell.population,
-    }))).toEqual([
+    expect(
+      resolution.nextState.countries[0]?.cells.slice(0, 3).map((cell) => ({
+        buildingType: cell.buildingType,
+        population: cell.population,
+      })),
+    ).toEqual([
       { buildingType: null, population: 1 },
       { buildingType: null, population: 1 },
       { buildingType: null, population: 1 },
@@ -189,15 +196,23 @@ describe('baseline-v1 deterministic action resolver', () => {
     ];
     const resolution = resolve(orders);
 
-    expect(resolution.orderResults.every((item) =>
-      item.status === 'rejected' && item.resultCode === 'ACTION_POINTS_EXCEEDED',
-    )).toBe(true);
+    expect(
+      resolution.orderResults.every(
+        (item) => item.status === 'rejected' && item.resultCode === 'ACTION_POINTS_EXCEEDED',
+      ),
+    ).toBe(true);
     expect(resolution.events).toHaveLength(0);
-    expect(resolution.nextState.countries[0]?.cells.every((cell) => cell.buildingType !== null)).toBe(true);
+    expect(
+      resolution.nextState.countries[0]?.cells.every((cell) => cell.buildingType !== null),
+    ).toBe(true);
   });
 
   it('rejects a cell outside the order country and a cell that no longer has a building', () => {
-    const outside = createOrder('demolish_building', { x: 10, y: 10 }, { countryId: otherCountryId });
+    const outside = createOrder(
+      'demolish_building',
+      { x: 10, y: 10 },
+      { countryId: otherCountryId },
+    );
     const noBuilding = createOrder('demolish_building', { x: 14, y: 10 });
     const snapshot = createSnapshot([
       { x: 10, y: 10, population: 0, buildingType: 'factory' },
@@ -206,8 +221,16 @@ describe('baseline-v1 deterministic action resolver', () => {
     const resolution = resolve([outside, noBuilding], snapshot);
 
     expect(resolution.orderResults).toEqual([
-      expect.objectContaining({ orderId: outside.id, resultCode: 'CELL_NOT_OWNED', status: 'rejected' }),
-      expect.objectContaining({ orderId: noBuilding.id, resultCode: 'NO_BUILDING', status: 'rejected' }),
+      expect.objectContaining({
+        orderId: outside.id,
+        resultCode: 'CELL_NOT_OWNED',
+        status: 'rejected',
+      }),
+      expect.objectContaining({
+        orderId: noBuilding.id,
+        resultCode: 'NO_BUILDING',
+        status: 'rejected',
+      }),
     ]);
   });
 
@@ -221,7 +244,10 @@ describe('baseline-v1 deterministic action resolver', () => {
     const resolution = resolve([invalidCoordinates, unsupportedVersion]);
 
     expect(resolution.orderResults).toEqual([
-      expect.objectContaining({ orderId: invalidCoordinates.id, resultCode: 'INVALID_COORDINATES' }),
+      expect.objectContaining({
+        orderId: invalidCoordinates.id,
+        resultCode: 'INVALID_COORDINATES',
+      }),
       expect.objectContaining({
         orderId: unsupportedVersion.id,
         resultCode: 'UNSUPPORTED_ORDER_SCHEMA_VERSION',

@@ -182,7 +182,11 @@ export const baselineTurnResolver: TurnResolver<
     if (country === undefined) {
       orderResults.set(
         order.id,
-        result(order.id, 'COUNTRY_NOT_IN_SNAPSHOT', 'The order country is absent from this snapshot.'),
+        result(
+          order.id,
+          'COUNTRY_NOT_IN_SNAPSHOT',
+          'The order country is absent from this snapshot.',
+        ),
       );
       continue;
     }
@@ -202,10 +206,18 @@ export const baselineTurnResolver: TurnResolver<
       );
       continue;
     }
-    if (!isSafeInteger(cell.population) || cell.population < 0 || cell.population >= 2_147_483_647) {
+    if (
+      !isSafeInteger(cell.population) ||
+      cell.population < 0 ||
+      cell.population >= 2_147_483_647
+    ) {
       orderResults.set(
         order.id,
-        result(order.id, 'INVALID_POPULATION', 'The cell population is outside the supported PostgreSQL integer range.'),
+        result(
+          order.id,
+          'INVALID_POPULATION',
+          'The cell population is outside the supported PostgreSQL integer range.',
+        ),
       );
       continue;
     }
@@ -288,11 +300,21 @@ export const baselineTurnResolver: TurnResolver<
       throw new Error('Validated demolition target disappeared while building the next state');
     }
 
-    const mutableCell = cell as { id: string; x: number; y: number; population: number; buildingType: string | null };
+    const mutableCell = cell as {
+      id: string;
+      x: number;
+      y: number;
+      population: number;
+      buildingType: string | null;
+    };
     mutableCell.buildingType = null;
     mutableCell.population += 1;
 
-    const eventId = deterministicEventId(snapshot.campaignId, snapshot.turnNumber, candidate.order.id);
+    const eventId = deterministicEventId(
+      snapshot.campaignId,
+      snapshot.turnNumber,
+      candidate.order.id,
+    );
     events.push({
       eventId: toId<'EventId'>(eventId),
       campaignId: snapshot.campaignId,

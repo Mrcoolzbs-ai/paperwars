@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { createCommittedSeed, createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
+import {
+  createCommittedSeed,
+  createPostgresPersistence,
+  runMigrations,
+} from '@paper-wars/persistence';
 import { createTurnWorker, BASELINE_RULESET, baselineTurnResolver } from '@paper-wars/worker';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -55,13 +59,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
              $1, $2, 'active', 1, TRUE, clock_timestamp() - INTERVAL '1 second',
              'baseline-v1', 'rng-v1', 40, 30, $3, 24
            )`,
-          [campaignId, 'baseline-demolition-' + campaignId.slice(0, 8), 'worker-seed-' + campaignId.slice(0, 8)],
+          [
+            campaignId,
+            'baseline-demolition-' + campaignId.slice(0, 8),
+            'worker-seed-' + campaignId.slice(0, 8),
+          ],
         );
 
-        await pool.query(
-          'INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)',
-          [userId, 'baseline-worker-' + campaignId + '@example.test', 'test-password-hash'],
-        );
+        await pool.query('INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)', [
+          userId,
+          'baseline-worker-' + campaignId + '@example.test',
+          'test-password-hash',
+        ]);
         await pool.query(
           'INSERT INTO countries (id, campaign_id, owner_user_id, name) VALUES ($1, $2, $3, $4)',
           [countryId, campaignId, userId, 'Demolition Test Country'],
@@ -72,10 +81,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
            ) VALUES ($1, $2, $3, 'active', TRUE)`,
           [campaignId, userId, countryId],
         );
-        await pool.query(
-          'INSERT INTO cells (id, campaign_id, x, y) VALUES ($1, $2, 10, 10)',
-          [cellId, campaignId],
-        );
+        await pool.query('INSERT INTO cells (id, campaign_id, x, y) VALUES ($1, $2, 10, 10)', [
+          cellId,
+          campaignId,
+        ]);
         await pool.query(
           'INSERT INTO country_cells (campaign_id, country_id, cell_id, population) VALUES ($1, $2, $3, 0)',
           [campaignId, countryId, cellId],
