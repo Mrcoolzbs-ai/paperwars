@@ -62,7 +62,10 @@
           <h1>Твоя <em>летопись.</em></h1>
           <p class="muted">Выбери кампанию или начни новую главу.</p>
         </div>
-        <div class="turn-chip"><span class="turn-dot"></span><span>МИР В ОЖИДАНИИ</span><b>ХОД 01</b></div>
+        <div class="welcome-actions">
+          <button id="open-world-chat" class="button button-outline" type="button">Мировой чат <span>↗</span></button>
+          <div class="turn-chip"><span class="turn-dot"></span><span>МИР В ОЖИДАНИИ</span><b>ХОД 01</b></div>
+        </div>
       </div>
 
       <div class="dashboard-grid">
@@ -214,7 +217,10 @@
             <h2>Говори с миром.</h2>
             <p class="muted">Общий мировой канал и отдельная комната участников текущей кампании.</p>
           </div>
-          <span class="chat-live-badge"><i></i> ОБНОВЛЕНИЕ КАЖДЫЕ 5 СЕКУНД</span>
+          <div class="chat-intro-actions">
+            <button id="chat-back-to-lobby" class="back-link hidden" type="button">← К списку кампаний</button>
+            <span class="chat-live-badge"><i></i> ОБНОВЛЕНИЕ КАЖДЫЕ 5 СЕКУНД</span>
+          </div>
         </div>
         <div class="chat-workspace">
           <aside class="chat-channel-panel">
