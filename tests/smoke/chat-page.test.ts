@@ -23,14 +23,13 @@ describe('chat browser page', () => {
     expect(response.body).toContain('Shift+Enter');
     expect(response.body).toContain('/auth/vk/start');
     expect(response.body).toContain('/auth/vk/link');
-    expect(response.body).toContain('/auth/resend-verification');
+    expect(response.body).toContain('Войти через VK ID');
+    expect(response.body).toContain('Резервный вход по email и паролю');
+    expect(response.body).not.toContain('/auth/resend-verification');
+    expect(response.body).not.toContain('verify-email');
 
     const verification = await app.inject({ method: 'GET', url: '/verify-email' });
-    expect(verification.statusCode).toBe(200);
-    expect(verification.headers['cache-control']).toBe('no-store');
-    expect(verification.headers['referrer-policy']).toBe('no-referrer');
-    expect(verification.body).toContain('/auth/verify-email');
-    expect(verification.body).toContain('Подтвердить email');
+    expect(verification.statusCode).toBe(404);
     expect(response.body).toContain('content.textContent = item.message');
     expect(response.body).not.toContain('localStorage');
     expect(response.body).not.toContain('innerHTML');
