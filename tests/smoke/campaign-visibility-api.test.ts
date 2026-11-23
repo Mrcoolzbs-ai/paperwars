@@ -461,20 +461,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rngVersion: 'rng-v1',
       });
       const owner = await auth.register(
-        \`chat-owner-\${randomUUID()}@example.test\`,
+        `chat-owner-${randomUUID()}@example.test`,
         'chat owner integration password',
       );
       const member = await auth.register(
-        \`chat-member-\${randomUUID()}@example.test\`,
+        `chat-member-${randomUUID()}@example.test`,
         'chat member integration password',
       );
       const outsider = await auth.register(
-        \`chat-outsider-\${randomUUID()}@example.test\`,
+        `chat-outsider-${randomUUID()}@example.test`,
         'chat outsider integration password',
       );
       const campaign = await campaigns.createCampaign(
         owner.user.id,
-        \`chat-room-\${randomUUID()}\`,
+        `chat-room-${randomUUID()}`,
         { mapWidth: 40, mapHeight: 30, mapSeed: 'chat-room-test' },
       );
       await pool.query('DELETE FROM turn_jobs WHERE campaign_id = $1', [campaign.id]);
@@ -488,9 +488,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       try {
         await pool.query(
-          \`INSERT INTO campaign_memberships (
+          `INSERT INTO campaign_memberships (
              campaign_id, user_id, status, orders_confirmed
-           ) VALUES ($1, $2, 'active', FALSE)\`,
+           ) VALUES ($1, $2, 'active', FALSE)`,
           [campaign.id, member.user.id],
         );
 
