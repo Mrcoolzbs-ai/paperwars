@@ -128,6 +128,7 @@
         <button class="workspace-tab" data-tab="turn" type="button">Ход и летопись</button>
         <button id="systems-tab-label" class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
         <button id="country-tab-label" class="workspace-tab" data-tab="country" type="button">Основание страны</button>
+        <button id="admin-tab-label" class="workspace-tab hidden" data-tab="admin" type="button">Администрирование</button>
       </nav>
 
       <div id="map-modal" class="map-modal hidden" role="dialog" aria-modal="true" aria-label="Карта кампании">
@@ -281,8 +282,42 @@
       </section>
 
       <section id="tab-admin" class="tab-panel hidden">
-        <div class="section-intro"><div><div class="panel-kicker">УПРАВЛЕНИЕ КАЧЕСТВОМ</div><h2>Совет хранителей.</h2><p class="muted">Проверяй заявки игроков и принимай решение об одобрении.</p></div><button id="refresh-pending" class="button button-outline" type="button">Обновить список ↻</button></div>
-        <div class="panel admin-panel"><div id="pending-list" class="systems-list"><div class="empty-state compact">Загрузка заявок…</div></div></div>
+        <div class="section-intro admin-section-intro">
+          <div><div class="panel-kicker">ГЛОБАЛЬНЫЙ КОНТРОЛЬ</div><h2>Центр управления.</h2><p class="muted">Все аккаунты, кампании, страны, приказы, события и отчёты. Административные действия записываются в аудит.</p></div>
+          <button id="refresh-admin" class="button button-primary" type="button">Обновить данные ↻</button>
+        </div>
+        <div id="admin-overview-stats" class="admin-stats-grid">
+          <div class="admin-stat"><span>АККАУНТЫ</span><strong>—</strong></div>
+          <div class="admin-stat"><span>КАМПАНИИ</span><strong>—</strong></div>
+          <div class="admin-stat"><span>АКТИВНЫЕ МИРЫ</span><strong>—</strong></div>
+          <div class="admin-stat"><span>ЗАДАНИЯ WORKER</span><strong>—</strong></div>
+        </div>
+        <div class="admin-overview-grid">
+          <section class="panel admin-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">ВСЕ МИРЫ</div><h2>Кампании</h2></div><span id="admin-campaign-count" class="count-chip">0</span></div>
+            <div id="admin-campaign-list" class="admin-campaign-list"><div class="empty-state compact">Загрузка кампаний…</div></div>
+          </section>
+          <section class="panel admin-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">ВСЕ АККАУНТЫ</div><h2>Игроки</h2></div><span id="admin-user-count" class="count-chip">0</span></div>
+            <div id="admin-user-list" class="admin-user-list"><div class="empty-state compact">Загрузка пользователей…</div></div>
+          </section>
+        </div>
+        <div class="admin-global-records">
+          <section class="panel admin-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">ЛИЧНЫЕ БИБЛИОТЕКИ</div><h2>Учения игроков</h2></div></div>
+            <div id="admin-player-library"><div class="empty-state compact">Загрузка библиотек…</div></div>
+          </section>
+          <section class="panel admin-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">КОНТРОЛЬ ДЕЙСТВИЙ</div><h2>Глобальный аудит</h2></div></div>
+            <div id="admin-global-audit"><div class="empty-state compact">Загрузка аудита…</div></div>
+          </section>
+        </div>
+        <section id="admin-campaign-detail" class="panel admin-detail-panel hidden" aria-live="polite"></section>
+        <section class="panel admin-panel admin-moderation-panel">
+          <div class="panel-heading"><div><div class="panel-kicker">МОДЕРАЦИЯ УЧЕНИЙ</div><h2>Совет хранителей</h2></div><button id="refresh-pending" class="button button-outline" type="button">Обновить ↻</button></div>
+          <p class="muted">Очередь заявок относится к выбранной в рабочем пространстве кампании.</p>
+          <div id="pending-list" class="systems-list"><div class="empty-state compact">Выбери кампанию, чтобы просмотреть её заявки.</div></div>
+        </section>
       </section>
     </section>
 

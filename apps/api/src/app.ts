@@ -7,6 +7,7 @@ import {
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
   UnauthenticatedError,
+  type AdminService,
   type AuthService,
   type CampaignService,
 } from '@paper-wars/auth';
@@ -39,6 +40,8 @@ export interface CreateAppOptions {
   readonly authService?: AuthService;
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
+  readonly adminService?: AdminService;
+  readonly adminUserIds?: readonly string[];
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
   readonly webEntryPath?: string;
@@ -596,6 +599,73 @@ function registerCountryRoutes(
   });
 }
 
+function registerAdminRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  adminService: AdminService,
+  adminUserIds: readonly string[],
+): void {
+  const allowedAdmins = new Set(adminUserIds.map((userId) => userId.toLowerCase()));
+  const authenticateAdmin = async (request: FastifyRequest) => {
+    const user = await authService.authenticateAccessToken(getBearerToken(request));
+    if (!allowedAdmins.has(user.id.toLowerCase())) {
+      return null;
+    }
+    return user;
+  };
+
+  app.get('/admin/access', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      return reply.send({ isAdmin: allowedAdmins.has(user.id.toLowerCase()) });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/admin/overview', async (request, reply) => {
+    try {
+      const user = await authenticateAdmin(request);
+      if (user === null) return reply.code(403).send({ error: 'ADMIN_REQUIRED' });
+      const overview = await adminService.getOverview();
+      return reply.send({ overview });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/admin/campaigns/:campaignId', async (request, reply) => {
+    try {
+      const user = await authenticateAdmin(request);
+      if (user === null) return reply.code(403).send({ error: 'ADMIN_REQUIRED' });
+      const campaign = await adminService.getCampaignDetail(getCampaignId(request));
+      return reply.send({ campaign });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/campaigns/:campaignId/turn/force-close', async (request, reply) => {
+    try {
+      const user = await authenticateAdmin(request);
+      if (user === null) return reply.code(403).send({ error: 'ADMIN_REQUIRED' });
+      const body = asRecord(request.body);
+      const expectedTurnNumber = body['expectedTurnNumber'];
+      if (!Number.isSafeInteger(expectedTurnNumber) || (expectedTurnNumber as number) < 1) {
+        throw new AuthValidationError('expectedTurnNumber must be a positive safe integer');
+      }
+      const result = await adminService.forceCloseTurn(
+        user.id,
+        getCampaignId(request),
+        expectedTurnNumber as number,
+      );
+      return reply.send({ closed: true, turnJob: result });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+}
+
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
@@ -679,6 +749,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.countrySetupService !== undefined) {
     registerCountryRoutes(app, options.authService, options.countrySetupService);
+  }
+
+  if (options.authService !== undefined && options.adminService !== undefined) {
+    registerAdminRoutes(app, options.authService, options.adminService, options.adminUserIds ?? []);
   }
 
   return app;

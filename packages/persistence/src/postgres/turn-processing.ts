@@ -13,7 +13,8 @@ export type CampaignTurnProcessingErrorCode =
   | 'COUNTRY_NOT_REGISTERED'
   | 'ORDER_NOT_FOUND'
   | 'ORDER_NOT_EDITABLE'
-  | 'ORDERS_DEADLINE_PASSED';
+  | 'ORDERS_DEADLINE_PASSED'
+  | 'TURN_CHANGED';
 
 export class CampaignTurnProcessingError extends Error {
   constructor(
@@ -68,6 +69,16 @@ export interface ClosedTurnJob {
   readonly snapshotVersion: number;
   readonly finalizedOrderCount: number;
   readonly discardedOrderCount: number;
+  readonly forced?: boolean;
+}
+
+export interface CloseOrdersOptions {
+  /** Bypass participant-confirmation/deadline readiness checks for an audited admin action. */
+  readonly force?: boolean;
+  /** Required when force is true; identifies the authenticated administrator. */
+  readonly actorUserId?: string;
+  /** Reject a stale admin confirmation if the campaign has already advanced. */
+  readonly expectedTurnNumber?: number;
 }
 
 interface WritableOrderContext {
@@ -378,7 +389,31 @@ export async function confirmCampaignOrders(
  * campaign_memberships/orders. All deadline checks use PostgreSQL
  * clock_timestamp(), never the application host clock.
  */
-export async function closeOrders(pool: Pool, campaignId: string): Promise<ClosedTurnJob> {
+export async function closeOrders(
+  pool: Pool,
+  campaignId: string,
+  options: CloseOrdersOptions = {},
+): Promise<ClosedTurnJob> {
+  assertUuid(campaignId, 'campaign');
+  if (options.force === true) {
+    if (
+      typeof options.actorUserId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        options.actorUserId,
+      )
+    ) {
+      throw new TypeError('A valid actorUserId is required for forced turn closing');
+    }
+  } else if (options.actorUserId !== undefined) {
+    throw new TypeError('actorUserId is only valid for a forced admin turn closing');
+  }
+  if (
+    options.expectedTurnNumber !== undefined &&
+    (!Number.isSafeInteger(options.expectedTurnNumber) || options.expectedTurnNumber < 1)
+  ) {
+    throw new RangeError('expectedTurnNumber must be a positive safe integer');
+  }
+
   const client = await pool.connect();
   let transactionOpen = false;
 
@@ -401,6 +436,15 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
     }
     if (campaign.status !== 'active') {
       throw new CampaignTurnProcessingError('CAMPAIGN_NOT_ACTIVE', 'Campaign is not active');
+    }
+    if (
+      options.expectedTurnNumber !== undefined &&
+      options.expectedTurnNumber !== campaign.current_turn
+    ) {
+      throw new CampaignTurnProcessingError(
+        'TURN_CHANGED',
+        'The campaign moved to another turn before the admin action was confirmed',
+      );
     }
     if (campaign.orders_locked) {
       throw new CampaignTurnProcessingError(
@@ -456,7 +500,7 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
       [campaignId],
     );
     const deadlineElapsed = deadlineResult.rows[0]?.deadline_elapsed ?? false;
-    if (!allMembersConfirmed && !deadlineElapsed) {
+    if (!options.force && !allMembersConfirmed && !deadlineElapsed) {
       throw new CampaignTurnProcessingError(
         'ORDERS_NOT_READY',
         'All active participants must confirm orders or the turn deadline must pass',
@@ -515,6 +559,27 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
     const job = jobResult.rows[0];
     if (job === undefined) throw new Error('TurnJob insert did not return an id');
 
+    if (options.force === true) {
+      await client.query(
+        `INSERT INTO admin_audit_logs (
+           actor_user_id, action, campaign_id, turn_number, details
+         ) VALUES ($1, 'turn.force_close', $2, $3, $4)`,
+        [
+          options.actorUserId,
+          campaignId,
+          campaign.current_turn,
+          {
+            activeMemberCount: activeMembers.rows.length,
+            confirmedMemberCount: activeMembers.rows.filter((member) => member.orders_confirmed)
+              .length,
+            finalizedOrderCount: finalized.rowCount ?? finalized.rows.length,
+            discardedOrderCount: discarded.rowCount ?? discarded.rows.length,
+            deadlineElapsed,
+          },
+        ],
+      );
+    }
+
     await client.query('COMMIT');
     transactionOpen = false;
 
@@ -525,6 +590,7 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
       snapshotVersion: snapshot.version,
       finalizedOrderCount: finalized.rowCount ?? finalized.rows.length,
       discardedOrderCount: discarded.rowCount ?? discarded.rows.length,
+      ...(options.force === true ? { forced: true } : {}),
     };
   } catch (error) {
     if (transactionOpen) {

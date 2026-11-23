@@ -789,3 +789,31 @@ export const playerSocialSystemLibrary = pgTable(
     ),
   ],
 );
+
+export const adminAuditLogs = pgTable(
+  'admin_audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorUserId: uuid('actor_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    action: text('action').notNull(),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+    turnNumber: integer('turn_number'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('admin_audit_logs_actor_created_idx').on(table.actorUserId, table.createdAt),
+    index('admin_audit_logs_campaign_created_idx').on(table.campaignId, table.createdAt),
+    check(
+      'admin_audit_logs_action_length_check',
+      sql`char_length(btrim(${table.action})) between 1 and 100`,
+    ),
+    check(
+      'admin_audit_logs_turn_positive_check',
+      sql`${table.turnNumber} is null or ${table.turnNumber} >= 1`,
+    ),
+    check('admin_audit_logs_details_object_check', sql`jsonb_typeof(${table.details}) = 'object'`),
+  ],
+);
