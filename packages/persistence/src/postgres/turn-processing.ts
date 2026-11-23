@@ -52,10 +52,7 @@ export async function confirmCampaignOrders(
       id: string;
       status: string;
       orders_locked: boolean;
-    }>(
-      'SELECT id, status, orders_locked FROM campaigns WHERE id = $1 FOR SHARE',
-      [campaignId],
-    );
+    }>('SELECT id, status, orders_locked FROM campaigns WHERE id = $1 FOR SHARE', [campaignId]);
     const row = campaign.rows[0];
     if (row === undefined) {
       throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Campaign does not exist');
@@ -118,10 +115,9 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
       status: string;
       current_turn: number;
       orders_locked: boolean;
-    }>(
-      'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
-      [campaignId],
-    );
+    }>('SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
+      campaignId,
+    ]);
     const campaign = campaignResult.rows[0];
     if (campaign === undefined) {
       throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Campaign does not exist');
@@ -277,10 +273,7 @@ export interface TurnJobLease {
 }
 
 /** Claims the oldest pending job without waiting for jobs claimed by other workers. */
-export async function claimNextTurnJob(
-  pool: Pool,
-  workerId: string,
-): Promise<TurnJobLease | null> {
+export async function claimNextTurnJob(pool: Pool, workerId: string): Promise<TurnJobLease | null> {
   const normalizedWorkerId = workerId.trim();
   if (normalizedWorkerId.length === 0 || normalizedWorkerId.length > 200) {
     throw new RangeError('workerId must contain between 1 and 200 characters');
@@ -365,10 +358,7 @@ export interface ReapedTurnJobs {
  * Reassigns expired leases at most five times. retry_count counts reassignments,
  * so the sixth expired attempt is failed without incrementing it again.
  */
-export async function reapExpiredTurnJobs(
-  pool: Pool,
-  batchSize = 100,
-): Promise<ReapedTurnJobs> {
+export async function reapExpiredTurnJobs(pool: Pool, batchSize = 100): Promise<ReapedTurnJobs> {
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) {
     throw new RangeError('batchSize must be an integer between 1 and 1000');
   }
