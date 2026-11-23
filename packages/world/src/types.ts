@@ -87,6 +87,31 @@ export interface StartBuildingPlacement {
   readonly y: number;
 }
 
+export type AdditionalBuildingType =
+  | 'factory'
+  | 'field'
+  | 'religious_building'
+  | 'science'
+  | 'barracks'
+  | 'tower';
+
+export interface BuildBuildingInput {
+  readonly buildingType: unknown;
+  /** Zero-based X offset within the owned 5x5 territory. */
+  readonly x: unknown;
+  /** Zero-based Y offset within the owned 5x5 territory. */
+  readonly y: unknown;
+}
+
+export interface BuiltBuilding {
+  readonly id: string;
+  readonly type: AdditionalBuildingType;
+  readonly x: number;
+  readonly y: number;
+  readonly remainingResidents: number;
+  readonly snapshotVersion: number;
+}
+
 export interface CreateCountryInput {
   readonly name: unknown;
   /** Center X coordinate of the 5x5 starting territory. */
@@ -236,4 +261,9 @@ export interface CountrySetupService {
     campaignId: string,
     input: CreateCountryInput,
   ): Promise<CreatedCountry>;
+  buildBuilding(
+    userId: string,
+    campaignId: string,
+    input: BuildBuildingInput,
+  ): Promise<BuiltBuilding>;
 }
