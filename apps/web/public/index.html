@@ -220,6 +220,33 @@
             <p class="turn-privacy-note">Показываются только исходы приказов твоего государства. Содержимое приказов, сообщения с результатами и данные других стран не передаются в этот экран.</p>
           </section>
         </div>
+        <section class="panel turn-orders-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-kicker">ПРИКАЗЫ ТВОЕГО ГОСУДАРСТВА</div>
+              <h2>Оперативные действия</h2>
+              <p class="muted">В этой версии доступен снос здания: 1 ОД. Клетка освобождается, один житель возвращается в конце текущего хода.</p>
+            </div>
+            <span id="action-points-label" class="count-chip">3 ОД / ход</span>
+          </div>
+          <form id="demolition-order-form" class="demolition-order-form">
+            <label class="field">
+              <span>Здание для сноса</span>
+              <select id="demolition-cell" required>
+                <option value="">Загружаем здания твоей страны…</option>
+              </select>
+            </label>
+            <button id="add-demolition-order" class="button button-primary" type="submit">Добавить приказ · 1 ОД</button>
+          </form>
+          <p class="turn-order-rules">Правило Baseline: до трёх очков действий на государство за ход. Приказы, конфликтующие за одну клетку, будут отклонены. Неподдерживаемые типы действий не исполняются.</p>
+          <div id="turn-orders-list" class="turn-orders-list" aria-live="polite">
+            <div class="turn-empty"><strong>Приказы ещё не загружены</strong><p>Выбери здание, чтобы составить первый приказ.</p></div>
+          </div>
+          <div class="turn-orders-footer">
+            <button id="confirm-turn-orders" class="button button-primary" type="button">Подтвердить все приказы ↗</button>
+            <span id="turn-orders-message" class="form-message" role="status"></span>
+          </div>
+        </section>
       </section>
 
       <section id="tab-systems" class="tab-panel hidden">

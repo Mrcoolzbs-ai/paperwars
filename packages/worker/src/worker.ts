@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type {
   DomainEvent,
   OrderEnvelope,
@@ -302,6 +302,79 @@ function assertResolutionReports<TEvent>(
   };
 }
 
+async function persistCountryCellProjection(
+  client: PoolClient,
+  campaignId: string,
+  nextState: Record<string, unknown>,
+): Promise<void> {
+  const rawCountries = nextState['countries'];
+  if (rawCountries === undefined) return;
+  if (!Array.isArray(rawCountries)) {
+    throw new TurnWorkerInvariantError('Snapshot countries must be an array');
+  }
+
+  for (const rawCountry of rawCountries) {
+    if (!isRecord(rawCountry) || typeof rawCountry['id'] !== 'string') {
+      throw new TurnWorkerInvariantError('Snapshot country projection is invalid');
+    }
+    const countryId = rawCountry['id'];
+    const rawCells = rawCountry['cells'];
+    if (!Array.isArray(rawCells)) {
+      throw new TurnWorkerInvariantError('Snapshot country cells must be an array');
+    }
+
+    for (const rawCell of rawCells) {
+      if (
+        !isRecord(rawCell) ||
+        typeof rawCell['id'] !== 'string' ||
+        !Number.isSafeInteger(rawCell['population']) ||
+        (rawCell['population'] as number) < 0
+      ) {
+        throw new TurnWorkerInvariantError('Snapshot country cell projection is invalid');
+      }
+      const cellId = rawCell['id'];
+      const population = rawCell['population'] as number;
+      const updatedCell = await client.query<{ cell_id: string }>(
+        `UPDATE country_cells
+         SET population = $4
+         WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3
+         RETURNING cell_id`,
+        [campaignId, countryId, cellId, population],
+      );
+      if (updatedCell.rowCount !== 1) {
+        throw new TurnWorkerInvariantError(
+          'Snapshot cell does not match one persisted country_cells row',
+        );
+      }
+
+      const buildingType = rawCell['buildingType'];
+      if (buildingType === null) {
+        await client.query(
+          `DELETE FROM country_buildings
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+          [campaignId, countryId, cellId],
+        );
+      } else {
+        if (typeof buildingType !== 'string' || buildingType.trim().length === 0) {
+          throw new TurnWorkerInvariantError('Snapshot building type must be a string or null');
+        }
+        const updatedBuilding = await client.query<{ id: string }>(
+          `UPDATE country_buildings
+           SET building_type = $4
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3
+           RETURNING id`,
+          [campaignId, countryId, cellId, buildingType],
+        );
+        if (updatedBuilding.rowCount !== 1) {
+          throw new TurnWorkerInvariantError(
+            'Snapshot building does not match one persisted country_buildings row',
+          );
+        }
+      }
+    }
+  }
+}
+
 async function persistResolution<
   TEvent extends DomainEvent<string, Readonly<Record<string, unknown>>>,
 >(
@@ -381,6 +454,10 @@ async function persistResolution<
         resolution.nextState,
       ],
     );
+
+    // Keep the relational projection used by the member-scoped map DTO in sync
+    // with the authoritative snapshot. These writes share the same fenced transaction.
+    await persistCountryCellProjection(client, lease.campaignId, resolution.nextState);
 
     for (const event of resolution.events) {
       await client.query(

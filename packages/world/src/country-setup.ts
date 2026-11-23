@@ -1675,6 +1675,7 @@ export function createCountrySetupService(options: {
           campaign === undefined ||
           campaign.status !== 'active' ||
           campaign.current_turn !== 1 ||
+          !campaign.orders_locked ||
           campaign.map_width === null ||
           campaign.map_height === null
         ) {

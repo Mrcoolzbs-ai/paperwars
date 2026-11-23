@@ -19,7 +19,8 @@
     "clean": "pnpm -r --workspace-concurrency=1 --if-present clean",
     "dev:api": "pnpm build && pnpm --filter @paper-wars/api dev",
     "start:api": "pnpm build && pnpm --filter @paper-wars/api start",
-    "db:migrate": "pnpm --filter @paper-wars/persistence db:migrate"
+    "db:migrate": "pnpm --filter @paper-wars/persistence db:migrate",
+    "start:worker": "pnpm --filter @paper-wars/worker start"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
