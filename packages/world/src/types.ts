@@ -131,6 +131,14 @@ export interface CampaignSpawnReservation {
   readonly isMine: boolean;
 }
 
+export interface AccessibleDiscoveryView {
+  readonly id: string;
+  readonly type: 'ruins' | 'gold' | 'empty';
+  readonly x: number;
+  readonly y: number;
+  readonly discoveredAtTurn: number;
+}
+
 export interface CampaignMapView {
   readonly width: number;
   readonly height: number;
@@ -188,6 +196,10 @@ export interface CreatedCountry {
 
 export interface CountrySetupService {
   getCampaignMap(userId: string, campaignId: string): Promise<CampaignMapView>;
+  listAccessibleDiscoveries(
+    userId: string,
+    campaignId: string,
+  ): Promise<readonly AccessibleDiscoveryView[]>;
   reserveSpawn(
     userId: string,
     campaignId: string,
