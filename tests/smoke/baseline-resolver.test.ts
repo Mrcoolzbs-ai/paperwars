@@ -214,10 +214,31 @@ describe('baseline-v1 deterministic action resolver', () => {
       { countryId: otherCountryId },
     );
     const noBuilding = createOrder('demolish_building', { x: 14, y: 10 });
-    const snapshot = createSnapshot([
+    const baseSnapshot = createSnapshot([
       { x: 10, y: 10, population: 0, buildingType: 'factory' },
       { x: 14, y: 10, population: 1, buildingType: null },
     ]);
+    const snapshot: WorldSnapshot<BaselineWorldState> = {
+      ...baseSnapshot,
+      state: {
+        ...baseSnapshot.state,
+        countries: [
+          ...baseSnapshot.state.countries,
+          {
+            id: otherCountryId,
+            cells: [
+              {
+                id: randomUUID(),
+                x: 20,
+                y: 20,
+                population: 0,
+                buildingType: null,
+              },
+            ],
+          },
+        ],
+      },
+    };
     const resolution = resolve([outside, noBuilding], snapshot);
 
     expect(resolution.orderResults).toEqual([
