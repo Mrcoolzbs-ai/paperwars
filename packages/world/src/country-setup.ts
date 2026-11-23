@@ -746,9 +746,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
       let campaignChanged = false;
       for (const cell of cells.rows) {
         const expectedPopulation =
-          world.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building
-            ? 1
-            : 0;
+          world.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building ? 1 : 0;
         if (cell.population === expectedPopulation) continue;
         await client.query(
           `UPDATE country_cells
