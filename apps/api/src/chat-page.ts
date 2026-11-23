@@ -1,4 +1,4 @@
-export const CHAT_PAGE_HTML = String.raw\`<!doctype html>
+export const CHAT_PAGE_HTML = String.raw`<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
@@ -313,4 +313,4 @@ export const CHAT_PAGE_HTML = String.raw\`<!doctype html>
 })();
 </script>
 </body>
-</html>\`;
+</html>`;
