@@ -113,7 +113,11 @@ export interface WeightedOutcome<T> {
   readonly value: T;
 }
 
-/** Pure, deterministic source supplied to the Simulation Engine for one turn. */
+/**
+ * Pure, deterministic source supplied to the Simulation Engine for one turn.
+ * Repeating a draw with the same domain/drawId is stable. A weighted draw is
+ * equivalent to a uniform ticket in [0, sum(weights) - 1] using table order.
+ */
 export interface RandomSource {
   uniform(domain: string, drawId: string, min: number, max: number): number;
   weighted<T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]): T;
