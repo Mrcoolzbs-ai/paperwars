@@ -790,7 +790,6 @@ export const playerSocialSystemLibrary = pgTable(
   ],
 );
 
-
 export const adminAuditLogs = pgTable(
   'admin_audit_logs',
   {
@@ -815,9 +814,6 @@ export const adminAuditLogs = pgTable(
       'admin_audit_logs_turn_positive_check',
       sql`${table.turnNumber} is null or ${table.turnNumber} >= 1`,
     ),
-    check(
-      'admin_audit_logs_details_object_check',
-      sql`jsonb_typeof(${table.details}) = 'object'`,
-    ),
+    check('admin_audit_logs_details_object_check', sql`jsonb_typeof(${table.details}) = 'object'`),
   ],
 );
