@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { createCommittedSeed, createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
-import { toId } from '@paper-wars/shared';
 import { createTurnWorker, BASELINE_RULESET, baselineTurnResolver } from '@paper-wars/worker';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
