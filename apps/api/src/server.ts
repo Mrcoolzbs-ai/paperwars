@@ -6,7 +6,7 @@ import {
   createCampaignService,
   createChatService,
 } from '@paper-wars/auth';
-import { createPostgresPersistence } from '@paper-wars/persistence';
+import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createCountrySetupService } from '@paper-wars/world';
 import { createApp } from './app.js';
@@ -142,6 +142,7 @@ async function shutdown(): Promise<void> {
 }
 
 try {
+  await runMigrations(persistence.pool);
   await persistence.pool.query('SELECT 1');
 
   const authService = createAuthService({
