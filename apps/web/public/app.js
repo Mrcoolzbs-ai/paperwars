@@ -756,6 +756,14 @@
         escapeHtml(user.countryCount ?? 0) + ' стран</small></div>'
       ).join('') + '</div>' :
       '<div class="empty-state compact">Пользователей пока нет.</div>';
+    $('#admin-player-library').innerHTML = adminJsonDetails(
+      'Личные библиотеки и загруженные эмблемы',
+      overview.playerSocialSystemLibrary,
+    );
+    $('#admin-global-audit').innerHTML = adminJsonDetails(
+      'Последние глобальные административные действия',
+      overview.auditLogs,
+    );
   }
 
   function renderAdminCampaignDetail() {
@@ -802,7 +810,11 @@
       '<tbody>' + memberRows + '</tbody></table></div></div>' +
       '<div class="admin-raw-grid">' +
       adminJsonDetails('Государства', detail.countries) +
-      adminJsonDetails('Социальные системы', detail.socialSystems) +
+      adminJsonDetails('Резервации стартовых точек', detail.spawnReservations) +
+      adminJsonDetails('Клетки карты', detail.cells) +
+      adminJsonDetails('Заселённые клетки и население', detail.countryCells) +
+      adminJsonDetails('Постройки всех государств', detail.buildings) +
+      adminJsonDetails('Социальные системы кампании', detail.socialSystems) +
       adminJsonDetails('Приказы всех игроков · с payload и результатами', detail.orders) +
       adminJsonDetails('Все события · включая приватные', detail.events) +
       adminJsonDetails('Находки и скрытые результаты', detail.discoveries) +
