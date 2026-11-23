@@ -473,13 +473,30 @@ export const gameEvents = pgTable(
     eventType: text('event_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     visibility: text('visibility').notNull().default('public'),
+    recipientCountryId: uuid('recipient_country_id'),
     createdAt: createdAt(),
   },
   (table) => [
     index('game_events_campaign_turn_idx').on(table.campaignId, table.turnNumber),
+    index('game_events_campaign_recipient_turn_idx').on(
+      table.campaignId,
+      table.recipientCountryId,
+      table.turnNumber,
+      table.createdAt,
+    ),
+    foreignKey({
+      name: 'game_events_campaign_recipient_country_fk',
+      columns: [table.campaignId, table.recipientCountryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }),
     check('game_events_turn_positive', sql`${table.turnNumber} >= 1`),
     check('game_events_schema_version_positive', sql`${table.schemaVersion} >= 1`),
     check('game_events_visibility_check', sql`${table.visibility} in ('public', 'private')`),
+    check(
+      'game_events_visibility_recipient_check',
+      sql`(${table.visibility} = 'public' and ${table.recipientCountryId} is null)
+        or (${table.visibility} = 'private' and ${table.recipientCountryId} is not null)`,
+    ),
   ],
 );
 
