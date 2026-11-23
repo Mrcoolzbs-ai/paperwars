@@ -1631,10 +1631,20 @@ export function createCountrySetupService(options: {
         throw new CountrySetupValidationError('Building action payload must be an object');
       }
       const allowedBuildings = new Set<AdditionalBuildingType>([
-        'factory', 'field', 'religious_building', 'science', 'barracks', 'tower',
+        'factory',
+        'field',
+        'religious_building',
+        'science',
+        'barracks',
+        'tower',
       ]);
-      if (typeof input.buildingType !== 'string' || !allowedBuildings.has(input.buildingType as AdditionalBuildingType)) {
-        throw new CountrySetupValidationError('This building type is not available for immediate construction');
+      if (
+        typeof input.buildingType !== 'string' ||
+        !allowedBuildings.has(input.buildingType as AdditionalBuildingType)
+      ) {
+        throw new CountrySetupValidationError(
+          'This building type is not available for immediate construction',
+        );
       }
       if (typeof input.x !== 'number' || typeof input.y !== 'number') {
         throw new CountrySetupValidationError('Building coordinates must be numbers');
@@ -1642,7 +1652,9 @@ export function createCountrySetupService(options: {
       validateInteger(input.x, 'x');
       validateInteger(input.y, 'y');
       if (input.x < 0 || input.x >= TERRITORY_SIDE || input.y < 0 || input.y >= TERRITORY_SIDE) {
-        throw new CountrySetupValidationError('Building coordinates must be inside the owned 5x5 territory');
+        throw new CountrySetupValidationError(
+          'Building coordinates must be inside the owned 5x5 territory',
+        );
       }
 
       const buildingType = input.buildingType as AdditionalBuildingType;
@@ -1691,7 +1703,8 @@ export function createCountrySetupService(options: {
           [campaignId, userId],
         );
         const member = memberResult.rows[0];
-        if (member === undefined || member.status !== 'active') throw new NotActiveCampaignMemberError();
+        if (member === undefined || member.status !== 'active')
+          throw new NotActiveCampaignMemberError();
         if (member.country_id === null) {
           throw new CountrySetupValidationError('Found a country before issuing building actions');
         }
@@ -1704,8 +1717,12 @@ export function createCountrySetupService(options: {
           [campaignId, member.country_id],
         );
         const originRow = origin.rows[0];
-        if (originRow?.origin_x === null || originRow?.origin_x === undefined ||
-            originRow.origin_y === null || originRow.origin_y === undefined) {
+        if (
+          originRow?.origin_x === null ||
+          originRow?.origin_x === undefined ||
+          originRow.origin_y === null ||
+          originRow.origin_y === undefined
+        ) {
           throw new CountrySetupValidationError('The country territory is not available');
         }
 
@@ -1737,13 +1754,19 @@ export function createCountrySetupService(options: {
         );
         const target = targetResult.rows[0];
         if (target === undefined) {
-          throw new CountrySetupValidationError('The selected cell does not belong to your country');
+          throw new CountrySetupValidationError(
+            'The selected cell does not belong to your country',
+          );
         }
         if (target.building_id !== null) {
-          throw new CountrySetupValidationError('The selected cell is already occupied by a building');
+          throw new CountrySetupValidationError(
+            'The selected cell is already occupied by a building',
+          );
         }
         if (target.population < 1) {
-          throw new CountrySetupValidationError('The selected cell has no free resident to staff a building');
+          throw new CountrySetupValidationError(
+            'The selected cell has no free resident to staff a building',
+          );
         }
 
         const inserted = await client.query<{ id: string }>(
@@ -1763,19 +1786,23 @@ export function createCountrySetupService(options: {
           [campaignId, member.country_id, target.id],
         );
         const remainingResidents = updatedCell.rows[0]?.population;
-        if (remainingResidents === undefined) throw new Error('Building population update did not return a row');
+        if (remainingResidents === undefined)
+          throw new Error('Building population update did not return a row');
 
         await client.query(
           `INSERT INTO game_events (
              campaign_id, turn_number, event_type, payload, visibility
            ) VALUES ($1, 1, 'building_constructed', $2, 'public')`,
-          [campaignId, {
-            countryId: member.country_id,
-            buildingId: building.id,
-            buildingType,
-            x: worldX,
-            y: worldY,
-          }],
+          [
+            campaignId,
+            {
+              countryId: member.country_id,
+              buildingId: building.id,
+              buildingType,
+              x: worldX,
+              y: worldY,
+            },
+          ],
         );
 
         const nextState = await buildSnapshot(

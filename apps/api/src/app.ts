@@ -78,7 +78,6 @@ function asRecord(value: unknown): RecordBody {
   return value as RecordBody;
 }
 
-
 function getCookie(request: FastifyRequest, cookieName: string): string | undefined {
   const cookieHeader = request.headers.cookie;
   if (cookieHeader === undefined) return undefined;
@@ -97,7 +96,6 @@ function getCookie(request: FastifyRequest, cookieName: string): string | undefi
 function getRefreshCookie(request: FastifyRequest): string | undefined {
   return getCookie(request, 'refresh_token');
 }
-
 
 function getBearerToken(request: FastifyRequest): string {
   const authorization = request.headers.authorization;
@@ -179,9 +177,10 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof SocialSystemAdminRequiredError
   ) {
     return reply.code(403).send({
-      error: error instanceof SocialSystemAdminRequiredError
-        ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
-        : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
+      error:
+        error instanceof SocialSystemAdminRequiredError
+          ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
+          : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
     });
   }
   if (error instanceof SocialSystemNotFoundError) {
@@ -206,7 +205,6 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   reply.log.error({ err: error }, 'Unhandled API request error');
   return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
-
 
 function createVerificationUrl(baseUrl: string, token: string): string {
   const url = new URL('/verify-email', baseUrl);
@@ -664,15 +662,11 @@ function registerCountryRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
-      const building = await countrySetupService.buildBuilding(
-        user.id,
-        getCampaignId(request),
-        {
-          buildingType: body['buildingType'],
-          x: parseCoordinate(body['x'], 'x'),
-          y: parseCoordinate(body['y'], 'y'),
-        },
-      );
+      const building = await countrySetupService.buildBuilding(user.id, getCampaignId(request), {
+        buildingType: body['buildingType'],
+        x: parseCoordinate(body['x'], 'x'),
+        y: parseCoordinate(body['y'], 'y'),
+      });
       return reply.code(201).send({ building });
     } catch (error) {
       return sendAuthError(error, reply);
@@ -905,23 +899,37 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   app.get('/styles.css', async (_request, reply) => {
     const stylesheet = await readFile(new URL('../../web/public/styles.css', import.meta.url));
-    return reply.type('text/css; charset=utf-8').header('Cache-Control', 'no-cache').send(stylesheet);
+    return reply
+      .type('text/css; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(stylesheet);
   });
 
   app.get('/app.js', async (_request, reply) => {
     const script = await readFile(new URL('../../web/public/app.js', import.meta.url));
-    return reply.type('text/javascript; charset=utf-8').header('Cache-Control', 'no-cache').send(script);
+    return reply
+      .type('text/javascript; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(script);
   });
 
   app.get('/assets/buildings/:file', async (request, reply) => {
     const params = request.params as { readonly file?: unknown };
     const allowed = new Set([
-      'factory.jpg', 'field.jpg', 'tower.jpg', 'barracks.jpg', 'capital.jpg', 'science.jpg', 'gold-mark.jpg',
+      'factory.jpg',
+      'field.jpg',
+      'tower.jpg',
+      'barracks.jpg',
+      'capital.jpg',
+      'science.jpg',
+      'gold-mark.jpg',
     ]);
     if (typeof params.file !== 'string' || !allowed.has(params.file)) {
       return reply.code(404).send({ error: 'BUILDING_ASSET_NOT_FOUND' });
     }
-    const asset = await readFile(new URL('../../web/public/assets/buildings/' + params.file, import.meta.url));
+    const asset = await readFile(
+      new URL('../../web/public/assets/buildings/' + params.file, import.meta.url),
+    );
     return reply.type('image/jpeg').header('Cache-Control', 'public, max-age=86400').send(asset);
   });
 

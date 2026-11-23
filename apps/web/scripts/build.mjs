@@ -35,9 +35,7 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(source, output, { recursive: true });
 
-const buildingAssets = [
-  'barracks', 'capital', 'factory', 'field', 'gold-mark', 'science', 'tower',
-];
+const buildingAssets = ['barracks', 'capital', 'factory', 'field', 'gold-mark', 'science', 'tower'];
 for (const name of buildingAssets) {
   const encoded = await readFile(resolve(source, 'assets/buildings/' + name + '.jpg.b64'), 'utf8');
   const binary = Buffer.from(encoded.trim(), 'base64');

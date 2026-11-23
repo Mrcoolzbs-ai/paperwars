@@ -75,11 +75,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rulesetVersion: 'baseline-v1',
         rngVersion: 'rng-v1',
       });
-      const admin = await registerVerified(auth,
+      const admin = await registerVerified(
+        auth,
         `social-system-admin-${randomUUID()}@example.test`,
         'social system api admin password',
       );
-      const member = await registerVerified(auth,
+      const member = await registerVerified(
+        auth,
         `social-system-member-${randomUUID()}@example.test`,
         'social system api member password',
       );
@@ -395,12 +397,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           gold_mine: 1,
         });
 
-        const availableCell = ownedCountry?.cells.find((cell) =>
-          cell.buildingType === null &&
-          cell.population > 0 &&
-          countryMap.terrain[cell.y * countryMap.width + cell.x] === 'l',
+        const availableCell = ownedCountry?.cells.find(
+          (cell) =>
+            cell.buildingType === null &&
+            cell.population > 0 &&
+            countryMap.terrain[cell.y * countryMap.width + cell.x] === 'l',
         );
-        if (!availableCell) throw new Error('The created country has no free dry-land cell with a resident');
+        if (!availableCell)
+          throw new Error('The created country has no free dry-land cell with a resident');
         const localX = availableCell.x - spawn.x + 2;
         const localY = availableCell.y - spawn.y + 2;
 
@@ -427,9 +431,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: { authorization: 'Bearer ' + admin.accessToken },
         });
         const refreshedMap = refreshedCountryMap.json<{ map: typeof countryMap }>().map;
-        const refreshedOwnCountry = refreshedMap.countries.find((item) => item.id === createdCountryId);
-        const builtCell = refreshedOwnCountry?.cells.find((cell) =>
-          cell.x === availableCell.x && cell.y === availableCell.y,
+        const refreshedOwnCountry = refreshedMap.countries.find(
+          (item) => item.id === createdCountryId,
+        );
+        const builtCell = refreshedOwnCountry?.cells.find(
+          (cell) => cell.x === availableCell.x && cell.y === availableCell.y,
         );
         expect(builtCell).toMatchObject({ buildingType: 'factory', population: 0 });
 
