@@ -1209,3 +1209,26 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
   .chat-compose-footer { align-items: flex-start; }
   .chat-compose-footer > span { max-width: 145px; }
 }
+
+.welcome-actions,
+.chat-intro-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+#workspace-screen.world-chat-mode {
+  max-width: 1120px;
+}
+#workspace-screen.world-chat-mode .chat-section-intro {
+  margin-top: 5px;
+}
+@media (max-width: 700px) {
+  .welcome-actions {
+    justify-content: flex-start;
+  }
+  .chat-intro-actions {
+    justify-content: flex-start;
+  }
+}
