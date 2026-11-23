@@ -283,13 +283,6 @@ export async function confirmCampaignOrders(
         'Orders for this turn are already locked',
       );
     }
-    if (row.deadline_elapsed) {
-      throw new CampaignTurnProcessingError(
-        'ORDERS_DEADLINE_PASSED',
-        'The turn deadline has passed; late confirmations are not accepted',
-      );
-    }
-
     const membership = await client.query<{ country_id: string | null }>(
       `SELECT country_id
        FROM campaign_memberships
@@ -308,6 +301,12 @@ export async function confirmCampaignOrders(
       throw new CampaignTurnProcessingError(
         'COUNTRY_NOT_REGISTERED',
         'Register a country before confirming orders',
+      );
+    }
+    if (row.deadline_elapsed) {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_DEADLINE_PASSED',
+        'The turn deadline has passed; late confirmations are not accepted',
       );
     }
 
