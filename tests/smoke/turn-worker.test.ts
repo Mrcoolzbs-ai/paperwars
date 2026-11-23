@@ -234,15 +234,39 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           current_turn: number;
           orders_locked: boolean;
           deadline_at: Date;
-        }>('SELECT status, current_turn, orders_locked, deadline_at FROM campaigns WHERE id = $1', [
-          fixture.campaignId,
-        ]);
+        }>(
+          'SELECT status, current_turn, orders_locked, deadline_at FROM campaigns WHERE id = $1',
+          [fixture.campaignId],
+        );
         expect(campaign.rows[0]).toMatchObject({
           status: 'active',
           current_turn: 2,
           orders_locked: false,
           deadline_at: expect.any(Date),
         });
+
+        const draws = await pool.query<{
+          domain: string;
+          draw_id: string;
+          min_value: string;
+          max_value: string;
+          value: string;
+        }>(
+          `SELECT domain, draw_id, min_value::text AS min_value,
+                  max_value::text AS max_value, value::text AS value
+           FROM random_draws WHERE campaign_id = $1 AND turn_number = 1`,
+          [fixture.campaignId],
+        );
+        expect(draws.rows).toHaveLength(1);
+        expect(draws.rows[0]).toMatchObject({
+          domain: 'worker-test',
+          draw_id: 'turn-roll',
+          min_value: '1',
+          max_value: '6',
+        });
+        const recordedRoll = Number(draws.rows[0]?.value);
+        expect(recordedRoll).toBeGreaterThanOrEqual(1);
+        expect(recordedRoll).toBeLessThanOrEqual(6);
 
         const snapshot = await pool.query<{
           version: number;
@@ -255,9 +279,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(snapshot.rows[0]).toMatchObject({
           version: 1,
           state_schema_version: 1,
+          state: { value: 17 + recordedRoll },
         });
-
-        expect(snapshot.rows[0]?.state.value).toBe(17 + Number(draws.rows[0]?.value));
 
         const order = await pool.query<{
           status: string;
@@ -290,17 +313,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           {
             id: eventId,
             event_type: 'worker_test_turn',
-            payload: { roll: expect.any(Number) },
+            payload: { roll: recordedRoll },
             visibility: 'public',
           },
         ]);
-
-        const draws = await pool.query<{ domain: string; draw_id: string; value: string }>(
-          'SELECT domain, draw_id, value::text AS value FROM random_draws WHERE campaign_id = $1 AND turn_number = 1',
-          [fixture.campaignId],
-        );
-        expect(draws.rows).toHaveLength(1);
-        expect(draws.rows[0]).toMatchObject({ domain: 'worker-test', draw_id: 'turn-roll' });
 
         const economic = await pool.query<{ report: Record<string, unknown> }>(
           'SELECT report FROM economic_reports WHERE campaign_id = $1 AND turn_number = 1',
@@ -352,13 +368,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           nextTurnNumber: 2,
         });
 
-        const campaign = await pool.query<{
-          status: string;
-          current_turn: number;
-          orders_locked: boolean;
-        }>('SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1', [
-          fixture.campaignId,
-        ]);
+        const campaign = await pool.query<{ status: string; current_turn: number; orders_locked: boolean }>(
+          'SELECT status, current_turn, orders_locked FROM campaigns WHERE id = $1',
+          [fixture.campaignId],
+        );
         expect(campaign.rows[0]).toEqual({
           status: 'completed',
           current_turn: 1,
