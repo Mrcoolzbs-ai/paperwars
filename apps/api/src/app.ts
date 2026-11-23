@@ -660,6 +660,25 @@ function registerCountryRoutes(
     }
   });
 
+  app.post('/campaigns/:campaignId/countries/mine/buildings', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const building = await countrySetupService.buildBuilding(
+        user.id,
+        getCampaignId(request),
+        {
+          buildingType: body['buildingType'],
+          x: parseCoordinate(body['x'], 'x'),
+          y: parseCoordinate(body['y'], 'y'),
+        },
+      );
+      return reply.code(201).send({ building });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.get('/campaigns/:campaignId/map', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
