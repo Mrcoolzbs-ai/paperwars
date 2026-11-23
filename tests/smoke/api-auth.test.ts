@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createAccessTokenSigner,
@@ -13,7 +12,7 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
-async function createBackupAccount(pool: Pool, email: string, password: string): Promise<void> {
+async function createBackupAccount(pool: ReturnType<typeof createPostgresPersistence>['pool'], email: string, password: string): Promise<void> {
   const id = randomUUID();
   await pool.query(
     `INSERT INTO users (id, email, password_hash, display_name)
