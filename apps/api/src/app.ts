@@ -57,7 +57,11 @@ interface RecordBody {
 }
 
 interface AuthRouteSession {
-  readonly user: { readonly id: string; readonly email: string | null; readonly displayName: string };
+  readonly user: {
+    readonly id: string;
+    readonly email: string | null;
+    readonly displayName: string;
+  };
   readonly accessToken: string;
   readonly accessTokenExpiresAt: Date;
   readonly refreshToken: string;
