@@ -818,7 +818,6 @@ export const adminAuditLogs = pgTable(
   ],
 );
 
-
 export const chatMessages = pgTable(
   'chat_messages',
   {
