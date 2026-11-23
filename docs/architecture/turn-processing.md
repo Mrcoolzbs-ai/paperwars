@@ -46,15 +46,18 @@ Ruleset resolver возвращает `TurnSimulationResult` без RNG-журн
 
 ### 6.2.1. Реализованный код Stage 1.8
 
-- `confirmCampaignOrders(pool, campaignId, userId)` в `@paper-wars/persistence` начинает транзакцию, берёт `campaigns FOR SHARE`, проверяет активность кампании и открытый приём, затем подтверждает только активное членство.
+- `createCampaignOrder`, `listCampaignOrders`, `updateCampaignOrder`, `deleteCampaignOrder` реализуют хранение универсального order envelope: `order_type`, `schema_version`, JSONB payload и статус. Записи связаны только с текущей страной активного membership и текущим ходом. Это persistence-контракт, а не whitelist игровых типов/валидатор правил: concrete build/colonization schemas и их игровые эффекты ещё не подключены.
+- Каждая операция изменения заказа начинает транзакцию и сначала берёт `campaigns FOR SHARE`; проверяет active/status, `orders_locked` и `deadline_at > clock_timestamp()`; затем блокирует собственное membership. Обновлять/удалять можно только свои draft/unconfirmed/confirmed orders.
+- При создании/изменении/удалении заказа членское подтверждение отзывается: confirmed приказы этой страны возвращаются в draft, membership `orders_confirmed=false`. Это не позволяет продолжить закрытие после изменения отправленного набора приказов.
+- `confirmCampaignOrders(pool, campaignId, userId)` под `campaigns FOR SHARE` проверяет active membership, страну и DB deadline, переводит все draft/unconfirmed приказы этой страны текущего хода в confirmed и устанавливает membership confirmation в той же транзакции.
 - `closeOrders(pool, campaignId)` берёт `campaigns FOR UPDATE` первой блокировкой, затем snapshot и TurnJob, читает актуальных active members с `FOR SHARE`, проверяет подтверждения/deadline по `clock_timestamp()`, обновляет приказы и кампанию и вставляет TurnJob с `generation=0`.
-- `POST /campaigns/:campaignId/orders/confirm` вызывает подтверждение текущего участника и пытается закрыть ход. Ответ содержит `turnQueued: false`, пока ещё не все участники подтвердили и deadline не наступил; последний участник либо истёкший deadline приводят к созданию задания.
-- В этой версии нет CRUD API приказов. Когда операции записи приказов будут добавлены, каждая обязана брать `campaigns FOR SHARE` и проверять `orders_locked` до мутации в той же транзакции.
+- `POST /campaigns/:campaignId/orders/confirm` сначала пытается закрыть ход (чтобы истёкший deadline нельзя было обойти поздним подтверждением), затем подтверждает пользователя и повторяет попытку закрытия. Ответ содержит `turnQueued: false`, пока ещё не все участники подтвердили и deadline не наступил.
+- При выходе участника открытого хода его draft/unconfirmed/confirmed orders переводятся в discarded; покинуть кампанию нельзя, пока её текущий TurnJob pending или processing.
 
 ### 6.3. Защита операций над приказами и участниками
 
 - Любая операция создания, изменения, удаления или подтверждения приказа выполняется в транзакции и сначала берёт `FOR SHARE` на строку `campaigns`.
-- Операция проверяет `orders_locked = false` до изменения приказа.
+- Операция проверяет `orders_locked = false` и что DB deadline ещё не прошёл до изменения приказа.
 - `closeOrders` берёт на ту же строку `FOR UPDATE`; это сериализует закрытие с операциями приказов.
 - Изменение/удаление/добавление участника кампании выполняется в транзакции с `FOR UPDATE` на `campaigns` первым действием. Это не даёт менять состав активных участников во время закрытия приказов.
 - Проверка блокировки и сама мутация приказа/участника находятся в одной транзакции.
