@@ -132,7 +132,7 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     state.requestId += 1;
   }
   function startPolling() {
-    stopPolling();
+    if (state.timer !== null) window.clearInterval(state.timer);
     state.timer = window.setInterval(() => {
       if (!document.hidden) void loadMessages();
     }, 5000);
