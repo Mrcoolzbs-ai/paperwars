@@ -160,7 +160,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await pool.query('DELETE FROM users WHERE id = $1', [fixture.userId]);
     }
 
-    function createResolver(eventId: string, campaignEnded = false): WorkerResolver {
+    function createResolver(
+      eventId: string,
+      campaignEnded = false,
+      visibility: 'public' | 'private' = 'public',
+      recipientCountryId?: string,
+    ): WorkerResolver {
       return ({ snapshot, orders, random }) => {
         const roll = random.uniform('worker-test', 'turn-roll', 1, 6);
         return {
@@ -189,7 +194,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
               type: 'worker_test_turn',
               schemaVersion: 1,
               payload: { roll },
-              visibility: 'public',
+              visibility,
+              ...(recipientCountryId === undefined
+                ? {}
+                : { recipientCountryId: toId<'CountryId'>(recipientCountryId) }),
             },
           ],
           economicReport: { balance: 123, turn: snapshot.turnNumber },
@@ -286,8 +294,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           event_type: string;
           payload: Record<string, unknown>;
           visibility: string;
+          recipient_country_id: string | null;
         }>(
-          'SELECT id, event_type, payload, visibility FROM game_events WHERE campaign_id = $1 AND turn_number = 1',
+          `SELECT id, event_type, payload, visibility, recipient_country_id
+           FROM game_events
+           WHERE campaign_id = $1 AND turn_number = 1`,
           [fixture.campaignId],
         );
         expect(events.rows).toEqual([
@@ -296,6 +307,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             event_type: 'worker_test_turn',
             payload: { roll: expect.any(Number) },
             visibility: 'public',
+            recipient_country_id: null,
           },
         ]);
 
@@ -328,6 +340,56 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [fixture.campaignId],
         );
         expect(jobs.rows[0]).toEqual({ status: 'completed', generation: 1 });
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('persists private events only with their explicit recipient country', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(false);
+      const eventId = randomUUID();
+      try {
+        const worker = createTurnWorker({
+          pool,
+          workerId: 'worker-test-private-event',
+          keyProvider,
+          ruleset,
+          resolver: createResolver(eventId, false, 'private', fixture.countryId),
+        });
+        const result = await worker.processNext();
+        expect(result).toMatchObject({ status: 'completed' });
+
+        const events = await pool.query<{
+          visibility: string;
+          recipient_country_id: string | null;
+        }>('SELECT visibility, recipient_country_id FROM game_events WHERE id = $1', [eventId]);
+        expect(events.rows).toEqual([
+          { visibility: 'private', recipient_country_id: fixture.countryId },
+        ]);
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('rejects private events without a recipient country', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(false);
+      try {
+        const worker = createTurnWorker({
+          pool,
+          workerId: 'worker-test-private-event-no-recipient',
+          keyProvider,
+          ruleset,
+          resolver: createResolver(randomUUID(), false, 'private'),
+        });
+        await expect(worker.processNext()).rejects.toThrow(
+          'Private game events must specify a valid recipientCountryId',
+        );
+        const events = await pool.query('SELECT 1 FROM game_events WHERE campaign_id = $1', [
+          fixture.campaignId,
+        ]);
+        expect(events.rowCount).toBe(0);
       } finally {
         await removeFixture(fixture);
       }

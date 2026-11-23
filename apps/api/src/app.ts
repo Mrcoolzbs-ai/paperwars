@@ -309,6 +309,16 @@ function registerCampaignRoutes(
     }
   });
 
+  app.get('/campaigns/:campaignId/events', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const events = await campaignService.listEvents(user.id, getCampaignId(request));
+      return reply.send({ events });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.get('/campaigns/:campaignId/orders/mine', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
@@ -445,6 +455,19 @@ function registerCountryRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const map = await countrySetupService.getCampaignMap(user.id, getCampaignId(request));
       return reply.send({ map });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/discoveries', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const discoveries = await countrySetupService.listAccessibleDiscoveries(
+        user.id,
+        getCampaignId(request),
+      );
+      return reply.send({ discoveries });
     } catch (error) {
       return sendAuthError(error, reply);
     }

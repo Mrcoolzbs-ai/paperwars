@@ -263,6 +263,22 @@ function assertResolutionEvents<
     ) {
       throw new TurnWorkerInvariantError('Event envelope contains invalid metadata');
     }
+    const recipientCountryId = event.recipientCountryId;
+    const recipientIsValid =
+      typeof recipientCountryId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        recipientCountryId,
+      );
+    if (event.visibility === 'private' && !recipientIsValid) {
+      throw new TurnWorkerInvariantError(
+        'Private game events must specify a valid recipientCountryId',
+      );
+    }
+    if (event.visibility === 'public' && recipientCountryId !== undefined) {
+      throw new TurnWorkerInvariantError(
+        'Public game events must not specify a recipientCountryId',
+      );
+    }
     assertJsonRecord(event.payload, `Event ${event.type} payload`);
   }
 }
@@ -369,8 +385,9 @@ async function persistResolution<
     for (const event of resolution.events) {
       await client.query(
         `INSERT INTO game_events (
-           id, campaign_id, turn_number, schema_version, event_type, payload, visibility
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+           id, campaign_id, turn_number, schema_version, event_type, payload, visibility,
+           recipient_country_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           event.eventId,
           lease.campaignId,
@@ -379,6 +396,7 @@ async function persistResolution<
           event.type,
           event.payload,
           event.visibility,
+          event.recipientCountryId ?? null,
         ],
       );
     }

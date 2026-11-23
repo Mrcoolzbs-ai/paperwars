@@ -971,6 +971,74 @@ export async function completeTurnJob(
   if (result.rowCount !== 1) throw new StaleTurnJobLeaseError();
 }
 
+export interface CampaignEventView {
+  readonly id: string;
+  readonly turnNumber: number;
+  readonly type: string;
+  readonly schemaVersion: number;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly visibility: 'public' | 'private';
+  readonly createdAt: Date;
+}
+
+/**
+ * Lists only public events and private events addressed to the requesting
+ * member's own country. Recipient identifiers are deliberately not included
+ * in the returned DTO.
+ */
+export async function listCampaignEvents(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+): Promise<readonly CampaignEventView[]> {
+  assertUuid(campaignId, 'campaign');
+
+  const membership = await pool.query<{ country_id: string | null }>(
+    `SELECT country_id
+     FROM campaign_memberships
+     WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+    [campaignId, userId],
+  );
+  const member = membership.rows[0];
+  if (member === undefined) {
+    throw new CampaignTurnProcessingError(
+      'NOT_ACTIVE_MEMBER',
+      'You are not an active member of this campaign',
+    );
+  }
+
+  const result = await pool.query<{
+    id: string;
+    turn_number: number;
+    event_type: string;
+    schema_version: number;
+    payload: Record<string, unknown>;
+    visibility: 'public' | 'private';
+    created_at: Date;
+  }>(
+    `SELECT id, turn_number, event_type, schema_version, payload, visibility, created_at
+     FROM game_events
+     WHERE campaign_id = $1
+       AND (
+         visibility = 'public'
+         OR (visibility = 'private' AND recipient_country_id = $2)
+       )
+     ORDER BY turn_number DESC, created_at DESC, id DESC
+     LIMIT 100`,
+    [campaignId, member.country_id],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    turnNumber: row.turn_number,
+    type: row.event_type,
+    schemaVersion: row.schema_version,
+    payload: row.payload,
+    visibility: row.visibility,
+    createdAt: row.created_at,
+  }));
+}
+
 export interface CampaignTurnStatusView {
   readonly campaignId: string;
   readonly status: 'active' | 'completed';

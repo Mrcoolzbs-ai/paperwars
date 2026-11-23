@@ -19,6 +19,7 @@ export {
 export {
   confirmCampaignOrders,
   getCampaignTurnStatus,
+  listCampaignEvents,
   createCampaignOrder,
   updateCampaignOrder,
   deleteCampaignOrder,
@@ -34,6 +35,7 @@ export {
 export type {
   CampaignTurnProcessingErrorCode,
   CampaignTurnStatusView,
+  CampaignEventView,
   CampaignOrderView,
   CreateCampaignOrderInput,
   UpdateCampaignOrderInput,
