@@ -188,8 +188,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         countryId,
         ordersConfirmed: false,
         snapshotVersion: 3,
-        turnCommitment: campaign.json<{ campaign: { firstTurnCommitment: string } }>()
-          .campaign.firstTurnCommitment,
+        turnCommitment:
+          campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment,
         turnJobStatus: null,
       });
 
