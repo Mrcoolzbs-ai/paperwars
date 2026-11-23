@@ -8,6 +8,8 @@ import {
 export interface AdminOverview {
   readonly users: readonly Record<string, unknown>[];
   readonly campaigns: readonly Record<string, unknown>[];
+  readonly playerSocialSystemLibrary: readonly Record<string, unknown>[];
+  readonly auditLogs: readonly Record<string, unknown>[];
   readonly totals: Record<string, unknown>;
 }
 
@@ -15,6 +17,10 @@ export interface AdminCampaignDetail {
   readonly campaign: Record<string, unknown>;
   readonly members: readonly Record<string, unknown>[];
   readonly countries: readonly Record<string, unknown>[];
+  readonly spawnReservations: readonly Record<string, unknown>[];
+  readonly cells: readonly Record<string, unknown>[];
+  readonly countryCells: readonly Record<string, unknown>[];
+  readonly buildings: readonly Record<string, unknown>[];
   readonly socialSystems: readonly Record<string, unknown>[];
   readonly orders: readonly Record<string, unknown>[];
   readonly events: readonly Record<string, unknown>[];
