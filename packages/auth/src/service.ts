@@ -370,7 +370,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           };
         } else {
           const userId = randomUUID();
-          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 16).toUpperCase();
+          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
           const created = await client.query<{
             id: string;
             email: string | null;
