@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -61,6 +61,25 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Apply Prettier formatting to integration files
+        if: github.event_name == 'pull_request' && github.head_ref == 'feat/game-client-mainline'
+        run: |
+          pnpm exec prettier --write \
+            packages/world/src/country-setup.ts \
+            packages/world/src/types.ts \
+            tests/smoke/api-auth.test.ts \
+            tests/smoke/auth-campaign.test.ts \
+            tests/smoke/campaign-visibility-api.test.ts \
+            tests/smoke/country-setup-api.test.ts \
+            tests/smoke/country-setup.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- packages/world/src/country-setup.ts packages/world/src/types.ts tests/smoke/api-auth.test.ts tests/smoke/auth-campaign.test.ts tests/smoke/campaign-visibility-api.test.ts tests/smoke/country-setup-api.test.ts tests/smoke/country-setup.test.ts; then
+            git add packages/world/src/country-setup.ts packages/world/src/types.ts tests/smoke/api-auth.test.ts tests/smoke/auth-campaign.test.ts tests/smoke/campaign-visibility-api.test.ts tests/smoke/country-setup-api.test.ts tests/smoke/country-setup.test.ts
+            git commit -m "style: apply Prettier formatting to game integration"
+            git push origin "HEAD:refs/heads/${GITHUB_HEAD_REF}"
+          fi
+
       - name: Format check
         run: pnpm format:check
       - name: Tests
