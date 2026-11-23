@@ -4,6 +4,10 @@ import {
   CampaignTurnProcessingError,
   closeOrders,
   confirmCampaignOrders,
+  createCampaignOrder,
+  updateCampaignOrder,
+  deleteCampaignOrder,
+  listCampaignOrders,
   claimNextTurnJob,
   completeTurnJob,
   StaleTurnJobLeaseError,
@@ -203,6 +207,127 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         await expect(
           confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!),
         ).rejects.toMatchObject({ code: 'ORDERS_ALREADY_LOCKED' });
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('restricts drafts to the active member country and withdraws confirmation on edits', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(2);
+      try {
+        const order = await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+          type: 'construction',
+          payload: { buildingType: 'field', x: 1, y: 2 },
+        });
+        expect(order).toMatchObject({
+          campaignId: fixture.campaignId,
+          countryId: fixture.countryIds[0],
+          turnNumber: 1,
+          type: 'construction',
+          schemaVersion: 1,
+          status: 'draft',
+          payload: { buildingType: 'field', x: 1, y: 2 },
+        });
+        expect(await listCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!)).toEqual([
+          order,
+        ]);
+        await expect(
+          updateCampaignOrder(pool, fixture.campaignId, fixture.userIds[1]!, order.id, {
+            payload: { buildingType: 'tower' },
+          }),
+        ).rejects.toMatchObject({ code: 'ORDER_NOT_FOUND' });
+
+        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+        let stored = await pool.query<{ status: string }>(
+          'SELECT status FROM orders WHERE id = $1',
+          [order.id],
+        );
+        expect(stored.rows[0]?.status).toBe('confirmed');
+
+        const second = await createCampaignOrder(
+          pool,
+          fixture.campaignId,
+          fixture.userIds[0]!,
+          { type: 'colonization', payload: { centerX: 10, centerY: 10 } },
+        );
+        expect(second.status).toBe('draft');
+        let membership = await pool.query<{ orders_confirmed: boolean }>(
+          'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+          [fixture.campaignId, fixture.userIds[0]],
+        );
+        expect(membership.rows[0]?.orders_confirmed).toBe(false);
+        stored = await pool.query<{ status: string }>(
+          'SELECT status FROM orders WHERE id = $1',
+          [order.id],
+        );
+        expect(stored.rows[0]?.status).toBe('draft');
+
+        const updated = await updateCampaignOrder(
+          pool,
+          fixture.campaignId,
+          fixture.userIds[0]!,
+          order.id,
+          { payload: { buildingType: 'factory', x: 1, y: 2 } },
+        );
+        expect(updated).toMatchObject({
+          status: 'draft',
+          payload: { buildingType: 'factory', x: 1, y: 2 },
+        });
+
+        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+        await deleteCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, second.id);
+        membership = await pool.query<{ orders_confirmed: boolean }>(
+          'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+          [fixture.campaignId, fixture.userIds[0]],
+        );
+        expect(membership.rows[0]?.orders_confirmed).toBe(false);
+        stored = await pool.query<{ status: string }>(
+          'SELECT status FROM orders WHERE id = $1',
+          [order.id],
+        );
+        expect(stored.rows[0]?.status).toBe('draft');
+        await expect(
+          deleteCampaignOrder(pool, fixture.campaignId, fixture.userIds[1]!, order.id),
+        ).rejects.toMatchObject({ code: 'ORDER_NOT_FOUND' });
+
+        await pool.query('UPDATE campaigns SET orders_locked = TRUE WHERE id = $1', [
+          fixture.campaignId,
+        ]);
+        await expect(
+          createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+            type: 'construction',
+            payload: {},
+          }),
+        ).rejects.toMatchObject({ code: 'ORDERS_ALREADY_LOCKED' });
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('rejects malformed order payloads and invalid schema versions', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(1);
+      try {
+        await expect(
+          createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+            type: ' ',
+            payload: {},
+          }),
+        ).rejects.toMatchObject({ code: 'INVALID_ORDER' });
+        await expect(
+          createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+            type: 'construction',
+            schemaVersion: 0,
+            payload: {},
+          }),
+        ).rejects.toMatchObject({ code: 'INVALID_ORDER' });
+        await expect(
+          createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+            type: 'construction',
+            payload: [],
+          }),
+        ).rejects.toMatchObject({ code: 'INVALID_ORDER' });
       } finally {
         await removeFixture(fixture);
       }
