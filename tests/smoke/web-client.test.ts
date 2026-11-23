@@ -28,7 +28,9 @@ describe('browser client', () => {
 
     expect(html).toContain('id="auth-screen"');
     expect(html).toContain('src="/app.js"');
+    expect(html).toContain('id="open-world-chat"');
     expect(html).toContain('id="tab-chat"');
+    expect(html).toContain('id="chat-back-to-lobby"');
     expect(html).toContain('data-chat-room="world"');
     expect(html).toContain('data-chat-room="campaign"');
     expect(script).toContain('#auth-screen');
