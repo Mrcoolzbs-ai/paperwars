@@ -82,7 +82,7 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
 <script>
 (() => {
   'use strict';
-  const state = { token: null, register: false, room: 'world', campaignId: null, campaigns: [], requestId: 0, timer: null, sending: false };
+  const state = { token: null, register: false, room: 'world', campaignId: null, campaigns: [], requestId: 0, timer: null, sending: false, refreshPromise: null };
   const $ = (id) => document.getElementById(id);
   const authPanel = $('auth-panel');
   const chatPanel = $('chat-panel');
@@ -107,6 +107,25 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     chatPanel.classList.remove('hidden');
     $('logout').classList.remove('hidden');
   }
+  function refreshAccessToken() {
+    if (!state.refreshPromise) {
+      state.refreshPromise = (async () => {
+        const response = await fetch('/auth/refresh', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body || typeof body.accessToken !== 'string') {
+          throw new Error('Сессия завершена. Войдите снова.');
+        }
+        state.token = body.accessToken;
+        return state.token;
+      })().finally(() => {
+        state.refreshPromise = null;
+      });
+    }
+    return state.refreshPromise;
+  }
   async function api(path, options, retried) {
     const opts = options || {};
     const headers = new Headers(opts.headers || {});
@@ -115,14 +134,11 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     const response = await fetch(path, { ...opts, headers, credentials: 'same-origin' });
     const body = response.status === 204 ? null : await response.json().catch(() => null);
     if (response.status === 401 && state.token && path !== '/auth/refresh' && !retried) {
-      const refreshResponse = await fetch('/auth/refresh', {
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-      const refreshed = await refreshResponse.json().catch(() => null);
-      if (refreshResponse.ok && refreshed && typeof refreshed.accessToken === 'string') {
-        state.token = refreshed.accessToken;
+      try {
+        await refreshAccessToken();
         return api(path, opts, true);
+      } catch (_) {
+        // Preserve the original request error; the caller will return to the login screen.
       }
     }
     if (!response.ok) {
@@ -134,8 +150,7 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     return body;
   }
   async function refreshSession() {
-    const body = await api('/auth/refresh', { method: 'POST' });
-    state.token = body.accessToken;
+    await refreshAccessToken();
   }
   function stopPolling() {
     if (state.timer !== null) window.clearInterval(state.timer);
