@@ -74,6 +74,18 @@ export interface CampaignSummary {
   readonly maxPlayers: number;
 }
 
+export interface OpenCampaignSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly currentTurn: number;
+  readonly mapWidth: number;
+  readonly mapHeight: number;
+  readonly turnDurationHours: number;
+  readonly playerCount: number;
+  readonly maxPlayers: number;
+  readonly createdAt: Date;
+}
+
 export interface CampaignService {
   createCampaign(
     ownerUserId: string,
@@ -100,6 +112,7 @@ export interface CampaignService {
   deleteOrder(userId: string, campaignId: string, orderId: string): Promise<void>;
   confirmOrders(userId: string, campaignId: string): Promise<ClosedTurnJob | null>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
+  listOpenCampaigns(userId: string): Promise<readonly OpenCampaignSummary[]>;
 }
 
 export function createCampaignService(options: CampaignServiceOptions): CampaignService {
@@ -430,6 +443,56 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       } finally {
         client.release();
       }
+    },
+
+    async listOpenCampaigns(userId) {
+      const result = await options.pool.query<{
+        id: string;
+        name: string;
+        current_turn: number;
+        map_width: number;
+        map_height: number;
+        turn_duration_hours: number;
+        player_count: number;
+        created_at: Date;
+      }>(
+        `SELECT c.id, c.name, c.current_turn, c.map_width, c.map_height,
+                c.turn_duration_hours, c.created_at,
+                (SELECT COUNT(*)::int
+                 FROM campaign_memberships AS active_members
+                 WHERE active_members.campaign_id = c.id AND active_members.status = 'active') AS player_count
+         FROM campaigns AS c
+         WHERE c.status = 'active'
+           AND c.current_turn = 1
+           AND c.orders_locked = TRUE
+           AND c.map_width IS NOT NULL
+           AND c.map_height IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM campaign_memberships AS own_membership
+             WHERE own_membership.campaign_id = c.id
+               AND own_membership.user_id = $1
+               AND own_membership.status = 'active'
+           )
+           AND (
+             SELECT COUNT(*)::int
+             FROM campaign_memberships AS active_members
+             WHERE active_members.campaign_id = c.id AND active_members.status = 'active'
+           ) < FLOOR((c.map_width * c.map_height)::numeric / 100)
+         ORDER BY c.created_at DESC, c.id
+         LIMIT 50`,
+        [userId],
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        currentTurn: row.current_turn,
+        mapWidth: row.map_width,
+        mapHeight: row.map_height,
+        turnDurationHours: row.turn_duration_hours,
+        playerCount: row.player_count,
+        maxPlayers: Math.floor((row.map_width * row.map_height) / 100),
+        createdAt: row.created_at,
+      }));
     },
 
     async listCampaignsForUser(userId) {
