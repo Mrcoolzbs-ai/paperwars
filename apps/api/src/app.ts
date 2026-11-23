@@ -6,10 +6,13 @@ import {
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
   UnauthenticatedError,
+  ChatServiceError,
   type AuthService,
   type CampaignService,
+  type ChatService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
+import { CHAT_PAGE_HTML } from './chat-page.js';
 
 export interface CreateAppOptions {
   readonly logger?: boolean;
@@ -17,6 +20,7 @@ export interface CreateAppOptions {
   readonly rngVersion?: string;
   readonly authService?: AuthService;
   readonly campaignService?: CampaignService;
+  readonly chatService?: ChatService;
   readonly secureCookies?: boolean;
 }
 
@@ -213,12 +217,84 @@ function registerCampaignRoutes(
   });
 }
 
+function sendChatError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof ChatServiceError) {
+    const status = error.code === 'NOT_ACTIVE_CAMPAIGN_MEMBER' ? 403 : 429;
+    return reply.code(status).send({ error: error.code, message: error.message });
+  }
+  return sendAuthError(error, reply);
+}
+
+function registerChatRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  chatService: ChatService,
+): void {
+  app.get('/chat/world', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const messages = await chatService.listWorldMessages(user.id);
+      return reply.send({ messages });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.post('/chat/world', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const message = await chatService.sendWorldMessage(user.id, body['message']);
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/chat', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const params = request.params as RecordBody;
+      const campaignId = params['campaignId'];
+      if (typeof campaignId !== 'string') {
+        throw new AuthValidationError('Campaign ID is required');
+      }
+      const messages = await chatService.listCampaignMessages(user.id, campaignId);
+      return reply.send({ messages });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/chat', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const params = request.params as RecordBody;
+      const campaignId = params['campaignId'];
+      if (typeof campaignId !== 'string') {
+        throw new AuthValidationError('Campaign ID is required');
+      }
+      const body = asRecord(request.body);
+      const message = await chatService.sendCampaignMessage(user.id, campaignId, body['message']);
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+}
+
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
   const engine = createSimulationEngine({
     rulesetVersion: options.rulesetVersion ?? 'baseline-v1',
     rngVersion: options.rngVersion ?? 'rng-v1',
+  });
+
+  app.get('/chat', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Content-Type-Options', 'nosniff');
+    return reply.type('text/html; charset=utf-8').send(CHAT_PAGE_HTML);
   });
 
   app.get('/health', async () => ({
@@ -234,6 +310,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.campaignService !== undefined) {
     registerCampaignRoutes(app, options.authService, options.campaignService);
+  }
+
+  if (options.authService !== undefined && options.chatService !== undefined) {
+    registerChatRoutes(app, options.authService, options.chatService);
   }
 
   return app;
