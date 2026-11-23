@@ -74,7 +74,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         'social system api admin password',
       );
       const member = await createEmailLoginUser(
-        current.pool,
+        persistence.pool,
         auth,
         `social-system-member-${randomUUID()}@example.test`,
         'social system api member password',
