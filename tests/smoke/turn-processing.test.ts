@@ -702,63 +702,47 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it(
-      'returns a member-scoped turn status and respects the order deadline',
-      async () => {
-        const pool = getPool();
-        const fixture = await createFixture(1);
-        try {
-          const status = await getCampaignTurnStatus(
-            pool,
-            fixture.campaignId,
-            fixture.userIds[0]!,
-          );
-          expect(status).toMatchObject({
-            campaignId: fixture.campaignId,
-            status: 'active',
-            currentTurn: 1,
-            ordersLocked: false,
-            ordersAccepting: true,
-            turnDurationHours: 24,
-            countryId: fixture.countryIds[0],
-            ordersConfirmed: false,
-            snapshotVersion: 7,
-            turnCommitment: null,
-            turnJobStatus: null,
-          });
-          expect(status.deadlineAt).toBeInstanceOf(Date);
+    it('returns a member-scoped turn status and respects the order deadline', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(1);
+      try {
+        const status = await getCampaignTurnStatus(pool, fixture.campaignId, fixture.userIds[0]!);
+        expect(status).toMatchObject({
+          campaignId: fixture.campaignId,
+          status: 'active',
+          currentTurn: 1,
+          ordersLocked: false,
+          ordersAccepting: true,
+          turnDurationHours: 24,
+          countryId: fixture.countryIds[0],
+          ordersConfirmed: false,
+          snapshotVersion: 7,
+          turnCommitment: null,
+          turnJobStatus: null,
+        });
+        expect(status.deadlineAt).toBeInstanceOf(Date);
 
-          await expect(
-            getCampaignTurnStatus(pool, fixture.campaignId, randomUUID()),
-          ).rejects.toMatchObject({ code: 'NOT_ACTIVE_MEMBER' });
+        await expect(
+          getCampaignTurnStatus(pool, fixture.campaignId, randomUUID()),
+        ).rejects.toMatchObject({ code: 'NOT_ACTIVE_MEMBER' });
 
-          await pool.query(
-            'UPDATE campaigns SET orders_locked = TRUE WHERE id = $1',
-            [fixture.campaignId],
-          );
-          const locked = await getCampaignTurnStatus(
-            pool,
-            fixture.campaignId,
-            fixture.userIds[0]!,
-          );
-          expect(locked.ordersAccepting).toBe(false);
+        await pool.query('UPDATE campaigns SET orders_locked = TRUE WHERE id = $1', [
+          fixture.campaignId,
+        ]);
+        const locked = await getCampaignTurnStatus(pool, fixture.campaignId, fixture.userIds[0]!);
+        expect(locked.ordersAccepting).toBe(false);
 
-          await pool.query(
-            `UPDATE campaigns
-             SET orders_locked = FALSE, deadline_at = clock_timestamp() - INTERVAL '1 second'
-             WHERE id = $1`,
-            [fixture.campaignId],
-          );
-          const expired = await getCampaignTurnStatus(
-            pool,
-            fixture.campaignId,
-            fixture.userIds[0]!,
-          );
-          expect(expired.ordersAccepting).toBe(false);
-        } finally {
-          await removeFixture(fixture);
-        }
-      },
-    );
+        await pool.query(
+          `UPDATE campaigns
+           SET orders_locked = FALSE, deadline_at = clock_timestamp() - INTERVAL '1 second'
+           WHERE id = $1`,
+          [fixture.campaignId],
+        );
+        const expired = await getCampaignTurnStatus(pool, fixture.campaignId, fixture.userIds[0]!);
+        expect(expired.ordersAccepting).toBe(false);
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
   },
 );
