@@ -62,7 +62,7 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
       <div><div class="brand">ДОСТУП К ЧАТАМ</div><h2 id="auth-title">Войти в Paper Wars</h2></div>
       <a id="vk-login" class="vk-login" href="/auth/vk/start">Войти через ВКонтакте</a>
       <form id="auth-form" style="display:grid;gap:13px">
-        <p class="muted">Резервный вход по email и паролю</p>
+        <p class="muted">Для старого аккаунта используйте прежние email и пароль. Привязать VK ID можно в профиле в главной игре.</p>
         <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
         <label>Пароль<input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="1024"></label>
         <div class="auth-actions"><button id="auth-submit" type="submit">Войти по email</button></div>
