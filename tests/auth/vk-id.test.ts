@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AuthService } from '@paper-wars/auth';
-import { createApp } from '@paper-wars/api';
 import {
+  createApp,
   completeVkAuthorization,
   createVkAuthorizationSession,
   createVkAuthorizationStart,
