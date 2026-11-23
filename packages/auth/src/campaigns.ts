@@ -122,7 +122,25 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
     },
 
     async confirmOrders(userId, campaignId) {
-      await confirmCampaignOrders(options.pool, campaignId, userId);
+      try {
+        return await closeOrders(options.pool, campaignId);
+      } catch (error) {
+        if (!(error instanceof CampaignTurnProcessingError)) throw error;
+        if (error.code === 'ORDERS_ALREADY_LOCKED') return null;
+        if (error.code !== 'ORDERS_NOT_READY') throw error;
+      }
+
+      try {
+        await confirmCampaignOrders(options.pool, campaignId, userId);
+      } catch (error) {
+        if (
+          !(error instanceof CampaignTurnProcessingError) ||
+          error.code !== 'ORDERS_DEADLINE_PASSED'
+        ) {
+          throw error;
+        }
+      }
+
       try {
         return await closeOrders(options.pool, campaignId);
       } catch (error) {
