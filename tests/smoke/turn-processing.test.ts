@@ -204,7 +204,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       } finally {
         await removeFixture(fixture);
       }
-    });
+       },
+    );
 
     it('closes by PostgreSQL clock_timestamp when the deadline has passed', async () => {
       const pool = getPool();
