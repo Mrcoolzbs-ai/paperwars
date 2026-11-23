@@ -49,10 +49,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             rulesetVersion: 'baseline-v1',
             rngVersion: 'rng-v1',
           });
+    const verificationLinks: string[] = [];
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
       secureCookies: false,
+      appBaseUrl: 'https://paper-wars.test',
+      verificationEmailSender: {
+        async sendVerificationEmail(_email, verificationUrl) {
+          verificationLinks.push(verificationUrl);
+        },
+      },
       ...(auth === undefined ? {} : { authService: auth }),
       ...(campaigns === undefined ? {} : { campaignService: campaigns }),
     });
@@ -68,12 +75,32 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
     it('sets an HttpOnly SameSite refresh cookie and keeps the raw token out of JSON', async () => {
       const email = `api-${randomUUID()}@example.test`;
-      const response = await app.inject({
+      const registration = await app.inject({
         method: 'POST',
         url: '/auth/register',
         payload: { email, password: 'an api integration test password' },
       });
-      expect(response.statusCode).toBe(201);
+      expect(registration.statusCode).toBe(202);
+      expect(registration.json()).toMatchObject({ verificationRequired: true });
+      expect(registration.body).not.toContain('refreshToken');
+      const unverifiedLogin = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password: 'an api integration test password' },
+      });
+      expect(unverifiedLogin.statusCode).toBe(403);
+      expect(unverifiedLogin.json()).toMatchObject({ error: 'EMAIL_NOT_VERIFIED' });
+
+      const verificationUrl = verificationLinks[0];
+      if (verificationUrl === undefined) throw new Error('Verification email was not captured');
+      const verificationToken = new URL(verificationUrl).searchParams.get('token');
+      if (verificationToken === null) throw new Error('Verification token was missing');
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/verify-email',
+        payload: { token: verificationToken },
+      });
+      expect(response.statusCode).toBe(200);
       const body = response.json<{
         user: { id: string; email: string };
         accessToken: string;
