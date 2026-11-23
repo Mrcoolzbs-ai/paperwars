@@ -294,17 +294,22 @@ Commit-reveal подтверждает неизменность seed после 
 ### 7.5. Stage 1.8 — закрытие приказов и инфраструктура TurnJob (начальный инкремент)
 
 В ветке PR #15 добавлены PostgreSQL-backed операции:
-- `confirmCampaignOrders`: подтверждает приказы одного активного участника под `campaigns FOR SHARE`; проверка статуса кампании и `orders_locked` находится в той же транзакции, что и изменение membership.
+- `createCampaignOrder`, `listCampaignOrders`, `updateCampaignOrder`, `deleteCampaignOrder`: CRUD универсальных versioned order envelopes только для собственной страны активного участника и текущего хода. Записи используют `campaigns FOR SHARE`, проверяют `orders_locked` и DB deadline через `clock_timestamp()`; редактирование/удаление чужих и finalized/discarded order запрещено.
+- Редактирование/создание/удаление после подтверждения отзывает membership confirmation и возвращает оставшиеся confirmed orders этой страны в draft.
+- `confirmCampaignOrders`: под `campaigns FOR SHARE` и блокировкой собственного membership переводит draft/unconfirmed приказы страны в confirmed и устанавливает членское подтверждение в той же транзакции; сверяет deadline по времени БД.
 - `closeOrders`: сначала блокирует кампанию `FOR UPDATE`, затем snapshot и TurnJob; проверяет active members и deadline через `clock_timestamp()`; в одной транзакции финализирует confirmed orders, отбрасывает draft/unconfirmed, включает `orders_locked` и создаёт один TurnJob для campaign/turn с `generation=0`.
-- `POST /campaigns/:campaignId/orders/confirm` подтверждает участника и ставит ход в очередь, если все активные участники подтвердили приказы либо истёк deadline.
+- API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId`, POST `/campaigns/:campaignId/orders/confirm`. Endpoint закрытия сначала пробует обработать уже истёкший deadline, чтобы не допустить позднего подтверждения.
+- При выходе участника его незакрытые приказы становятся discarded; покинуть кампанию нельзя, пока TurnJob текущего хода pending/processing.
 - `claimNextTurnJob` использует `FOR UPDATE SKIP LOCKED`, задаёт lease 5 минут и увеличивает generation при каждом успешном claim; первая попытка получает generation 1.
 - `renewTurnJobLease` разрешает продление только при совпадении job id, worker id, generation, processing status и действующем lease.
 - `reapExpiredTurnJobs` переназначает истёкшие задания до пяти раз; истечение шестой попытки переводит job в failed без увеличения retry_count сверх 5.
 - `completeTurnJob` предоставляет fenced final UPDATE: только текущий worker и generation с незавершившимся lease могут завершить job. Ошибка требует rollback транзакции вызывающего Worker.
 
-Проверено PostgreSQL integration tests: атомарность closeOrders, подтверждения нескольких участников, DB deadline, отсутствие snapshot, параллельные закрытия, lease renewal, stale generation, шестая неудачная попытка и fenced completion. Контрольный CI прошёл 87/87 тестов в 16 файлах.
+Order envelope deliberately remains generic (`type`, `schemaVersion`, JSON payload): concrete build/colonization schemas, ruleset validation and game effects are not invented or represented as implemented.
 
-Это **не означает готовности полного исполнения хода**. Ещё не реализованы CRUD обработчики игровых приказов, фоновый Worker с concrete ruleset resolver и транзакция сохранения следующего snapshot/events/random log/reports/next seed, а также терминальное завершение кампании. До реализации этих частей полноценный игровой цикл не считается завершённым.
+CI baseline for the prior infrastructure increment passed 87/87 tests in 16 files ([run 45110828475](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45110828475)). Extended order CRUD, deadline and leave tests are being verified separately.
+
+Это **не означает готовности полного исполнения хода**. Ещё не реализованы concrete ruleset resolver, фоновый Worker и транзакция сохранения следующего snapshot/events/random log/reports/next seed, а также терминальное завершение кампании. До реализации этих частей полноценный игровой цикл не считается завершённым.
 
 ## 8. Что не следует додумывать
 
