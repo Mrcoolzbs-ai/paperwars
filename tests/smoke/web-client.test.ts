@@ -28,7 +28,13 @@ describe('browser client', () => {
 
     expect(html).toContain('id="auth-screen"');
     expect(html).toContain('src="/app.js"');
+    expect(html).toContain('id="tab-chat"');
+    expect(html).toContain('data-chat-room="world"');
+    expect(html).toContain('data-chat-room="campaign"');
     expect(script).toContain('#auth-screen');
+    expect(script).toContain("'/chat/world'");
+    expect(script).toContain("'/chat'");
+    expect(script).toContain('startChatPolling');
     expect(() => new Script(script, { filename: 'apps/web/dist/app.js' })).not.toThrow();
   });
 
@@ -60,6 +66,10 @@ describe('browser client', () => {
     expect(script.headers['content-type']).toContain('javascript');
     expect(() => new Script(script.body, { filename: 'apps/web/public/app.js' })).not.toThrow();
     expect(script.body).toContain('/campaigns');
+    expect(script.body).toContain("'/chat/world'");
+    expect(script.body).toContain("'/chat'");
+    expect(script.body).toContain('NOT_ACTIVE_CAMPAIGN_MEMBER');
+    expect(script.body).toContain('CHAT_RATE_LIMITED');
     const mapRenderer = script.body.slice(
       script.body.indexOf('function drawBuildingMapIcon'),
       script.body.indexOf(
