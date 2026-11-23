@@ -18,6 +18,14 @@ export interface VkAuthorizationStart {
   readonly stateCookie: string;
 }
 
+export interface VkAuthorizationSession {
+  readonly appId: number;
+  readonly redirectUri: string;
+  readonly state: string;
+  readonly codeVerifier: string;
+  readonly stateCookie: string;
+}
+
 export interface VkAuthorizationCallback {
   readonly code: string;
   readonly deviceId: string;
@@ -86,18 +94,21 @@ function decodeState(
   }
 }
 
-export function createVkAuthorizationStart(
+export function createVkAuthorizationSession(
   options: VkIdOptions,
   secureCookie: boolean,
   userId?: string,
   now = Date.now(),
-): VkAuthorizationStart {
+): VkAuthorizationSession {
   if (options.cookieSecret.length < 32) {
     throw new RangeError('VK_ID_COOKIE_SECRET must be at least 32 bytes');
   }
+  const appId = Number(options.appId);
+  if (!Number.isSafeInteger(appId) || appId <= 0) {
+    throw new RangeError('VK_ID_APP_ID must be a positive integer');
+  }
   const state = randomBytes(32).toString('base64url');
   const codeVerifier = randomBytes(32).toString('base64url');
-  const codeChallenge = createHash('sha256').update(codeVerifier, 'utf8').digest('base64url');
   const stateCookie = encodeState(
     {
       state,
@@ -107,17 +118,6 @@ export function createVkAuthorizationStart(
     },
     options.cookieSecret,
   );
-
-  const url = new URL('https://id.vk.ru/authorize');
-  url.searchParams.set('client_id', options.appId);
-  url.searchParams.set('app_id', options.appId);
-  url.searchParams.set('redirect_uri', options.redirectUri);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('sdk_type', 'vkid');
-  url.searchParams.set('state', state);
-  url.searchParams.set('code_challenge', codeChallenge);
-  url.searchParams.set('code_challenge_method', 's256');
-  url.searchParams.set('prompt', 'login consent');
 
   const cookieParts = [
     `vk_oauth_state=${encodeURIComponent(stateCookie)}`,
@@ -129,8 +129,39 @@ export function createVkAuthorizationStart(
   if (secureCookie) cookieParts.push('Secure');
 
   return {
-    authorizationUrl: url.toString(),
+    appId,
+    redirectUri: options.redirectUri,
+    state,
+    codeVerifier,
     stateCookie: cookieParts.join('; '),
+  };
+}
+
+export function createVkAuthorizationStart(
+  options: VkIdOptions,
+  secureCookie: boolean,
+  userId?: string,
+  now = Date.now(),
+): VkAuthorizationStart {
+  const session = createVkAuthorizationSession(options, secureCookie, userId, now);
+  const codeChallenge = createHash('sha256')
+    .update(session.codeVerifier, 'utf8')
+    .digest('base64url');
+
+  const url = new URL('https://id.vk.ru/authorize');
+  url.searchParams.set('client_id', String(session.appId));
+  url.searchParams.set('app_id', String(session.appId));
+  url.searchParams.set('redirect_uri', session.redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('sdk_type', 'vkid');
+  url.searchParams.set('state', session.state);
+  url.searchParams.set('code_challenge', codeChallenge);
+  url.searchParams.set('code_challenge_method', 's256');
+  url.searchParams.set('prompt', 'login consent');
+
+  return {
+    authorizationUrl: url.toString(),
+    stateCookie: session.stateCookie,
   };
 }
 

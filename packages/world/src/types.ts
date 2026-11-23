@@ -210,7 +210,7 @@ export interface CreatedCountry {
     readonly height: 5;
   };
   readonly buildingCount: 7;
-  readonly residentCount: 18;
+  readonly residentCount: number;
   readonly snapshotVersion: number;
 }
 

@@ -119,6 +119,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           };
         }>().map;
         let spawn = { x: -1, y: -1 };
+        let spawnLandCells = 0;
         for (let y = 2; y < mapData.height - 2 && spawn.x < 0; y += 1) {
           for (let x = 2; x < mapData.width - 2; x += 1) {
             let land = 0;
@@ -133,11 +134,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             );
             if (land >= 9 && buildingsOnLand) {
               spawn = { x, y };
+              spawnLandCells = land;
               break;
             }
           }
         }
         if (spawn.x < 0) throw new Error('No valid seeded spawn area in API test map');
+        const expectedResidents = spawnLandCells - RELIGION_BUILDINGS.length;
         const reservationResponse = await app.inject({
           method: 'PUT',
           url: `/campaigns/${campaign.id}/spawn-reservation`,
@@ -332,7 +335,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           }>().country,
         ).toMatchObject({
           name: 'Harbor Republic',
-          residentCount: 18,
+          residentCount: expectedResidents,
           officialSystem: { name: 'Harbor Light' },
         });
 
@@ -374,6 +377,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(ownedCountry).toMatchObject({ id: createdCountryId, isMine: true });
         expect(ownedCountry).not.toHaveProperty('ownerUserId');
         expect(ownedCountry?.cells).toHaveLength(25);
+        for (const cell of ownedCountry?.cells ?? []) {
+          const isDryLand = countryMap.terrain[cell.y * countryMap.width + cell.x] === 'l';
+          expect(cell.population).toBe(isDryLand && cell.buildingType === null ? 1 : 0);
+        }
         const buildingCounts = (ownedCountry?.cells || []).reduce<Record<string, number>>(
           (counts, cell) => {
             if (cell.buildingType) {

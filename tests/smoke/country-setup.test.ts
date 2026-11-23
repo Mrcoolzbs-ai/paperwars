@@ -9,6 +9,7 @@ import { createEmailLoginUser } from '../helpers/auth.js';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import {
   createCountrySetupService,
+  recalculateCountryPopulations,
   CountrySetupValidationError,
   SocialSystemLimitReachedError,
   SpawnAreaUnavailableError,
@@ -106,7 +107,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             (building) =>
               map.terrain[(y - 2 + building.y) * map.width + x - 2 + building.x] === 'l',
           );
-          if (!free || land < 7 || !buildingsOnLand) continue;
+          if (!free || land < 8 || land === 25 || !buildingsOnLand) continue;
           if (
             map.reservations.some(
               (item) => Math.abs(item.centerX - x) <= 4 && Math.abs(item.centerY - y) <= 4,
@@ -116,7 +117,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           return { x, y };
         }
       }
-      throw new Error('No free 5x5 spawn with at least seven land cells was generated');
+      throw new Error('No free coastal 5x5 spawn with at least eight land cells was generated');
     }
 
     async function createApprovedSocialSystem(
@@ -152,7 +153,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('creates the exact 5x5, seven-building, eighteen-resident start and versions the snapshot', async () => {
+    it('counts residents only on dry land and repairs legacy water-cell population', async () => {
       const current = getPersistence();
       const { auth, campaigns } = createServices();
       const firstUser = await createEmailLoginUser(
@@ -219,8 +220,22 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         width: 5,
         height: 5,
       });
+      const firstMap = await countrySetup.getCampaignMap(firstUser.user.id, campaign.id);
+      const firstLandCount = Array.from({ length: 25 }, (_, index) => index).filter((index) => {
+        const x = firstSpawn.x - 2 + (index % 5);
+        const y = firstSpawn.y - 2 + Math.floor(index / 5);
+        return firstMap.terrain[y * firstMap.width + x] === 'l';
+      }).length;
+      const expectedFirstResidents = firstLandCount - RELIGION_BUILDINGS.length;
+      const firstMapCountry = firstMap.countries.find((country) => country.id === firstCountry.id);
+      expect(firstMapCountry).toBeDefined();
+      for (const cell of firstMapCountry!.cells) {
+        const isDryLand = firstMap.terrain[cell.y * firstMap.width + cell.x] === 'l';
+        expect(cell.population).toBe(isDryLand && cell.buildingType === null ? 1 : 0);
+      }
+
       expect(firstCountry.buildingCount).toBe(7);
-      expect(firstCountry.residentCount).toBe(18);
+      expect(firstCountry.residentCount).toBe(expectedFirstResidents);
       expect(firstCountry.snapshotVersion).toBe(1);
       expect(firstCountry.officialSystem.type).toBe('religion');
 
@@ -252,7 +267,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
       expect(firstPopulation.rows[0]).toEqual({
         cell_count: '25',
-        resident_count: '18',
+        resident_count: String(expectedFirstResidents),
         building_count: '7',
         building_cell_population: '0',
       });
@@ -324,7 +339,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         officialSystemId: secondSystem.id,
         buildings: IDEOLOGY_BUILDINGS,
       });
+      const expectedSecondResidents =
+        Array.from({ length: 25 }, (_, index) => index).filter((index) => {
+          const x = secondSpawn.x - 2 + (index % 5);
+          const y = secondSpawn.y - 2 + Math.floor(index / 5);
+          return secondObserverMap.terrain[y * secondObserverMap.width + x] === 'l';
+        }).length - IDEOLOGY_BUILDINGS.length;
       expect(secondCountry.officialSystem.type).toBe('ideology');
+      expect(secondCountry.residentCount).toBe(expectedSecondResidents);
       expect(secondCountry.snapshotVersion).toBe(2);
 
       const lockAfterAllCountries = await current.pool.query<{ orders_locked: boolean }>(
@@ -370,9 +392,61 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(totals.rows[0]).toEqual({
         countries: '2',
         cells: '50',
-        population: '36',
+        population: String(expectedFirstResidents + expectedSecondResidents),
         buildings: '14',
       });
+
+      // Simulate legacy data: the former implementation assigned residents to
+      // every cell without a building, including sea and rivers.
+      await current.pool.query(
+        `UPDATE country_cells AS owned
+         SET population = 1
+         WHERE owned.campaign_id = $1 AND owned.country_id = $2
+           AND NOT EXISTS (
+             SELECT 1 FROM country_buildings AS building
+             WHERE building.campaign_id = owned.campaign_id
+               AND building.country_id = owned.country_id
+               AND building.cell_id = owned.cell_id
+           )`,
+        [campaign.id, firstCountry.id],
+      );
+
+      await expect(recalculateCountryPopulations(current.pool)).resolves.toBeGreaterThan(0);
+
+      const correctedProfile = await countrySetup.getMyCountry(firstUser.user.id, campaign.id);
+      expect(correctedProfile?.residentCount).toBe(expectedFirstResidents);
+      const correctedMap = await countrySetup.getCampaignMap(firstUser.user.id, campaign.id);
+      const correctedCountry = correctedMap.countries.find(
+        (country) => country.id === firstCountry.id,
+      );
+      expect(correctedCountry).toBeDefined();
+      for (const cell of correctedCountry!.cells) {
+        const isDryLand = correctedMap.terrain[cell.y * correctedMap.width + cell.x] === 'l';
+        expect(cell.population).toBe(isDryLand && cell.buildingType === null ? 1 : 0);
+      }
+
+      const correctedSnapshot = await current.pool.query<{
+        version: number;
+        state: {
+          countries: Array<{
+            id: string;
+            cells: Array<{ x: number; y: number; population: number; buildingType: string | null }>;
+          }>;
+        };
+      }>(
+        `SELECT version, state FROM world_snapshots
+         WHERE campaign_id = $1 AND turn_number = 1`,
+        [campaign.id],
+      );
+      expect(correctedSnapshot.rows[0]?.version).toBe(3);
+      const correctedSnapshotCountry = correctedSnapshot.rows[0]?.state.countries.find(
+        (country) => country.id === firstCountry.id,
+      );
+      expect(correctedSnapshotCountry).toBeDefined();
+      for (const cell of correctedSnapshotCountry!.cells) {
+        const isDryLand = correctedMap.terrain[cell.y * correctedMap.width + cell.x] === 'l';
+        expect(cell.population).toBe(isDryLand && cell.buildingType === null ? 1 : 0);
+      }
     });
 
     it('enforces social system balance, the seven-system limit and optional moderation', async () => {

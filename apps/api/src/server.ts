@@ -8,7 +8,7 @@ import {
 } from '@paper-wars/auth';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
-import { createCountrySetupService } from '@paper-wars/world';
+import { createCountrySetupService, recalculateCountryPopulations } from '@paper-wars/world';
 import { createApp } from './app.js';
 
 function requiredEnv(name: string): string {
@@ -120,6 +120,12 @@ async function shutdown(): Promise<void> {
 try {
   await runMigrations(persistence.pool);
   await persistence.pool.query('SELECT 1');
+  const recalculatedCampaigns = await recalculateCountryPopulations(persistence.pool);
+  if (recalculatedCampaigns > 0) {
+    process.stdout.write(
+      `Corrected resident populations in ${recalculatedCampaigns} turn-one campaign(s).\n`,
+    );
+  }
 
   const authService = createAuthService({
     pool: persistence.pool,

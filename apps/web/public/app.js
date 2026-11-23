@@ -284,6 +284,49 @@
     element.classList.toggle('success', success);
   }
 
+  async function initVkOneTap() {
+    const container = $('#vk-one-tap');
+    if (!container) return;
+
+    const sdk = window.VKIDSDK;
+    if (!sdk) {
+      setMessage('#vk-one-tap-message', 'Быстрый вход не загрузился. Используй обычный вход через VK ID ниже.');
+      return;
+    }
+
+    try {
+      const config = await request('/auth/vk/one-tap-config', { method: 'POST' });
+      if (
+        !config ||
+        !Number.isSafeInteger(config.appId) ||
+        typeof config.redirectUrl !== 'string' ||
+        typeof config.state !== 'string' ||
+        typeof config.codeVerifier !== 'string'
+      ) {
+        throw new Error('Сервер вернул неполные настройки VK ID.');
+      }
+
+      sdk.Config.init({
+        app: config.appId,
+        redirectUrl: config.redirectUrl,
+        state: config.state,
+        codeVerifier: config.codeVerifier,
+        mode: sdk.ConfigAuthMode.Redirect,
+      });
+
+      const oneTap = new sdk.OneTap();
+      oneTap
+        .render({ container, fastAuthEnabled: true })
+        .on(sdk.WidgetEvents.ERROR, (error) => {
+          console.error('VK ID One Tap widget error', error);
+          setMessage('#vk-one-tap-message', 'Быстрый вход VK ID недоступен. Используй обычную кнопку ниже.');
+        });
+    } catch (error) {
+      console.error('VK ID One Tap initialization failed', error);
+      setMessage('#vk-one-tap-message', error.message || 'Не удалось подготовить быстрый вход VK ID.');
+    }
+  }
+
   function showScreen(name) {
     $('#auth-screen').classList.toggle('hidden', name !== 'auth');
     $('#game-screen').classList.toggle('hidden', name !== 'game');
@@ -1802,6 +1845,7 @@
       const authenticated = await restoreSession();
       if (!authenticated) {
         showScreen('auth');
+        void initVkOneTap();
         return;
       }
 

@@ -141,7 +141,6 @@ interface SnapshotCountry {
 
 const TERRITORY_SIDE = 5;
 const TERRITORY_HALF = 2;
-const EXPECTED_RESIDENTS = 18;
 const EXPECTED_BUILDINGS = 7;
 
 const BUILDING_TYPES = new Set<StartBuildingType>([
@@ -246,7 +245,7 @@ function validateSpawnLand(
       if (world.terrain[y * width + x] === 'l') landCells += 1;
     }
   }
-  if (landCells < 7) throw new SpawnAreaUnavailableError();
+  if (landCells < EXPECTED_BUILDINGS + 1) throw new SpawnAreaUnavailableError();
   return world;
 }
 
@@ -645,6 +644,152 @@ async function buildSnapshot(
     map: { width: mapWidth, height: mapHeight },
     countries: [...countries.values()],
   };
+}
+
+/**
+ * Corrects legacy turn-one population data using the deterministic world terrain.
+ * Only unoccupied dry-land cells may contain a resident. Turn-one snapshots are
+ * rebuilt from the corrected relational state so the API and simulation agree.
+ * Campaigns whose first turn has already been queued are left untouched.
+ */
+export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
+  const campaigns = await pool.query<{ readonly id: string }>(
+    `SELECT campaign.id
+     FROM campaigns AS campaign
+     WHERE campaign.current_turn = 1
+       AND campaign.map_width IS NOT NULL
+       AND campaign.map_height IS NOT NULL
+       AND EXISTS (
+         SELECT 1
+         FROM country_cells AS owned
+         JOIN countries AS country
+           ON country.campaign_id = owned.campaign_id AND country.id = owned.country_id
+         WHERE owned.campaign_id = campaign.id AND country.setup_completed = TRUE
+       )
+     ORDER BY campaign.id`,
+  );
+
+  let updatedCampaignCount = 0;
+  for (const item of campaigns.rows) {
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+
+      const campaignResult = await client.query<{
+        readonly id: string;
+        readonly current_turn: number;
+        readonly map_width: number | null;
+        readonly map_height: number | null;
+        readonly map_seed: string;
+        readonly ruleset_version: string;
+      }>(
+        `SELECT id, current_turn, map_width, map_height, map_seed, ruleset_version
+         FROM campaigns WHERE id = $1 FOR UPDATE`,
+        [item.id],
+      );
+      const campaign = campaignResult.rows[0];
+      if (
+        campaign === undefined ||
+        campaign.current_turn !== 1 ||
+        campaign.map_width === null ||
+        campaign.map_height === null
+      ) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        continue;
+      }
+
+      const snapshot = await client.query<SnapshotLockRow>(
+        `SELECT version FROM world_snapshots
+         WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE`,
+        [item.id],
+      );
+      const queuedTurn = await client.query(
+        `SELECT id FROM turn_jobs
+         WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE`,
+        [item.id],
+      );
+      if (queuedTurn.rows.length > 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        continue;
+      }
+
+      const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
+      const cells = await client.query<{
+        readonly country_id: string;
+        readonly cell_id: string;
+        readonly x: number;
+        readonly y: number;
+        readonly population: number;
+        readonly has_building: boolean;
+      }>(
+        `SELECT owned.country_id, owned.cell_id, cell.x, cell.y, owned.population,
+                (building.id IS NOT NULL) AS has_building
+         FROM country_cells AS owned
+         JOIN countries AS country
+           ON country.campaign_id = owned.campaign_id AND country.id = owned.country_id
+         JOIN cells AS cell
+           ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+         LEFT JOIN country_buildings AS building
+           ON building.campaign_id = owned.campaign_id
+          AND building.country_id = owned.country_id
+          AND building.cell_id = owned.cell_id
+         WHERE owned.campaign_id = $1 AND country.setup_completed = TRUE
+         ORDER BY owned.country_id, cell.y, cell.x
+         FOR UPDATE OF owned`,
+        [item.id],
+      );
+
+      let campaignChanged = false;
+      for (const cell of cells.rows) {
+        const expectedPopulation =
+          world.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building ? 1 : 0;
+        if (cell.population === expectedPopulation) continue;
+        await client.query(
+          `UPDATE country_cells
+           SET population = $4
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+          [item.id, cell.country_id, cell.cell_id, expectedPopulation],
+        );
+        campaignChanged = true;
+      }
+
+      if (campaignChanged) {
+        if (snapshot.rows[0] !== undefined) {
+          const state = await buildSnapshot(
+            client,
+            item.id,
+            campaign.map_width,
+            campaign.map_height,
+          );
+          await client.query(
+            `UPDATE world_snapshots
+             SET version = $2, state_schema_version = 1,
+                 ruleset_version = $3, state = $4
+             WHERE campaign_id = $1 AND turn_number = 1`,
+            [item.id, snapshot.rows[0].version + 1, campaign.ruleset_version, state],
+          );
+        }
+        updatedCampaignCount += 1;
+      }
+
+      await client.query('COMMIT');
+      transactionOpen = false;
+    } catch (error) {
+      if (transactionOpen) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  return updatedCampaignCount;
 }
 
 export function createCountrySetupService(options: {
@@ -1474,8 +1619,10 @@ export function createCountrySetupService(options: {
           const cellId = cellIds.get(`${cell.x},${cell.y}`);
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
-          return [campaignId, countryId, cellId, hasBuilding ? 0 : 1] as const;
+          const isDryLand = spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
+          return [campaignId, countryId, cellId, isDryLand && !hasBuilding ? 1 : 0] as const;
         });
+        const initialResidentCount = countryCellValues.reduce((sum, row) => sum + row[3], 0);
         const countryCellsInsert = makeValues(countryCellValues);
         await client.query(
           `INSERT INTO country_cells (campaign_id, country_id, cell_id, population)
@@ -1532,7 +1679,7 @@ export function createCountrySetupService(options: {
               territoryWidth: TERRITORY_SIDE,
               territoryHeight: TERRITORY_SIDE,
               buildingCount: EXPECTED_BUILDINGS,
-              residentCount: EXPECTED_RESIDENTS,
+              residentCount: initialResidentCount,
             },
           ],
         );
@@ -1605,7 +1752,7 @@ export function createCountrySetupService(options: {
             height: 5 as const,
           },
           buildingCount: 7 as const,
-          residentCount: 18 as const,
+          residentCount: initialResidentCount,
           snapshotVersion,
         };
       } catch (error) {
