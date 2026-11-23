@@ -5,6 +5,7 @@ import {
   closeOrders,
   confirmCampaignOrders,
   getCampaignTurnStatus,
+  listCampaignEvents,
   createCampaignOrder,
   deleteCampaignOrder,
   listCampaignOrders,
@@ -12,6 +13,7 @@ import {
   createCommittedSeed,
   type CampaignOrderView,
   type CampaignTurnStatusView,
+  type CampaignEventView,
   type CreateCampaignOrderInput,
   type UpdateCampaignOrderInput,
   type ClosedTurnJob,
@@ -79,6 +81,7 @@ export interface CampaignService {
   joinCampaign(userId: string, campaignId: string): Promise<void>;
   leaveCampaign(userId: string, campaignId: string): Promise<void>;
   getTurnStatus(userId: string, campaignId: string): Promise<CampaignTurnStatusView>;
+  listEvents(userId: string, campaignId: string): Promise<readonly CampaignEventView[]>;
   listOrders(userId: string, campaignId: string): Promise<readonly CampaignOrderView[]>;
   createOrder(
     userId: string,
@@ -110,6 +113,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
   return {
     async getTurnStatus(userId, campaignId) {
       return getCampaignTurnStatus(options.pool, campaignId, userId);
+    },
+
+    async listEvents(userId, campaignId) {
+      return listCampaignEvents(options.pool, campaignId, userId);
     },
 
     async listOrders(userId, campaignId) {
