@@ -280,7 +280,10 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       try {
         const updated = await options.pool.query(
           `UPDATE users
-           SET display_name = $2, email = $3, updated_at = $4
+           SET display_name = $2,
+               email = $3,
+               password_hash = CASE WHEN $3::text IS NULL THEN NULL ELSE password_hash END,
+               updated_at = $4
            WHERE id = $1 AND status = 'active'`,
           [userId, displayName, email, clock()],
         );
