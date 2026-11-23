@@ -4,12 +4,14 @@ import {
   CampaignTurnProcessingError,
   closeOrders,
   confirmCampaignOrders,
+  getCampaignTurnStatus,
   createCampaignOrder,
   deleteCampaignOrder,
   listCampaignOrders,
   updateCampaignOrder,
   createCommittedSeed,
   type CampaignOrderView,
+  type CampaignTurnStatusView,
   type CreateCampaignOrderInput,
   type UpdateCampaignOrderInput,
   type ClosedTurnJob,
@@ -76,6 +78,7 @@ export interface CampaignService {
   ): Promise<CreatedCampaign>;
   joinCampaign(userId: string, campaignId: string): Promise<void>;
   leaveCampaign(userId: string, campaignId: string): Promise<void>;
+  getTurnStatus(userId: string, campaignId: string): Promise<CampaignTurnStatusView>;
   listOrders(userId: string, campaignId: string): Promise<readonly CampaignOrderView[]>;
   createOrder(
     userId: string,
@@ -105,6 +108,10 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
   const clock = options.clock ?? (() => new Date());
 
   return {
+    async getTurnStatus(userId, campaignId) {
+      return getCampaignTurnStatus(options.pool, campaignId, userId);
+    },
+
     async listOrders(userId, campaignId) {
       return listCampaignOrders(options.pool, campaignId, userId);
     },

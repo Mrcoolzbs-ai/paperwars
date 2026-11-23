@@ -970,3 +970,116 @@ export async function completeTurnJob(
   );
   if (result.rowCount !== 1) throw new StaleTurnJobLeaseError();
 }
+
+export interface CampaignTurnStatusView {
+  readonly campaignId: string;
+  readonly status: 'active' | 'completed';
+  readonly currentTurn: number;
+  readonly ordersLocked: boolean;
+  readonly ordersAccepting: boolean;
+  readonly deadlineAt: Date | null;
+  readonly turnDurationHours: number;
+  readonly countryId: string | null;
+  readonly ordersConfirmed: boolean;
+  readonly snapshotVersion: number | null;
+  readonly turnCommitment: string | null;
+  readonly turnJobStatus: 'pending' | 'processing' | 'completed' | 'failed' | null;
+}
+
+/**
+ * Returns the public current-turn envelope plus the requesting member's own
+ * confirmation/country state. The internal world snapshot and other members'
+ * orders or confirmations are deliberately not exposed.
+ */
+export async function getCampaignTurnStatus(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+): Promise<CampaignTurnStatusView> {
+  assertUuid(campaignId, 'campaign');
+
+  const result = await pool.query<{
+    campaign_id: string;
+    status: string;
+    current_turn: number;
+    orders_locked: boolean;
+    orders_accepting: boolean;
+    deadline_at: Date | null;
+    turn_duration_hours: number;
+    member_user_id: string | null;
+    country_id: string | null;
+    orders_confirmed: boolean | null;
+    snapshot_version: number | null;
+    turn_commitment: string | null;
+    turn_job_status: string | null;
+  }>(
+    `SELECT
+       campaign.id AS campaign_id,
+       campaign.status,
+       campaign.current_turn,
+       campaign.orders_locked,
+       (
+         campaign.status = 'active'
+         AND campaign.orders_locked = FALSE
+         AND (campaign.deadline_at IS NULL OR campaign.deadline_at > clock_timestamp())
+       ) AS orders_accepting,
+       campaign.deadline_at,
+       campaign.turn_duration_hours,
+       membership.user_id AS member_user_id,
+       membership.country_id,
+       membership.orders_confirmed,
+       snapshot.version AS snapshot_version,
+       seed.commitment AS turn_commitment,
+       turn_job.status AS turn_job_status
+     FROM campaigns AS campaign
+     LEFT JOIN campaign_memberships AS membership
+       ON membership.campaign_id = campaign.id
+      AND membership.user_id = $2
+      AND membership.status = 'active'
+     LEFT JOIN world_snapshots AS snapshot
+       ON snapshot.campaign_id = campaign.id
+      AND snapshot.turn_number = campaign.current_turn
+     LEFT JOIN random_seeds AS seed
+       ON seed.campaign_id = campaign.id
+      AND seed.turn_number = campaign.current_turn
+     LEFT JOIN turn_jobs AS turn_job
+       ON turn_job.campaign_id = campaign.id
+      AND turn_job.turn_number = campaign.current_turn
+     WHERE campaign.id = $1`,
+    [campaignId, userId],
+  );
+
+  const row = result.rows[0];
+  if (row === undefined) {
+    throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Campaign does not exist');
+  }
+  if (row.member_user_id === null) {
+    throw new CampaignTurnProcessingError(
+      'NOT_ACTIVE_MEMBER',
+      'Only an active campaign member can view turn status',
+    );
+  }
+
+  const turnJobStatus = row.turn_job_status;
+  if (
+    turnJobStatus !== null &&
+    !['pending', 'processing', 'completed', 'failed'].includes(turnJobStatus)
+  ) {
+    throw new Error('Campaign has an unknown turn job status');
+  }
+
+  return {
+    campaignId: row.campaign_id,
+    status: row.status as CampaignTurnStatusView['status'],
+    currentTurn: row.current_turn,
+    ordersLocked: row.orders_locked,
+    ordersAccepting: row.orders_accepting,
+    deadlineAt: row.deadline_at,
+    turnDurationHours: row.turn_duration_hours,
+    countryId: row.country_id,
+    ordersConfirmed: row.orders_confirmed ?? false,
+    snapshotVersion: row.snapshot_version,
+    turnCommitment: row.turn_commitment,
+    turnJobStatus: turnJobStatus as CampaignTurnStatusView['turnJobStatus'],
+  };
+}
