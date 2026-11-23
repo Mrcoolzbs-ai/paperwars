@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { createCampaignService } from '@paper-wars/auth';
+import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   CampaignTurnProcessingError,
@@ -18,6 +20,15 @@ import {
 } from '@paper-wars/persistence';
 
 const databaseUrl = process.env['DATABASE_URL'];
+
+const testSeedKey = Buffer.alloc(32, 0x47);
+const testSeedKeyProvider: SeedKeyProvider = {
+  getActiveKey: async () => ({ version: 'turn-processing-test-key-v1', key: testSeedKey }),
+  getKey: async (version) => {
+    if (version !== 'turn-processing-test-key-v1') throw new Error('Unknown test seed key version');
+    return testSeedKey;
+  },
+};
 
 interface TurnFixture {
   readonly campaignId: string;
@@ -609,6 +620,67 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           worker_id: null,
           lease_until: null,
         });
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('discards a leaving member country orders before the order window closes', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(2);
+      const campaigns = createCampaignService({
+        pool,
+        keyProvider: testSeedKeyProvider,
+        rulesetVersion: 'baseline-v1',
+        rngVersion: 'rng-v1',
+      });
+      try {
+        const order = await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+          type: 'construction',
+          payload: { buildingType: 'field' },
+        });
+        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+
+        await campaigns.leaveCampaign(fixture.userIds[0]!, fixture.campaignId);
+
+        const stored = await pool.query<{ status: string }>(
+          'SELECT status FROM orders WHERE id = $1',
+          [order.id],
+        );
+        expect(stored.rows[0]?.status).toBe('discarded');
+        const membership = await pool.query<{ status: string; orders_confirmed: boolean }>(
+          'SELECT status, orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+          [fixture.campaignId, fixture.userIds[0]],
+        );
+        expect(membership.rows[0]).toEqual({ status: 'left', orders_confirmed: false });
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('prevents a member from leaving while a turn job is pending or processing', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(1);
+      const campaigns = createCampaignService({
+        pool,
+        keyProvider: testSeedKeyProvider,
+        rulesetVersion: 'baseline-v1',
+        rngVersion: 'rng-v1',
+      });
+      try {
+        await pool.query(
+          `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status)
+           VALUES ($1, $2, 1, 7, 'pending')`,
+          [`turn:${fixture.campaignId}:1`, fixture.campaignId],
+        );
+        await expect(
+          campaigns.leaveCampaign(fixture.userIds[0]!, fixture.campaignId),
+        ).rejects.toMatchObject({ code: 'ORDERS_ALREADY_LOCKED' });
+        const membership = await pool.query<{ status: string }>(
+          'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+          [fixture.campaignId, fixture.userIds[0]],
+        );
+        expect(membership.rows[0]?.status).toBe('active');
       } finally {
         await removeFixture(fixture);
       }
