@@ -275,11 +275,7 @@ function registerChatRoutes(
         throw new AuthValidationError('Campaign ID is required');
       }
       const body = asRecord(request.body);
-      const message = await chatService.sendCampaignMessage(
-        user.id,
-        campaignId,
-        body['message'],
-      );
+      const message = await chatService.sendCampaignMessage(user.id, campaignId, body['message']);
       return reply.code(201).send({ message });
     } catch (error) {
       return sendChatError(error, reply);
