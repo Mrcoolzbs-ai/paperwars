@@ -48,7 +48,7 @@
 
 Инфраструктурный инкремент Stage 1.8 расширен: транзакционные order CRUD текущей страны/хода (черновик, изменение, удаление, список), отзыв прежнего подтверждения при редактировании, deadline guards на времени PostgreSQL, подтверждение всех приказов страны и атомарное `closeOrders`. API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId`, POST `/campaigns/:campaignId/orders/confirm`. Очередь включает TurnJob creation, claim через `SKIP LOCKED`, lease renewal, reaper с пятью переназначениями и fenced `completeTurnJob`. Типы приказов пока являются универсальными versioned envelopes; конкретные игровые схемы и эффекты не реализованы.
 
-Контрольный CI для предыдущего инфраструктурного инкремента прошёл Build, Typecheck, Lint, Format check и 87/87 PostgreSQL/unit tests в 16 файлах ([run 45110828475](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45110828475)). Расширенный CRUD/deadline/leave сценарий сейчас проходит отдельный контрольный CI перед фиксацией нового статуса.
+Контрольный CI расширенного инкремента прошёл Build, Typecheck, Lint, Format check и **91/91 PostgreSQL/unit tests в 16 файлах** ([run 45113619602](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45113619602)). Проверены CRUD/ownership приказов, отзыв подтверждения после изменений, deadline guards, закрытие хода, выход участника, lease/reaper и fencing.
 
 Незавершённые части Stage 2 и последующих этапов:
 - приглашения второго игрока, полноценные membership/roles и обязательное административное согласование религий/идеологий (текущий автодоступ в PR #15 — известное расхождение с Baseline);
