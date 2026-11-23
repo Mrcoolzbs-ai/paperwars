@@ -87,7 +87,7 @@ function getBearerToken(request: FastifyRequest): string {
   if (typeof authorization !== 'string') {
     throw new UnauthenticatedError();
   }
-  const match = /^***;
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
   if (match?.[1] === undefined) {
     throw new UnauthenticatedError();
   }
