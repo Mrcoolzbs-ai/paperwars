@@ -441,5 +441,28 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       await expect(worker.processNext()).resolves.toEqual({ status: 'idle' });
     });
+
+    it('polls an empty queue until the AbortSignal requests graceful shutdown', async () => {
+      const worker = createTurnWorker({
+        pool: getPool(),
+        workerId: 'worker-test-loop',
+        keyProvider,
+        ruleset,
+        resolver: createResolver(randomUUID()),
+      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 35);
+      try {
+        await worker.run(controller.signal, {
+          pollIntervalMs: 10,
+          onError: (error) => {
+            throw error;
+          },
+        });
+        expect(controller.signal.aborted).toBe(true);
+      } finally {
+        clearTimeout(timeout);
+      }
+    });
   },
 );
