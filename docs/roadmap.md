@@ -174,9 +174,10 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] `closeOrders`: первой блокировкой берёт кампанию `FOR UPDATE`; проверяет статус, `orders_locked`, snapshot и актуальный список активных участников.
 - [x] Проверяет подтверждения либо deadline по времени БД `clock_timestamp()`.
 - [x] В одной транзакции финализирует `confirmed`, переводит `draft/unconfirmed` в `discarded`, включает `orders_locked` и создаёт TurnJob.
-- [x] `confirmCampaignOrders` использует `FOR SHARE` на campaign и изменяет подтверждение только активного участника в той же транзакции.
-- [ ] Обработчики создания, изменения и удаления приказов ещё должны использовать `FOR SHARE` на campaign и проверять `orders_locked` в той же транзакции.
-- [x] Изменение состава участников использует `FOR UPDATE` на campaign; действующие join/leave и создание страны сериализуются с закрытием.
+- [x] `confirmCampaignOrders` использует `FOR SHARE` на campaign; переводит draft/unconfirmed приказы страны участника в confirmed и отмечает membership в той же транзакции.
+- [x] Создание, чтение, изменение и удаление собственных приказов текущего хода: `createCampaignOrder`, `listCampaignOrders`, `updateCampaignOrder`, `deleteCampaignOrder`. Все записи сначала берут `FOR SHARE` на campaign, затем блокируют своё membership; проверяют active membership, наличие страны, `orders_locked` и DB deadline в той же транзакции.
+- [x] Изменение приказа после подтверждения отзывает подтверждение участника и возвращает его остальные confirmed приказы в draft; удаление также отзывает подтверждение.
+- [x] При выходе участника его незакрытые приказы открытого хода становятся discarded; выход блокируется, пока текущий TurnJob pending/processing. Изменение состава участников сериализуется с закрытием через `campaigns FOR UPDATE`.
 - [x] Уникальный TurnJob на (campaign_id, turn_number); при создании `generation=0`, первый успешный claim увеличивает её до 1.
 - [x] `claimNextTurnJob`: PostgreSQL `FOR UPDATE SKIP LOCKED`, lease ровно 5 минут, один job на успешный claim.
 - [x] `renewTurnJobLease` продлевает lease только при совпадении job/worker/generation/status и если прежний lease ещё действует: `lease_until > clock_timestamp()`.
@@ -187,7 +188,7 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [ ] Полноценный Worker должен исполнить resolver и в той же транзакции сохранить следующий snapshot, events, random log, economic/battle reports, next seed и completed TurnJob.
 - [ ] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
 
-Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API подтверждения: `POST /campaigns/:campaignId/orders/confirm`. PostgreSQL integration tests покрывают атомарное закрытие, deadline, конкурентные закрытия, lease, retry limit и fencing.
+Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId` и POST `/campaigns/:campaignId/orders/confirm`. Хранение order envelope универсально (type/schemaVersion/JSON payload) и пока не валидирует конкретные игровые команды или их эффекты. PostgreSQL integration tests покрывают CRUD/ownership, withdrawal confirmation, deadline, атомарное закрытие, конкурентные закрытия, leave semantics, lease, retry limit и fencing.
 
 ### 1.9. API и Web-каркас
 
