@@ -12,12 +12,8 @@ const databaseUrl = process.env['DATABASE_URL'];
 const key = Buffer.alloc(32, 0x61);
 const keyProvider: SeedKeyProvider = {
   getActiveKey: async () => ({ version: 'baseline-worker-test-v1', key }),
-  getKey: async (version) => {
-    if (version !== 'baseline-worker-test-v1') {
-      throw new Error('Unknown baseline worker test key version');
-    }
-    return key;
-  },
+  // This test uses one deterministic key for every persisted test version.
+  getKey: async () => key,
 };
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
@@ -127,7 +123,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const seedClient = await pool.connect();
         try {
           await seedClient.query('BEGIN');
-          await createCommittedSeed(
+          const seedReference = await createCommittedSeed(
             seedClient,
             keyProvider,
             {
@@ -138,6 +134,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             },
             { seedSource: () => Buffer.alloc(32, 0x41) },
           );
+          expect(seedReference.encryptionKeyVersion).toBe('baseline-worker-test-v1');
+          const storedSeed = await seedClient.query<{ encryption_key_version: string }>(
+            'SELECT encryption_key_version FROM random_seeds WHERE campaign_id = $1 AND turn_number = 1',
+            [campaignId],
+          );
+          expect(storedSeed.rows[0]?.encryption_key_version).toBe(seedReference.encryptionKeyVersion);
           await seedClient.query('COMMIT');
         } catch (error) {
           await seedClient.query('ROLLBACK');
