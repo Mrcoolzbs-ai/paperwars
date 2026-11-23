@@ -254,7 +254,7 @@ export const baselineTurnResolver: TurnResolver<
   }
 
   const accepted: DemolitionCandidate[] = [];
-  for (const [countryId, countryOrders] of byCountry) {
+  for (const [_countryId, countryOrders] of byCountry) {
     const actionPointCost = countryOrders.length * ruleset.parameters.demolitionActionPoints;
     if (actionPointCost > ruleset.parameters.actionPointsPerTurn) {
       for (const candidate of countryOrders) {
