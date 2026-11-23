@@ -44,11 +44,14 @@
 
 **Draft PR #15** ([feat(web): add Paper Wars browser client MVP](https://github.com/Mrcoolzbs-ai/paperwars/pull/15)) остаётся открытым в `stage-3-browser-client`, основан на `stage-2-country-setup`, не влит. Клиентский вертикальный срез (авторизация, кампании, seeded-карта, основание страны, культурные и социальные карточки) предварительно принят как отдельный ограниченный инкремент. Это не закрытие полного Stage 2 DoD.
 
-Текущий PR CI для последнего визуального инкремента прошёл Build, Typecheck, Lint, Format check и Tests: [CI run](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45076079334). В этой же ветке начат Stage 1.7: pure Simulation Engine проверяет совместимость ruleset/snapshot и finalized orders, вызывает подключённый resolver и самостоятельно ведёт журнал RNG draws. Concrete ruleset resolver и игровые эффекты ещё не подключены; closeOrders, Worker/lease и persistence finalization остаются следующим инфраструктурным инкрементом. Начальный Stage 1.7 прошёл CI: Build, Typecheck, Lint, Format check и 79/79 тестов в 15 файлах ([run 45077993105](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45077993105)).
+В ветке PR #15 реализован начальный Stage 1.7: pure Simulation Engine проверяет совместимость ruleset/snapshot и finalized orders, вызывает подключённый resolver и самостоятельно ведёт журнал RNG draws. Concrete ruleset resolver и игровые эффекты ещё не подключены. Stage 1.7 прошёл CI: Build, Typecheck, Lint, Format check и 79/79 тестов в 15 файлах ([run 45078180497](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45078180497)).
+
+Начальный инфраструктурный инкремент Stage 1.8 также реализован: транзакционные `confirmCampaignOrders`/`closeOrders`, endpoint `POST /campaigns/:campaignId/orders/confirm`, TurnJob creation, claim через `SKIP LOCKED`, lease renewal, reaper с пятью переназначениями и fenced `completeTurnJob`. Контрольный CI на коммите `8a4e912` прошёл Build, Typecheck, Lint, Format check и 87/87 PostgreSQL/unit tests в 16 файлах ([run 45110828475](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45110828475)).
 
 Незавершённые части Stage 2 и последующих этапов:
 - приглашения второго игрока, полноценные membership/roles и обязательное административное согласование религий/идеологий (текущий автодоступ в PR #15 — известное расхождение с Baseline);
-- конкретный resolver игровых фаз, приказы строительства/колонизации, подтверждение, `closeOrders`, PostgreSQL worker, lease/fencing и атомарное сохранение результата;
+- CRUD приказов строительства/колонизации и связанные проверки блокировок;
+- полноценный фоновый Worker с ruleset resolver и атомарной фиксацией следующего snapshot, events, random log, economic/battle reports, next seed и TurnJob; логика завершения кампании;
 - экономика, население, сезоны, разведка/руины/золото, дипломатия, армия и полный цикл ходов;
 - полные DTO-проекции по видимости и защита закрытых данных.
 
