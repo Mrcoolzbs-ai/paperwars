@@ -67,20 +67,20 @@ jobs:
         run: |
           pnpm exec prettier --write apps/api/src/app.ts packages/auth/src/campaigns.ts packages/persistence/src/postgres/turn-processing.ts tests/smoke/api-auth.test.ts tests/smoke/turn-processing.test.ts
           echo '=== SOURCE_0_START ==='
-cat apps/api/src/app.ts
-echo '=== SOURCE_0_END ==='
-echo '=== SOURCE_1_START ==='
-cat packages/auth/src/campaigns.ts
-echo '=== SOURCE_1_END ==='
-echo '=== SOURCE_2_START ==='
-cat packages/persistence/src/postgres/turn-processing.ts
-echo '=== SOURCE_2_END ==='
-echo '=== SOURCE_3_START ==='
-cat tests/smoke/api-auth.test.ts
-echo '=== SOURCE_3_END ==='
-echo '=== SOURCE_4_START ==='
-cat tests/smoke/turn-processing.test.ts
-echo '=== SOURCE_4_END ==='
+          cat apps/api/src/app.ts
+          echo '=== SOURCE_0_END ==='
+          echo '=== SOURCE_1_START ==='
+          cat packages/auth/src/campaigns.ts
+          echo '=== SOURCE_1_END ==='
+          echo '=== SOURCE_2_START ==='
+          cat packages/persistence/src/postgres/turn-processing.ts
+          echo '=== SOURCE_2_END ==='
+          echo '=== SOURCE_3_START ==='
+          cat tests/smoke/api-auth.test.ts
+          echo '=== SOURCE_3_END ==='
+          echo '=== SOURCE_4_START ==='
+          cat tests/smoke/turn-processing.test.ts
+          echo '=== SOURCE_4_END ==='
       - name: Format check
         run: pnpm format:check
       - name: Tests
