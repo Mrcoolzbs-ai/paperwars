@@ -688,14 +688,15 @@ export function createCountrySetupService(options: {
       const data = await options.pool.query<{
         country_id: string;
         name: string;
-        owner_user_id: string;
+        is_mine: boolean;
         flag_data_url: string | null;
         x: number;
         y: number;
         population: number;
         building_type: StartBuildingType | null;
       }>(
-        `SELECT country.id AS country_id, country.name, country.owner_user_id,
+        `SELECT country.id AS country_id, country.name,
+                (country.owner_user_id = $2) AS is_mine,
                 country.flag_data_url, cell.x, cell.y, owned.population, building.building_type
          FROM countries AS country
          JOIN country_cells AS owned ON owned.campaign_id = country.campaign_id AND owned.country_id = country.id
@@ -704,14 +705,14 @@ export function createCountrySetupService(options: {
            AND building.country_id = owned.country_id AND building.cell_id = owned.cell_id
          WHERE country.campaign_id = $1 AND country.setup_completed = TRUE
          ORDER BY country.name, cell.y, cell.x`,
-        [campaignId],
+        [campaignId, userId],
       );
       const groups = new Map<
         string,
         {
           id: string;
           name: string;
-          ownerUserId: string;
+          isMine: boolean;
           flagDataUrl: string | null;
           cells: Array<{
             x: number;
@@ -727,7 +728,7 @@ export function createCountrySetupService(options: {
           country = {
             id: row.country_id,
             name: row.name,
-            ownerUserId: row.owner_user_id,
+            isMine: row.is_mine,
             flagDataUrl: row.flag_data_url,
             cells: [],
           };
@@ -741,12 +742,15 @@ export function createCountrySetupService(options: {
         });
       }
       const reservations = await options.pool.query<{
-        user_id: string;
+        is_mine: boolean;
         center_x: number;
         center_y: number;
       }>(
-        'SELECT user_id, center_x, center_y FROM campaign_spawn_reservations WHERE campaign_id = $1 ORDER BY updated_at',
-        [campaignId],
+        `SELECT (user_id = $2) AS is_mine, center_x, center_y
+         FROM campaign_spawn_reservations
+         WHERE campaign_id = $1
+         ORDER BY updated_at`,
+        [campaignId, userId],
       );
       const generatedMap = generateWorldMap(map.map_seed, map.map_width, map.map_height);
       return {
@@ -756,10 +760,9 @@ export function createCountrySetupService(options: {
         terrain: generatedMap.terrain,
         countries: [...groups.values()],
         reservations: reservations.rows.map((row) => ({
-          userId: row.user_id,
           centerX: row.center_x,
           centerY: row.center_y,
-          isMine: row.user_id === userId,
+          isMine: row.is_mine,
         })),
       };
     },

@@ -201,6 +201,7 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] API endpoints: register/login/refresh/logout/me и базовые campaigns create/list.
 - [x] API endpoints: базовое управление membership и CRUD/confirmation приказов текущей страны.
 - [x] Read-only API статуса текущего хода: `GET /campaigns/:campaignId/turn`; возвращает состояние кампании/хода, дедлайн, snapshot version, commitment текущего seed и только собственные `countryId`/`ordersConfirmed` участника.
+- [x] Map DTO использует member-scoped `isMine` для государств и spawn reservations вместо внутренних UUID владельцев/участников.
 - [ ] World view и полные DTO-проекции по уровню видимости; внутренний `WorldState` не сериализуется напрямую.
 - [ ] Next.js/React Web-клиент: вход, список кампаний, базовая карта и экран приказов.
 - [ ] Валидация входящих payload и DTO-проекции по уровню видимости.

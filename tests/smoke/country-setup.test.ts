@@ -291,6 +291,27 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         secondSpawn.x,
         secondSpawn.y,
       );
+
+      const firstObserverMap = await countrySetup.getCampaignMap(firstUser.user.id, campaign.id);
+      const secondObserverMap = await countrySetup.getCampaignMap(secondUser.user.id, campaign.id);
+      const firstCountryForOwner = firstObserverMap.countries.find(
+        (country) => country.id === firstCountry.id,
+      );
+      const firstCountryForOther = secondObserverMap.countries.find(
+        (country) => country.id === firstCountry.id,
+      );
+      expect(firstCountryForOwner).toMatchObject({ id: firstCountry.id, isMine: true });
+      expect(firstCountryForOther).toMatchObject({ id: firstCountry.id, isMine: false });
+      expect(firstCountryForOwner).not.toHaveProperty('ownerUserId');
+      expect(firstCountryForOther).not.toHaveProperty('ownerUserId');
+      expect(firstObserverMap.reservations).toEqual([
+        { centerX: secondSpawn.x, centerY: secondSpawn.y, isMine: false },
+      ]);
+      expect(secondObserverMap.reservations).toEqual([
+        { centerX: secondSpawn.x, centerY: secondSpawn.y, isMine: true },
+      ]);
+      expect(firstObserverMap.reservations[0]).not.toHaveProperty('userId');
+      expect(secondObserverMap.reservations[0]).not.toHaveProperty('userId');
       const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
         name: 'Free Thought Collective',
         spawnX: secondSpawn.x,
