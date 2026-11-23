@@ -241,7 +241,8 @@ function assertResolutionEvents<TEvent extends DomainEvent<string, Readonly<Reco
       typeof event.type !== 'string' ||
       event.type.trim().length === 0 ||
       !Number.isSafeInteger(event.schemaVersion) ||
-      event.schemaVersion < 1
+      event.schemaVersion < 1 ||
+      (event.visibility !== 'public' && event.visibility !== 'private')
     ) {
       throw new TurnWorkerInvariantError('Event envelope contains invalid metadata');
     }
@@ -276,6 +277,7 @@ async function persistResolution<TEvent extends DomainEvent<string, Readonly<Rec
   ruleset: RulesetDefinition<object>,
   resolution: TurnResolution<Record<string, unknown>, TEvent>,
 ): Promise<void> {
+  assertJsonRecord(resolution.nextState, 'Next world state');
   const reports = assertResolutionReports(resolution);
   assertResolutionEvents(resolution.events, lease);
   const client = await pool.connect();
@@ -348,8 +350,8 @@ async function persistResolution<TEvent extends DomainEvent<string, Readonly<Rec
     for (const event of resolution.events) {
       await client.query(
         `INSERT INTO game_events (
-           id, campaign_id, turn_number, schema_version, event_type, payload
-         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+           id, campaign_id, turn_number, schema_version, event_type, payload, visibility
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           event.eventId,
           lease.campaignId,
@@ -357,6 +359,7 @@ async function persistResolution<TEvent extends DomainEvent<string, Readonly<Rec
           event.schemaVersion,
           event.type,
           event.payload,
+          event.visibility,
         ],
       );
     }
