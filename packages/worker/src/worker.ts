@@ -34,12 +34,7 @@ export interface TurnWorkerConfig<
   readonly workerId: string;
   readonly keyProvider: SeedKeyProvider;
   readonly ruleset: RulesetDefinition<TParameters>;
-  readonly resolver: TurnResolver<
-    TState,
-    TPayload,
-    RulesetDefinition<TParameters>,
-    TEvent
-  >;
+  readonly resolver: TurnResolver<TState, TPayload, RulesetDefinition<TParameters>, TEvent>;
   readonly seedOptions?: CreateCommittedSeedOptions;
 }
 
@@ -53,9 +48,7 @@ export interface ProcessedTurnJob<TEvent> {
   readonly resolution: TurnResolution<Record<string, unknown>, TEvent>;
 }
 
-export type TurnWorkerResult<TEvent> =
-  | { readonly status: 'idle' }
-  | ProcessedTurnJob<TEvent>;
+export type TurnWorkerResult<TEvent> = { readonly status: 'idle' } | ProcessedTurnJob<TEvent>;
 
 interface CampaignRow {
   readonly status: string;
@@ -202,7 +195,9 @@ async function loadTurnInput<
   );
   const snapshotRow = snapshotResult.rows[0];
   if (snapshotRow === undefined || snapshotRow.version !== job.snapshotVersion) {
-    throw new TurnWorkerInvariantError('Source snapshot is missing or has changed since closeOrders');
+    throw new TurnWorkerInvariantError(
+      'Source snapshot is missing or has changed since closeOrders',
+    );
   }
 
   const orderResult = await config.pool.query<OrderRow>(
@@ -229,13 +224,14 @@ async function loadTurnInput<
   };
 }
 
-function assertResolutionEvents<TEvent extends DomainEvent<string, Readonly<Record<string, unknown>>>>(
-  events: readonly TEvent[],
-  job: TurnJobLease,
-): void {
+function assertResolutionEvents<
+  TEvent extends DomainEvent<string, Readonly<Record<string, unknown>>>,
+>(events: readonly TEvent[], job: TurnJobLease): void {
   for (const event of events) {
     if (event.campaignId !== job.campaignId || event.turnNumber !== job.turnNumber) {
-      throw new TurnWorkerInvariantError('Every event must belong to the processed campaign and turn');
+      throw new TurnWorkerInvariantError(
+        'Every event must belong to the processed campaign and turn',
+      );
     }
     if (
       typeof event.type !== 'string' ||
@@ -269,7 +265,9 @@ function assertResolutionReports<TEvent>(
   };
 }
 
-async function persistResolution<TEvent extends DomainEvent<string, Readonly<Record<string, unknown>>>>(
+async function persistResolution<
+  TEvent extends DomainEvent<string, Readonly<Record<string, unknown>>>,
+>(
   pool: Pool,
   keyProvider: SeedKeyProvider,
   seedOptions: CreateCommittedSeedOptions | undefined,
@@ -537,4 +535,3 @@ export function createTurnWorker<
     },
   };
 }
-
