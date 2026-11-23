@@ -9,8 +9,6 @@ import { createPostgresPersistence, runMigrations } from '@paper-wars/persistenc
 import {
   createCountrySetupService,
   CountrySetupValidationError,
-  OfficialSystemNotAvailableError,
-  SocialSystemAdminRequiredError,
   SocialSystemLimitReachedError,
   SpawnAreaUnavailableError,
   type StartBuildingPlacement,
@@ -83,30 +81,66 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       return { auth, campaigns, countrySetup };
     }
 
+    async function findAvailableSpawn(
+      countrySetup: ReturnType<typeof createCountrySetupService>,
+      userId: string,
+      campaignId: string,
+      buildings: ReadonlyArray<{ x: number; y: number }> = RELIGION_BUILDINGS,
+    ): Promise<{ x: number; y: number }> {
+      const map = await countrySetup.getCampaignMap(userId, campaignId);
+      const occupied = new Set(
+        map.countries.flatMap((country) => country.cells.map((cell) => cell.x + ',' + cell.y)),
+      );
+      for (let y = 2; y < map.height - 2; y += 1) {
+        for (let x = 2; x < map.width - 2; x += 1) {
+          let land = 0;
+          let free = true;
+          for (let yy = y - 2; yy <= y + 2; yy += 1) {
+            for (let xx = x - 2; xx <= x + 2; xx += 1) {
+              if (map.terrain[yy * map.width + xx] === 'l') land += 1;
+              if (occupied.has(xx + ',' + yy)) free = false;
+            }
+          }
+          const buildingsOnLand = buildings.every(
+            (building) =>
+              map.terrain[(y - 2 + building.y) * map.width + x - 2 + building.x] === 'l',
+          );
+          if (!free || land < 7 || !buildingsOnLand) continue;
+          if (
+            map.reservations.some(
+              (item) => Math.abs(item.centerX - x) <= 4 && Math.abs(item.centerY - y) <= 4,
+            )
+          )
+            continue;
+          return { x, y };
+        }
+      }
+      throw new Error('No free 5x5 spawn with at least seven land cells was generated');
+    }
+
     async function createApprovedSocialSystem(
       countrySetup: ReturnType<typeof createCountrySetupService>,
       creatorUserId: string,
-      adminUserId: string,
       campaignId: string,
       type: 'religion' | 'ideology',
       name: string,
+      spawnX: number,
+      spawnY: number,
     ) {
-      const submitted = await countrySetup.createSocialSystem(creatorUserId, campaignId, {
+      await countrySetup.reserveSpawn(creatorUserId, campaignId, spawnX, spawnY);
+      const system = await countrySetup.createSocialSystem(creatorUserId, campaignId, {
         type,
         name,
         principles: [
           {
-            name: `${name} community`,
-            description: `The ${name} community values mutual responsibility.`,
+            name: name + ' community',
+            description: 'The ' + name + ' community values mutual responsibility.',
             polarity: 'positive',
           },
         ],
       });
-      expect(submitted.approvalStatus).toBe('pending');
-      return countrySetup.reviewSocialSystem(adminUserId, campaignId, submitted.id, {
-        decision: 'approve',
-        reason: 'Approved for the campaign baseline',
-      });
+      expect(system.approvalStatus).toBe('approved');
+      return system;
     }
 
     beforeAll(async () => {
@@ -136,7 +170,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const campaign = await campaigns.createCampaign(
         firstUser.user.id,
         `country-world-${randomUUID()}`,
-        { mapWidth: 20, mapHeight: 20 },
+        { mapWidth: 40, mapHeight: 30 },
       );
       await current.pool.query(
         `INSERT INTO campaign_memberships (
@@ -145,25 +179,38 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaign.id, secondUser.user.id],
       );
 
+      const firstSpawn = await findAvailableSpawn(countrySetup, firstUser.user.id, campaign.id);
       const firstSystem = await createApprovedSocialSystem(
         countrySetup,
-        firstUser.user.id,
         firstUser.user.id,
         campaign.id,
         'religion',
         'Dawn Covenant',
+        firstSpawn.x,
+        firstSpawn.y,
       );
+      await expect(
+        countrySetup.createCountry(firstUser.user.id, campaign.id, {
+          name: 'Contradictory Culture',
+          spawnX: firstSpawn.x,
+          spawnY: firstSpawn.y,
+          officialSystemId: firstSystem.id,
+          culture: ['militaristic', 'pacifist'],
+          buildings: RELIGION_BUILDINGS,
+        }),
+      ).rejects.toBeInstanceOf(CountrySetupValidationError);
+
       const firstCountry = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
         name: 'Republic of the Dawn',
-        spawnX: 5,
-        spawnY: 5,
+        spawnX: firstSpawn.x,
+        spawnY: firstSpawn.y,
         officialSystemId: firstSystem.id,
         buildings: RELIGION_BUILDINGS,
       });
 
       expect(firstCountry.territory).toEqual({
-        centerX: 5,
-        centerY: 5,
+        centerX: firstSpawn.x,
+        centerY: firstSpawn.y,
         width: 5,
         height: 5,
       });
@@ -222,25 +269,32 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         firstUser.user.id,
         campaign.id,
         'religion',
-        12,
-        12,
+        firstSpawn.x,
+        firstSpawn.y,
       );
       expect(existingSystems.map((system) => system.id)).toContain(firstSystem.id);
 
-      // The second participant may create and obtain approval for their
-      // official system after the first snapshot, while turn one remains locked.
+      // The second participant may create an immediately available system
+      // after reserving a separate starting location, while turn one remains locked.
+      const secondSpawn = await findAvailableSpawn(
+        countrySetup,
+        secondUser.user.id,
+        campaign.id,
+        IDEOLOGY_BUILDINGS,
+      );
       const secondSystem = await createApprovedSocialSystem(
         countrySetup,
         secondUser.user.id,
-        firstUser.user.id,
         campaign.id,
         'ideology',
         'Civic Rationalism',
+        secondSpawn.x,
+        secondSpawn.y,
       );
       const secondCountry = await countrySetup.createCountry(secondUser.user.id, campaign.id, {
         name: 'Free Thought Collective',
-        spawnX: 13,
-        spawnY: 13,
+        spawnX: secondSpawn.x,
+        spawnY: secondSpawn.y,
         officialSystemId: secondSystem.id,
         buildings: IDEOLOGY_BUILDINGS,
       });
@@ -295,7 +349,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
     });
 
-    it('enforces social system principles, the seven-system limit and administrator approval', async () => {
+    it('enforces social system balance, the seven-system limit and optional moderation', async () => {
       const current = getPersistence();
       const { auth, campaigns } = createServices();
       const admin = await auth.register(
@@ -321,6 +375,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         pool: current.pool,
         socialSystemAdminUserIds: [admin.user.id],
       });
+      const playerSpawn = await findAvailableSpawn(countrySetup, player.user.id, campaign.id);
+      await countrySetup.reserveSpawn(player.user.id, campaign.id, playerSpawn.x, playerSpawn.y);
 
       await expect(
         countrySetup.createSocialSystem(player.user.id, campaign.id, {
@@ -359,16 +415,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           }),
         );
       }
-      expect(submitted.every((system) => system.approvalStatus === 'pending')).toBe(true);
+      expect(submitted.every((system) => system.approvalStatus === 'approved')).toBe(true);
 
-      await expect(
-        countrySetup.reviewSocialSystem(player.user.id, campaign.id, submitted[0]!.id, {
-          decision: 'approve',
-        }),
-      ).rejects.toBeInstanceOf(SocialSystemAdminRequiredError);
-
+      // Approval is not a prerequisite; a regular player can use a new system immediately.
+      const available = await countrySetup.listAvailableSystems(
+        player.user.id,
+        campaign.id,
+        'religion',
+        playerSpawn.x,
+        playerSpawn.y,
+      );
+      expect(available.map((system) => system.id)).toContain(submitted[0]!.id);
       const pending = await countrySetup.listPendingSocialSystems(admin.user.id, campaign.id);
-      expect(pending).toHaveLength(7);
+      expect(pending).toHaveLength(0);
 
       await expect(
         countrySetup.createSocialSystem(player.user.id, campaign.id, {
@@ -378,33 +437,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         }),
       ).rejects.toBeInstanceOf(SocialSystemLimitReachedError);
 
-      await expect(
-        countrySetup.createCountry(player.user.id, campaign.id, {
-          name: 'Pending Faith Country',
-          spawnX: 5,
-          spawnY: 5,
-          officialSystemId: submitted[0]!.id,
-          buildings: RELIGION_BUILDINGS,
-        }),
-      ).rejects.toBeInstanceOf(OfficialSystemNotAvailableError);
-
-      const rejected = await countrySetup.reviewSocialSystem(
-        admin.user.id,
-        campaign.id,
-        submitted[0]!.id,
-        { decision: 'reject', reason: 'Please revise the submitted belief card.' },
-      );
-      expect(rejected.approvalStatus).toBe('rejected');
-      expect(rejected.reviewReason).toBe('Please revise the submitted belief card.');
-
-      const replacement = await countrySetup.createSocialSystem(player.user.id, campaign.id, {
-        type: 'religion',
-        name: 'Replacement Faith',
-        principles: [
-          { name: 'A neutral principle', description: 'A description.', polarity: 'neutral' },
-        ],
+      const createdCountry = await countrySetup.createCountry(player.user.id, campaign.id, {
+        name: 'Immediately Available Faith Country',
+        spawnX: playerSpawn.x,
+        spawnY: playerSpawn.y,
+        officialSystemId: submitted[0]!.id,
+        buildings: RELIGION_BUILDINGS,
       });
-      expect(replacement.approvalStatus).toBe('pending');
+      expect(createdCountry.officialSystem.id).toBe(submitted[0]!.id);
     });
 
     it('unlocks turn one when the only active member completes country setup', async () => {
@@ -424,18 +464,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         { mapWidth: 20, mapHeight: 20 },
       );
 
+      const soloSpawn = await findAvailableSpawn(countrySetup, user.user.id, campaign.id);
       const system = await createApprovedSocialSystem(
         countrySetup,
-        user.user.id,
         user.user.id,
         campaign.id,
         'religion',
         'One Dawn',
+        soloSpawn.x,
+        soloSpawn.y,
       );
       await countrySetup.createCountry(user.user.id, campaign.id, {
         name: 'Solitary Republic',
-        spawnX: 5,
-        spawnY: 5,
+        spawnX: soloSpawn.x,
+        spawnY: soloSpawn.y,
         officialSystemId: system.id,
         buildings: RELIGION_BUILDINGS,
       });
@@ -474,19 +516,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaign.id, secondUser.user.id],
       );
 
+      const collisionSpawn = await findAvailableSpawn(countrySetup, firstUser.user.id, campaign.id);
       const firstSystem = await createApprovedSocialSystem(
         countrySetup,
-        firstUser.user.id,
         firstUser.user.id,
         campaign.id,
         'religion',
         'First Belief',
+        collisionSpawn.x,
+        collisionSpawn.y,
       );
       await expect(
         countrySetup.createCountry(firstUser.user.id, campaign.id, {
           name: 'Missing Extra Slot',
-          spawnX: 5,
-          spawnY: 5,
+          spawnX: collisionSpawn.x,
+          spawnY: collisionSpawn.y,
           officialSystemId: firstSystem.id,
           buildings: RELIGION_BUILDINGS.slice(0, 6),
         }),
@@ -495,8 +539,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await expect(
         countrySetup.createCountry(firstUser.user.id, campaign.id, {
           name: 'No Official System',
-          spawnX: 5,
-          spawnY: 5,
+          spawnX: collisionSpawn.x,
+          spawnY: collisionSpawn.y,
           officialSystemId: undefined as never,
           buildings: RELIGION_BUILDINGS,
         }),
@@ -504,28 +548,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       const first = await countrySetup.createCountry(firstUser.user.id, campaign.id, {
         name: 'First Territory',
-        spawnX: 5,
-        spawnY: 5,
+        spawnX: collisionSpawn.x,
+        spawnY: collisionSpawn.y,
         officialSystemId: firstSystem.id,
         buildings: RELIGION_BUILDINGS,
       });
 
-      const secondSystem = await createApprovedSocialSystem(
-        countrySetup,
-        secondUser.user.id,
-        firstUser.user.id,
-        campaign.id,
-        'ideology',
-        'Second Belief',
-      );
       await expect(
-        countrySetup.createCountry(secondUser.user.id, campaign.id, {
-          name: 'Overlapping Territory',
-          spawnX: 7,
-          spawnY: 5,
-          officialSystemId: secondSystem.id,
-          buildings: IDEOLOGY_BUILDINGS,
-        }),
+        countrySetup.reserveSpawn(
+          secondUser.user.id,
+          campaign.id,
+          collisionSpawn.x + 2,
+          collisionSpawn.y,
+        ),
       ).rejects.toBeInstanceOf(SpawnAreaUnavailableError);
 
       const afterFailure = await current.pool.query<{

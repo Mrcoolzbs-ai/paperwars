@@ -116,6 +116,122 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment,
       ).toMatch(/^[a-f0-9]{64}$/);
 
+      const campaignList = await app.inject({
+        method: 'GET',
+        url: '/campaigns',
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(campaignList.statusCode).toBe(200);
+      expect(campaignList.json<{ campaigns: Array<{ id: string }> }>().campaigns).toContainEqual(
+        expect.objectContaining({ id: campaign.json<{ campaign: { id: string } }>().campaign.id }),
+      );
+
+      const campaignId = campaign.json<{ campaign: { id: string } }>().campaign.id;
+      const country = await persistence!.pool.query<{ id: string }>(
+        `INSERT INTO countries (campaign_id, owner_user_id, name)
+         VALUES ($1, $2, 'API Turn Country')
+         RETURNING id`,
+        [campaignId, body.user.id],
+      );
+      const countryId = country.rows[0]?.id;
+      if (countryId === undefined) throw new Error('Country insert did not return an id');
+      await persistence!.pool.query(
+        'UPDATE campaign_memberships SET country_id = $3 WHERE campaign_id = $1 AND user_id = $2',
+        [campaignId, body.user.id, countryId],
+      );
+
+      await persistence!.pool.query(
+        `INSERT INTO world_snapshots (
+           campaign_id, turn_number, version, state_schema_version, ruleset_version, state
+         ) VALUES ($1, 1, 3, 1, 'baseline-v1', '{}'::jsonb)`,
+        [campaignId],
+      );
+      await persistence!.pool.query(
+        `UPDATE campaigns
+         SET orders_locked = FALSE,
+             orders_locked_at = NULL,
+             deadline_at = clock_timestamp() + INTERVAL '1 hour'
+         WHERE id = $1`,
+        [campaignId],
+      );
+
+      const createdOrder = await app.inject({
+        method: 'POST',
+        url: `/campaigns/${campaignId}/orders`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+        payload: {
+          type: 'construction',
+          payload: { buildingType: 'field', x: 1, y: 2 },
+        },
+      });
+      expect(createdOrder.statusCode).toBe(201);
+      const createdOrderBody = createdOrder.json<{
+        order: { id: string; type: string; schemaVersion: number; status: string };
+      }>();
+      expect(createdOrderBody.order).toMatchObject({
+        type: 'construction',
+        schemaVersion: 1,
+        status: 'draft',
+      });
+
+      const mine = await app.inject({
+        method: 'GET',
+        url: `/campaigns/${campaignId}/orders/mine`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(mine.statusCode).toBe(200);
+      expect(mine.json<{ orders: Array<{ id: string }> }>().orders).toContainEqual(
+        expect.objectContaining({ id: createdOrderBody.order.id }),
+      );
+
+      const updatedOrder = await app.inject({
+        method: 'PATCH',
+        url: `/campaigns/${campaignId}/orders/${createdOrderBody.order.id}`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+        payload: { payload: { buildingType: 'factory', x: 1, y: 2 } },
+      });
+      expect(updatedOrder.statusCode).toBe(200);
+      expect(
+        updatedOrder.json<{ order: { status: string; payload: Record<string, unknown> } }>().order,
+      ).toMatchObject({ status: 'draft', payload: { buildingType: 'factory', x: 1, y: 2 } });
+
+      const temporaryOrder = await app.inject({
+        method: 'POST',
+        url: `/campaigns/${campaignId}/orders`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+        payload: { type: 'test.temporary', payload: {} },
+      });
+      const temporaryOrderId = temporaryOrder.json<{ order: { id: string } }>().order.id;
+      const deletedOrder = await app.inject({
+        method: 'DELETE',
+        url: `/campaigns/${campaignId}/orders/${temporaryOrderId}`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(temporaryOrder.statusCode).toBe(201);
+      expect(deletedOrder.statusCode).toBe(204);
+
+      const confirmation = await app.inject({
+        method: 'POST',
+        url: `/campaigns/${campaignId}/orders/confirm`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(confirmation.statusCode).toBe(200);
+      expect(confirmation.json()).toMatchObject({
+        confirmed: true,
+        turnQueued: true,
+        turnJob: {
+          turnNumber: 1,
+          snapshotVersion: 3,
+          finalizedOrderCount: 1,
+          discardedOrderCount: 0,
+        },
+      });
+      const finalizedOrder = await persistence!.pool.query<{ status: string }>(
+        'SELECT status FROM orders WHERE id = $1',
+        [createdOrderBody.order.id],
+      );
+      expect(finalizedOrder.rows[0]?.status).toBe('finalized');
+
       const refreshed = await app.inject({
         method: 'POST',
         url: '/auth/refresh',
@@ -133,6 +249,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { name: 'private' },
       });
       expect(noAuth.statusCode).toBe(401);
+
+      const noConfirm = await app.inject({
+        method: 'POST',
+        url: `/campaigns/${randomUUID()}/orders/confirm`,
+      });
+      expect(noConfirm.statusCode).toBe(401);
 
       const badRefresh = await app.inject({
         method: 'POST',

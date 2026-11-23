@@ -83,6 +83,8 @@ export interface DomainEvent<TType extends string, TPayload> {
   readonly type: TType;
   readonly schemaVersion: number;
   readonly payload: Readonly<TPayload>;
+  /** Event visibility must be explicit; the Worker never defaults private data to public. */
+  readonly visibility: 'public' | 'private';
 }
 
 export interface RandomDrawRecord {
@@ -104,6 +106,10 @@ export interface TurnResolution<
   readonly orderResults: readonly OrderResolution[];
   readonly events: readonly TEvent[];
   readonly randomDraws: readonly RandomDrawRecord[];
+  /** Aggregate economic report produced by the selected ruleset for this turn. */
+  readonly economicReport?: Readonly<Record<string, unknown>>;
+  /** Zero or more battle reports produced by the selected ruleset for this turn. */
+  readonly battleReports?: readonly Readonly<Record<string, unknown>>[];
   readonly campaignEnded: boolean;
 }
 
@@ -113,8 +119,22 @@ export interface WeightedOutcome<T> {
   readonly value: T;
 }
 
+/** Resolver output before the engine attaches its authoritative random-draw journal. */
+export type TurnSimulationResult<
+  TState,
+  TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
+> = Omit<TurnResolution<TState, TEvent>, 'randomDraws'>;
+
+/** Campaign/turn identity bound to the deterministic source used for this resolution. */
+export interface RandomSourceContext {
+  readonly campaignId: string;
+  readonly turnNumber: number;
+  readonly rngVersion: string;
+}
+
 /** Pure, deterministic source supplied to the Simulation Engine for one turn. */
 export interface RandomSource {
+  readonly context: RandomSourceContext;
   uniform(domain: string, drawId: string, min: number, max: number): number;
   weighted<T>(domain: string, drawId: string, outcomes: readonly WeightedOutcome<T>[]): T;
 }
@@ -132,7 +152,9 @@ export type TurnResolver<
   TPayload,
   TRuleset extends object,
   TEvent = DomainEvent<string, Readonly<Record<string, unknown>>>,
-> = (input: TurnSimulationInput<TState, TPayload, TRuleset>) => TurnResolution<TState, TEvent>;
+> = (
+  input: TurnSimulationInput<TState, TPayload, TRuleset>,
+) => TurnSimulationResult<TState, TEvent>;
 
 export class TurnResolutionInvariantError extends Error {
   constructor(message: string) {

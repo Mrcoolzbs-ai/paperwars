@@ -4,6 +4,7 @@ import {
   createAccessTokenSigner,
   createAuthService,
   createCampaignService,
+  AuthValidationError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
@@ -157,11 +158,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const created = await campaigns.createCampaign(user.user.id, campaignName, {
         mapWidth: 40,
         mapHeight: 30,
+        mapSeed: 'repeatable-world-test',
       });
       expect(created.status).toBe('active');
       expect(created.currentTurn).toBe(1);
       expect(created.ordersLocked).toBe(true);
       expect(created.firstTurnCommitment).toMatch(/^[a-f0-9]{64}$/);
+      expect(created.mapSeed).toBe('repeatable-world-test');
+      expect(created.maxPlayers).toBe(12);
 
       const membership = await current.pool.query<{ status: string; country_id: string | null }>(
         `SELECT status, country_id FROM campaign_memberships
@@ -189,6 +193,58 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const summaries = await campaigns.listCampaignsForUser(user.user.id);
       expect(summaries[0]?.id).toBe(created.id);
       expect(summaries[0]?.firstTurnCommitment).toBe(created.firstTurnCommitment);
+      expect(summaries[0]?.playerCount).toBe(1);
+      expect(summaries[0]?.maxPlayers).toBe(12);
+      expect(summaries[0]?.mapSeed).toBe('repeatable-world-test');
+    });
+
+    it('enforces one player slot per 100 map cells and frees slots when a player leaves', async () => {
+      const current = getPersistence();
+      const auth = createAuthService({
+        pool: current.pool,
+        accessTokens: signer,
+        refreshTokenTtlSeconds: 3600,
+      });
+      const owner = await auth.register(
+        `capacity-owner-${randomUUID()}@example.test`,
+        'capacity owner password secure',
+      );
+      const guests = await Promise.all(
+        Array.from({ length: 4 }, (_, index) =>
+          auth.register(
+            `capacity-guest-${index}-${randomUUID()}@example.test`,
+            'capacity guest password secure',
+          ),
+        ),
+      );
+      const campaigns = createCampaignService({
+        pool: current.pool,
+        keyProvider,
+        rulesetVersion: 'baseline-v1',
+        rngVersion: 'rng-v1',
+      });
+      const campaign = await campaigns.createCampaign(
+        owner.user.id,
+        `capacity-world-${randomUUID()}`,
+        { mapWidth: 20, mapHeight: 20, mapSeed: 'capacity-test-world' },
+      );
+      expect(campaign.maxPlayers).toBe(4);
+
+      await campaigns.joinCampaign(guests[0]!.user.id, campaign.id);
+      await campaigns.joinCampaign(guests[1]!.user.id, campaign.id);
+      await campaigns.joinCampaign(guests[2]!.user.id, campaign.id);
+      await expect(campaigns.joinCampaign(guests[3]!.user.id, campaign.id)).rejects.toBeInstanceOf(
+        AuthValidationError,
+      );
+
+      let ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
+      expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
+
+      await campaigns.leaveCampaign(guests[1]!.user.id, campaign.id);
+      expect(await campaigns.listCampaignsForUser(guests[1]!.user.id)).toHaveLength(0);
+      await campaigns.joinCampaign(guests[3]!.user.id, campaign.id);
+      ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
+      expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
     });
 
     it('rolls back a campaign and owner membership when initial seed insertion fails', async () => {

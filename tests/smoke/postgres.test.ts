@@ -59,6 +59,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
+          migration_name: '0002_order_resolution.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
           migration_name: '0003_versioned_domain_payloads.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
@@ -68,6 +72,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         },
         {
           migration_name: '0005_social_system_creation.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0006_campaign_setup_enhancements.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0007_campaign_world_seed.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
+          migration_name: '0008_player_social_system_library.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
       ]);

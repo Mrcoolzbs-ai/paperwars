@@ -94,6 +94,10 @@ export const campaigns = pgTable(
     rngVersion: text('rng_version').notNull(),
     mapWidth: integer('map_width'),
     mapHeight: integer('map_height'),
+    mapSeed: text('map_seed')
+      .notNull()
+      .default(sql`substr(md5(random()::text || clock_timestamp()::text), 1, 16)`),
+    turnDurationHours: integer('turn_duration_hours').notNull().default(24),
     createdAt: createdAt(),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
   },
@@ -131,6 +135,7 @@ export const socialSystems = pgTable(
       onDelete: 'set null',
     }),
     approvalStatus: text('approval_status').notNull().default('approved'),
+    emblemDataUrl: text('emblem_data_url'),
     principles: jsonb('principles')
       .$type<
         readonly {
@@ -199,6 +204,33 @@ export const socialSystems = pgTable(
   ],
 );
 
+export const campaignSpawnReservations = pgTable(
+  'campaign_spawn_reservations',
+  {
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    centerX: integer('center_x').notNull(),
+    centerY: integer('center_y').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.campaignId, table.userId] }),
+    index('campaign_spawn_reservations_campaign_center_idx').on(
+      table.campaignId,
+      table.centerX,
+      table.centerY,
+    ),
+    check(
+      'campaign_spawn_reservations_centers_nonnegative',
+      sql`${table.centerX} >= 2 and ${table.centerY} >= 2`,
+    ),
+  ],
+);
+
 export const countries = pgTable(
   'countries',
   {
@@ -211,6 +243,9 @@ export const countries = pgTable(
       .references(() => users.id),
     name: text('name').notNull(),
     status: text('status').notNull().default('active'),
+    culture: text('culture').array().notNull().default([]),
+    government: text('government').notNull().default('monarchy'),
+    flagDataUrl: text('flag_data_url'),
     officialSystemType: text('official_system_type'),
     officialSystemId: uuid('official_system_id'),
     setupCompleted: boolean('setup_completed').notNull().default(false),
@@ -392,6 +427,10 @@ export const orders = pgTable(
     orderType: text('order_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     status: text('status').notNull().default('draft'),
+    resolutionStatus: text('resolution_status'),
+    resultCode: text('result_code'),
+    resultMessage: text('result_message'),
+    resultData: jsonb('result_data').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     finalizedAt: timestamp('finalized_at', { withTimezone: true, mode: 'date' }),
@@ -409,6 +448,15 @@ export const orders = pgTable(
     check(
       'orders_status_check',
       sql`${table.status} in ('draft', 'unconfirmed', 'confirmed', 'finalized', 'discarded')`,
+    ),
+    check(
+      'orders_resolution_status_check',
+      sql`${table.resolutionStatus} is null or ${table.resolutionStatus} in ('accepted', 'rejected', 'superseded')`,
+    ),
+    check(
+      'orders_resolution_fields_check',
+      sql`(${table.resolutionStatus} is null and ${table.resultCode} is null and ${table.resultMessage} is null and ${table.resultData} is null)
+        or (${table.resolutionStatus} is not null and ${table.resultCode} is not null)`,
     ),
   ],
 );
@@ -673,6 +721,54 @@ export const discoveryAccess = pgTable(
     check(
       'discovery_access_revoked_turn_check',
       sql`${table.revokedAtTurn} is null or ${table.revokedAtTurn} >= ${table.grantedAtTurn}`,
+    ),
+  ],
+);
+
+export const playerSocialSystemLibrary = pgTable(
+  'player_social_system_library',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerUserId: uuid('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    systemType: text('system_type').notNull(),
+    name: text('name').notNull(),
+    principles: jsonb('principles')
+      .$type<
+        readonly {
+          readonly name: string;
+          readonly description: string;
+          readonly effect?: string;
+          readonly polarity: 'positive' | 'negative' | 'neutral';
+        }[]
+      >()
+      .notNull()
+      .default([]),
+    emblemDataUrl: text('emblem_data_url'),
+    sourceCampaignId: uuid('source_campaign_id').references(() => campaigns.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('player_social_system_library_owner_name_unique').on(
+      table.ownerUserId,
+      sql`lower(btrim(${table.name}))`,
+    ),
+    index('player_social_system_library_owner_updated_idx').on(table.ownerUserId, table.updatedAt),
+    check(
+      'player_social_system_library_type_check',
+      sql`${table.systemType} in ('religion', 'ideology')`,
+    ),
+    check(
+      'player_social_system_library_name_length_check',
+      sql`char_length(btrim(${table.name})) between 2 and 60`,
+    ),
+    check(
+      'player_social_system_library_principles_array_check',
+      sql`jsonb_typeof(${table.principles}) = 'array'`,
     ),
   ],
 );

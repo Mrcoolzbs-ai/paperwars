@@ -1,5 +1,20 @@
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import { createCommittedSeed, type CreateCommittedSeedOptions } from '@paper-wars/persistence';
+import {
+  CampaignTurnProcessingError,
+  closeOrders,
+  confirmCampaignOrders,
+  createCampaignOrder,
+  deleteCampaignOrder,
+  listCampaignOrders,
+  updateCampaignOrder,
+  createCommittedSeed,
+  type CampaignOrderView,
+  type CreateCampaignOrderInput,
+  type UpdateCampaignOrderInput,
+  type ClosedTurnJob,
+  type CreateCommittedSeedOptions,
+} from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 import { AuthValidationError, UnauthenticatedError } from './errors.js';
 
@@ -15,6 +30,8 @@ export interface CampaignServiceOptions {
 export interface CampaignMapSize {
   readonly mapWidth: number;
   readonly mapHeight: number;
+  readonly turnDurationHours?: number;
+  readonly mapSeed?: string;
 }
 
 export interface CreatedCampaign {
@@ -27,6 +44,9 @@ export interface CreatedCampaign {
   readonly rngVersion: string;
   readonly mapWidth: number;
   readonly mapHeight: number;
+  readonly turnDurationHours: number;
+  readonly mapSeed: string;
+  readonly maxPlayers: number;
   readonly firstTurnCommitment: string;
 }
 
@@ -42,6 +62,10 @@ export interface CampaignSummary {
   readonly createdAt: Date;
   readonly mapWidth: number | null;
   readonly mapHeight: number | null;
+  readonly turnDurationHours: number;
+  readonly mapSeed: string;
+  readonly playerCount: number;
+  readonly maxPlayers: number;
 }
 
 export interface CampaignService {
@@ -50,6 +74,22 @@ export interface CampaignService {
     nameInput: unknown,
     mapSize: CampaignMapSize,
   ): Promise<CreatedCampaign>;
+  joinCampaign(userId: string, campaignId: string): Promise<void>;
+  leaveCampaign(userId: string, campaignId: string): Promise<void>;
+  listOrders(userId: string, campaignId: string): Promise<readonly CampaignOrderView[]>;
+  createOrder(
+    userId: string,
+    campaignId: string,
+    input: CreateCampaignOrderInput,
+  ): Promise<CampaignOrderView>;
+  updateOrder(
+    userId: string,
+    campaignId: string,
+    orderId: string,
+    input: UpdateCampaignOrderInput,
+  ): Promise<CampaignOrderView>;
+  deleteOrder(userId: string, campaignId: string, orderId: string): Promise<void>;
+  confirmOrders(userId: string, campaignId: string): Promise<ClosedTurnJob | null>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
 }
 
@@ -65,19 +105,73 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
   const clock = options.clock ?? (() => new Date());
 
   return {
+    async listOrders(userId, campaignId) {
+      return listCampaignOrders(options.pool, campaignId, userId);
+    },
+
+    async createOrder(userId, campaignId, input) {
+      return createCampaignOrder(options.pool, campaignId, userId, input);
+    },
+
+    async updateOrder(userId, campaignId, orderId, input) {
+      return updateCampaignOrder(options.pool, campaignId, userId, orderId, input);
+    },
+
+    async deleteOrder(userId, campaignId, orderId) {
+      await deleteCampaignOrder(options.pool, campaignId, userId, orderId);
+    },
+
+    async confirmOrders(userId, campaignId) {
+      try {
+        await confirmCampaignOrders(options.pool, campaignId, userId);
+      } catch (error) {
+        if (
+          !(error instanceof CampaignTurnProcessingError) ||
+          error.code !== 'ORDERS_DEADLINE_PASSED'
+        ) {
+          throw error;
+        }
+        return closeOrders(options.pool, campaignId);
+      }
+
+      try {
+        return await closeOrders(options.pool, campaignId);
+      } catch (error) {
+        if (
+          error instanceof CampaignTurnProcessingError &&
+          (error.code === 'ORDERS_NOT_READY' || error.code === 'ORDERS_ALREADY_LOCKED')
+        ) {
+          return null;
+        }
+        throw error;
+      }
+    },
     async createCampaign(ownerUserId, nameInput, mapSize) {
+      const turnDurationHours = mapSize?.turnDurationHours ?? 24;
+      if (![1, 2, 4, 8, 12, 24, 48, 72, 168].includes(turnDurationHours)) {
+        throw new AuthValidationError(
+          'Turn duration must be one of 1, 2, 4, 8, 12, 24, 48, 72 or 168 hours',
+        );
+      }
       if (
         !Number.isSafeInteger(mapSize?.mapWidth) ||
         !Number.isSafeInteger(mapSize?.mapHeight) ||
-        mapSize.mapWidth < 5 ||
-        mapSize.mapHeight < 5 ||
-        mapSize.mapWidth > 0x7fffffff ||
-        mapSize.mapHeight > 0x7fffffff
+        mapSize.mapWidth < 20 ||
+        mapSize.mapHeight < 20 ||
+        mapSize.mapWidth > 200 ||
+        mapSize.mapHeight > 200 ||
+        mapSize.mapWidth * mapSize.mapHeight < 100
       ) {
+        throw new AuthValidationError('Campaign map dimensions must be between 20x20 and 200x200');
+      }
+      const mapSeedInput = mapSize.mapSeed?.trim() ?? '';
+      if (mapSeedInput && !/^[a-zA-Z0-9_-]{1,64}$/.test(mapSeedInput)) {
         throw new AuthValidationError(
-          'Campaign map dimensions must be safe integers in the PostgreSQL range and at least 5x5',
+          'World seed must contain 1 to 64 letters, digits, underscores or hyphens',
         );
       }
+      const mapSeed = mapSeedInput || randomUUID().replaceAll('-', '').slice(0, 16);
+      const maxPlayers = Math.floor((mapSize.mapWidth * mapSize.mapHeight) / 100);
       if (typeof nameInput !== 'string') {
         throw new AuthValidationError('Campaign name must be a string');
       }
@@ -109,9 +203,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         }>(
           `INSERT INTO campaigns (
              name, status, current_turn, orders_locked, orders_locked_at,
-             ruleset_version, rng_version, map_width, map_height
-           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6)
-           RETURNING id, name, status, current_turn, orders_locked, map_width, map_height`,
+             ruleset_version, rng_version, map_width, map_height, turn_duration_hours, map_seed
+           ) VALUES ($1, 'active', 1, TRUE, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id, name, status, current_turn, orders_locked, map_width, map_height, map_seed`,
           [
             name,
             clock(),
@@ -119,6 +213,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
             options.rngVersion,
             mapSize.mapWidth,
             mapSize.mapHeight,
+            turnDurationHours,
+            mapSeed,
           ],
         );
         const campaign = created.rows[0];
@@ -157,6 +253,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           rngVersion: options.rngVersion,
           mapWidth: mapSize.mapWidth,
           mapHeight: mapSize.mapHeight,
+          turnDurationHours,
+          mapSeed,
+          maxPlayers,
           firstTurnCommitment: seed.commitment,
         };
       } catch (error) {
@@ -164,6 +263,148 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           await client.query('ROLLBACK');
           transactionOpen = false;
         }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async joinCampaign(userId, campaignId) {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          campaignId,
+        )
+      ) {
+        throw new AuthValidationError('Campaign ID is invalid');
+      }
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const campaign = await client.query<{
+          id: string;
+          status: string;
+          current_turn: number;
+          orders_locked: boolean;
+          map_width: number | null;
+          map_height: number | null;
+        }>(
+          'SELECT id, status, current_turn, orders_locked, map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
+          [campaignId],
+        );
+        const target = campaign.rows[0];
+        if (
+          target?.status !== 'active' ||
+          target.current_turn !== 1 ||
+          !target.orders_locked ||
+          target.map_width === null ||
+          target.map_height === null
+        ) {
+          throw new AuthValidationError(
+            'Campaign is no longer accepting players for the initial setup',
+          );
+        }
+        const existing = await client.query<{ status: string }>(
+          'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
+          [campaignId, userId],
+        );
+        if (existing.rows[0]?.status !== 'active') {
+          const playerCount = await client.query<{ count: number }>(
+            `SELECT COUNT(*)::int AS count FROM campaign_memberships
+             WHERE campaign_id = $1 AND status = 'active'`,
+            [campaignId],
+          );
+          const maxPlayers = Math.floor((target.map_width * target.map_height) / 100);
+          if ((playerCount.rows[0]?.count ?? 0) >= maxPlayers) {
+            throw new AuthValidationError('Campaign is full (' + maxPlayers + ' player slots)');
+          }
+        }
+        await client.query(
+          `INSERT INTO campaign_memberships (campaign_id, user_id, status, orders_confirmed)
+           VALUES ($1, $2, 'active', FALSE)
+           ON CONFLICT (campaign_id, user_id) DO UPDATE
+           SET status = 'active', orders_confirmed = FALSE`,
+          [campaignId, userId],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async leaveCampaign(userId, campaignId) {
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const campaign = await client.query<{
+          id: string;
+          current_turn: number;
+          orders_locked: boolean;
+        }>('SELECT id, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE', [
+          campaignId,
+        ]);
+        const target = campaign.rows[0];
+        if (target === undefined) {
+          throw new AuthValidationError('Campaign does not exist');
+        }
+
+        // Keep the global row lock order: campaign -> snapshot -> turn job -> membership/orders.
+        await client.query(
+          'SELECT version FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, target.current_turn],
+        );
+        const job = await client.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, target.current_turn],
+        );
+        if (job.rows.some((row) => row.status === 'pending' || row.status === 'processing')) {
+          throw new CampaignTurnProcessingError(
+            'ORDERS_ALREADY_LOCKED',
+            'A campaign member cannot leave while the current turn is being processed',
+          );
+        }
+
+        const membership = await client.query<{ campaign_id: string; country_id: string | null }>(
+          'SELECT campaign_id, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
+          [campaignId, userId, 'active'],
+        );
+        const member = membership.rows[0];
+        if (member === undefined) {
+          throw new AuthValidationError('You are not an active member of this campaign');
+        }
+
+        if (!target.orders_locked && member.country_id !== null) {
+          await client.query(
+            `UPDATE orders
+             SET status = 'discarded', updated_at = clock_timestamp()
+             WHERE campaign_id = $1
+               AND country_id = $2
+               AND turn_number = $3
+               AND status IN ('draft', 'unconfirmed', 'confirmed')`,
+            [campaignId, member.country_id, target.current_turn],
+          );
+        }
+
+        await client.query(
+          `UPDATE campaign_memberships SET status = 'left', orders_confirmed = FALSE
+           WHERE campaign_id = $1 AND user_id = $2`,
+          [campaignId, userId],
+        );
+        await client.query(
+          'DELETE FROM campaign_spawn_reservations WHERE campaign_id = $1 AND user_id = $2',
+          [campaignId, userId],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
         throw error;
       } finally {
         client.release();
@@ -183,11 +424,16 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         created_at: Date;
         map_width: number | null;
         map_height: number | null;
+        turn_duration_hours: number;
+        map_seed: string;
+        player_count: number;
       }>(
         `SELECT c.id, c.name, c.status, c.current_turn, c.orders_locked,
                 m.status AS member_status, m.country_id,
                 seed.commitment AS first_turn_commitment, c.created_at,
-                c.map_width, c.map_height
+                c.map_width, c.map_height, c.turn_duration_hours, c.map_seed,
+                (SELECT COUNT(*)::int FROM campaign_memberships AS active_members
+                 WHERE active_members.campaign_id = c.id AND active_members.status = 'active') AS player_count
          FROM campaign_memberships AS m
          JOIN campaigns AS c ON c.id = m.campaign_id
          LEFT JOIN random_seeds AS seed
@@ -208,6 +454,13 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         createdAt: row.created_at,
         mapWidth: row.map_width,
         mapHeight: row.map_height,
+        turnDurationHours: row.turn_duration_hours,
+        mapSeed: row.map_seed,
+        playerCount: row.player_count,
+        maxPlayers:
+          row.map_width !== null && row.map_height !== null
+            ? Math.floor((row.map_width * row.map_height) / 100)
+            : 0,
       }));
     },
   };

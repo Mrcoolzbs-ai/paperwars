@@ -17,6 +17,7 @@ export type StartBuildingType =
 export interface SocialSystemPrinciple {
   readonly name: string;
   readonly description: string;
+  readonly effect?: string;
   readonly polarity: SocialSystemPolarity;
 }
 
@@ -24,11 +25,46 @@ export interface CreateSocialSystemInput {
   readonly type: unknown;
   readonly name: unknown;
   readonly principles: unknown;
+  readonly emblemDataUrl?: unknown;
 }
 
 export interface SocialSystemReviewInput {
   readonly decision: unknown;
   readonly reason?: unknown;
+}
+
+export interface PlayerSocialSystemTemplateView {
+  readonly id: string;
+  readonly type: OfficialSystemType;
+  readonly name: string;
+  readonly principles: readonly SocialSystemPrinciple[];
+  readonly emblemDataUrl: string | null;
+  readonly sourceCampaignId: string | null;
+  readonly updatedAt: Date;
+}
+
+export interface CountryProfileView {
+  readonly id: string;
+  readonly campaignId: string;
+  readonly name: string;
+  readonly culture: readonly string[];
+  readonly government: string;
+  readonly flagDataUrl: string | null;
+  readonly officialSystem: {
+    readonly id: string;
+    readonly type: OfficialSystemType;
+    readonly name: string;
+    readonly principles: readonly SocialSystemPrinciple[];
+    readonly emblemDataUrl: string | null;
+  };
+  readonly territory: {
+    readonly centerX: number | null;
+    readonly centerY: number | null;
+    readonly width: 5;
+    readonly height: 5;
+  };
+  readonly buildings: readonly { readonly type: StartBuildingType; readonly count: number }[];
+  readonly residentCount: number;
 }
 
 export interface SocialSystemView {
@@ -37,6 +73,7 @@ export interface SocialSystemView {
   readonly type: OfficialSystemType;
   readonly name: string;
   readonly principles: readonly SocialSystemPrinciple[];
+  readonly emblemDataUrl: string | null;
   readonly approvalStatus: SocialSystemApprovalStatus;
   readonly reviewReason: string | null;
   readonly createdAt: Date;
@@ -59,6 +96,9 @@ export interface CreateCountryInput {
   /** ID of a previously created and administrator-approved system. */
   readonly officialSystemId: unknown;
   readonly buildings: ReadonlyArray<StartBuildingPlacement>;
+  readonly culture?: unknown;
+  readonly government?: unknown;
+  readonly flagDataUrl?: unknown;
 }
 
 export interface AvailableSocialSystem {
@@ -68,6 +108,37 @@ export interface AvailableSocialSystem {
   readonly originX: number | null;
   readonly originY: number | null;
   readonly principles: readonly SocialSystemPrinciple[];
+  readonly emblemDataUrl?: string | null;
+}
+
+export interface CampaignMapCountry {
+  readonly id: string;
+  readonly name: string;
+  readonly ownerUserId: string;
+  readonly flagDataUrl: string | null;
+  readonly cells: ReadonlyArray<{
+    readonly x: number;
+    readonly y: number;
+    readonly population: number;
+    readonly buildingType: StartBuildingType | null;
+  }>;
+}
+
+export interface CampaignSpawnReservation {
+  readonly userId: string;
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly isMine: boolean;
+}
+
+export interface CampaignMapView {
+  readonly width: number;
+  readonly height: number;
+  readonly seed: string;
+  /** Row-major l/w/r terrain encoding produced by the shared seeded generator. */
+  readonly terrain: string;
+  readonly countries: readonly CampaignMapCountry[];
+  readonly reservations: readonly CampaignSpawnReservation[];
 }
 
 export interface SocialSystemAvailabilityQuery {
@@ -100,6 +171,9 @@ export interface CreatedCountry {
   readonly id: string;
   readonly campaignId: string;
   readonly name: string;
+  readonly culture: readonly string[];
+  readonly government: string;
+  readonly flagDataUrl: string | null;
   readonly officialSystem: AvailableSocialSystem;
   readonly territory: {
     readonly centerX: number;
@@ -113,12 +187,21 @@ export interface CreatedCountry {
 }
 
 export interface CountrySetupService {
+  getCampaignMap(userId: string, campaignId: string): Promise<CampaignMapView>;
+  reserveSpawn(
+    userId: string,
+    campaignId: string,
+    centerX: number,
+    centerY: number,
+  ): Promise<CampaignSpawnReservation>;
   createSocialSystem(
     userId: string,
     campaignId: string,
     input: CreateSocialSystemInput,
   ): Promise<SocialSystemView>;
   listMySocialSystems(userId: string, campaignId: string): Promise<readonly SocialSystemView[]>;
+  listMySocialSystemLibrary(userId: string): Promise<readonly PlayerSocialSystemTemplateView[]>;
+  getMyCountry(userId: string, campaignId: string): Promise<CountryProfileView | null>;
   listPendingSocialSystems(
     adminUserId: string,
     campaignId: string,

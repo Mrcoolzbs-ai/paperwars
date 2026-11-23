@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   AuthValidationError,
@@ -10,6 +11,7 @@ import {
   type CampaignService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
+import { CampaignTurnProcessingError } from '@paper-wars/persistence';
 import {
   CampaignSetupNotReadyError,
   CountryAlreadyRegisteredError,
@@ -38,6 +40,8 @@ export interface CreateAppOptions {
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
   readonly secureCookies?: boolean;
+  /** Optional built HTML entry point used by the production server. */
+  readonly webEntryPath?: string;
 }
 
 interface RecordBody {
@@ -114,6 +118,18 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof AuthValidationError) {
     return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
   }
+  if (error instanceof CampaignTurnProcessingError) {
+    if (error.code === 'INVALID_ORDER') {
+      return reply.code(400).send({ error: error.code, message: error.message });
+    }
+    if (error.code === 'CAMPAIGN_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND') {
+      return reply.code(404).send({ error: error.code, message: error.message });
+    }
+    if (error.code === 'NOT_ACTIVE_MEMBER') {
+      return reply.code(403).send({ error: error.code, message: error.message });
+    }
+    return reply.code(409).send({ error: error.code, message: error.message });
+  }
   if (error instanceof EmailAlreadyRegisteredError) {
     return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED' });
   }
@@ -158,6 +174,7 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof SystemAvailabilityNotConfiguredError) {
     return reply.code(503).send({ error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED' });
   }
+  reply.log.error({ err: error }, 'Unhandled API request error');
   return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
 
@@ -248,11 +265,112 @@ function registerCampaignRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
+      const turnDurationHours = body['turnDurationHours'];
+      const mapSeed = body['mapSeed'];
       const campaign = await campaignService.createCampaign(user.id, body['name'], {
         mapWidth: body['mapWidth'] as number,
         mapHeight: body['mapHeight'] as number,
+        ...(typeof turnDurationHours === 'number' ? { turnDurationHours } : {}),
+        ...(typeof mapSeed === 'string' ? { mapSeed } : {}),
       });
       return reply.code(201).send({ campaign });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/join', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await campaignService.joinCampaign(user.id, getCampaignId(request));
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete('/campaigns/:campaignId/leave', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await campaignService.leaveCampaign(user.id, getCampaignId(request));
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/orders/mine', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const orders = await campaignService.listOrders(user.id, getCampaignId(request));
+      return reply.send({ orders });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/orders', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const order = await campaignService.createOrder(user.id, getCampaignId(request), {
+        type: body['type'],
+        schemaVersion: body['schemaVersion'],
+        payload: body['payload'],
+      });
+      return reply.code(201).send({ order });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.patch<{ Params: { campaignId: string; orderId: string } }>(
+    '/campaigns/:campaignId/orders/:orderId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const order = await campaignService.updateOrder(
+          user.id,
+          getCampaignId(request),
+          request.params.orderId,
+          {
+            ...(body['type'] === undefined ? {} : { type: body['type'] }),
+            ...(body['schemaVersion'] === undefined
+              ? {}
+              : { schemaVersion: body['schemaVersion'] }),
+            ...(body['payload'] === undefined ? {} : { payload: body['payload'] }),
+          },
+        );
+        return reply.send({ order });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
+  app.delete<{ Params: { campaignId: string; orderId: string } }>(
+    '/campaigns/:campaignId/orders/:orderId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await campaignService.deleteOrder(user.id, getCampaignId(request), request.params.orderId);
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
+  app.post('/campaigns/:campaignId/orders/confirm', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turnJob = await campaignService.confirmOrders(user.id, getCampaignId(request));
+      return reply.send({
+        confirmed: true,
+        turnQueued: turnJob !== null,
+        ...(turnJob === null ? {} : { turnJob }),
+      });
     } catch (error) {
       return sendAuthError(error, reply);
     }
@@ -292,6 +410,52 @@ function registerCountryRoutes(
   authService: AuthService,
   countrySetupService: CountrySetupService,
 ): void {
+  app.get('/social-systems/mine', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const systems = await countrySetupService.listMySocialSystemLibrary(user.id);
+      return reply.send({ systems });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/countries/mine', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const country = await countrySetupService.getMyCountry(user.id, getCampaignId(request));
+      return reply.send({ country });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/map', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const map = await countrySetupService.getCampaignMap(user.id, getCampaignId(request));
+      return reply.send({ map });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.put('/campaigns/:campaignId/spawn-reservation', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const reservation = await countrySetupService.reserveSpawn(
+        user.id,
+        getCampaignId(request),
+        parseCoordinate(body['centerX'], 'centerX'),
+        parseCoordinate(body['centerY'], 'centerY'),
+      );
+      return reply.send({ reservation });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.post('/campaigns/:campaignId/social-systems', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
@@ -397,8 +561,66 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
     rngVersion: options.rngVersion ?? 'rng-v1',
   });
 
+  app.get('/', async (_request, reply) => {
+    try {
+      const page = await readFile(
+        options.webEntryPath ?? new URL('../../web/public/index.html', import.meta.url),
+      );
+      return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(page);
+    } catch (error) {
+      if (options.webEntryPath === undefined) throw error;
+      reply.log.error({ err: error }, 'Built browser client entry point could not be read');
+      return reply.code(503).send({
+        error: 'WEB_CLIENT_NOT_BUILT',
+        message: 'The built browser client is missing. Run the Paper Wars launcher again.',
+      });
+    }
+  });
+
+  app.get('/styles.css', async (_request, reply) => {
+    const stylesheet = await readFile(new URL('../../web/public/styles.css', import.meta.url));
+    return reply
+      .type('text/css; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(stylesheet);
+  });
+
+  app.get('/app.js', async (_request, reply) => {
+    const script = await readFile(new URL('../../web/public/app.js', import.meta.url));
+    return reply
+      .type('text/javascript; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send(script);
+  });
+
+  app.get('/assets/buildings/:file', async (request, reply) => {
+    const params = request.params as { readonly file?: unknown };
+    const allowed = new Set([
+      'factory.jpg',
+      'field.jpg',
+      'tower.jpg',
+      'barracks.jpg',
+      'capital.jpg',
+      'science.jpg',
+      'gold-mark.jpg',
+    ]);
+    if (typeof params.file !== 'string' || !allowed.has(params.file)) {
+      return reply.code(404).send({ error: 'BUILDING_ASSET_NOT_FOUND' });
+    }
+    const asset = await readFile(
+      new URL('../../web/public/assets/buildings/' + params.file, import.meta.url),
+    );
+    return reply.type('image/jpeg').header('Cache-Control', 'public, max-age=86400').send(asset);
+  });
+
+  app.get('/favicon.svg', async (_request, reply) => {
+    const icon = await readFile(new URL('../../web/public/favicon.svg', import.meta.url));
+    return reply.type('image/svg+xml').header('Cache-Control', 'public, max-age=86400').send(icon);
+  });
+
   app.get('/health', async () => ({
     status: 'ok',
+    apiContractVersion: 'browser-auth-v1',
     engineVersion: engine.engineVersion,
     rulesetVersion: engine.rulesetVersion,
     rngVersion: engine.rngVersion,

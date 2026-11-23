@@ -4,7 +4,21 @@
 
 ## 6. Обработка хода, приказы и worker jobs
 
-Все перечисленные ниже механизмы — технические контракты будущей реализации.
+Начальный инфраструктурный инкремент Stage 1.8 реализован: транзакционные подтверждение и закрытие приказов, создание TurnJob, claim/lease/reaper и fenced completion guard. Полноценный Worker, который вызывает ruleset resolver и атомарно сохраняет рассчитанное состояние мира, ещё не реализован. Начальный I/O-free orchestration core Stage 1.7 реализован в `@paper-wars/simulation`.
+
+### 6.0. Реализованный pure orchestration core — Stage 1.7 (начальный инкремент)
+
+`createSimulationEngine(...).resolveTurn(...)` выполняет чистую orchestration-оболочку без обращения к БД, HTTP, системному времени или глобальному RNG:
+
+1. Проверяет совместимость manifest, engine/ruleset/RNG versions и snapshot schema.
+2. Допускает в resolver только finalized orders, принадлежащие тому же campaign и turn; дублирующиеся ID не допускаются.
+3. Передаёт snapshot, список приказов, ruleset и переданный вызывающей стороной `RandomSource` в ruleset resolver. `createDeterministicRandomSource(RNGContext)` связывает production source с committed turn seed через существующий HMAC-SHA-256 RNG-пакет.
+4. Перехватывает uniform draws, проверяет безопасные целочисленные диапазоны/значения и запрещает повторное использование пары domain/drawId.
+5. Реализует weighted selection через uniform integer target в диапазоне `0..totalWeight-1`. Это сохраняет точное выпавшее значение в существующем формате `random_draws`; порядок outcomes является входом resolver и должен задаваться нормативной таблицей.
+6. Проверяет, что RNG source привязан к тому же campaignId, turnNumber и rngVersion, что и snapshot; чужой seed отклоняется до вызова resolver.
+7. Сам формирует авторитетный `randomDraws` и проверяет campaign, turn, source snapshot version и однозначное соответствие каждого входного приказа одному order result.
+
+Ruleset resolver возвращает `TurnSimulationResult` без RNG-журнала: журнал принадлежит orchestration engine и не может быть подменён resolver. Engine не реализует игровые эффекты автоматически: конкретные фазы, проверки приказов и переходы состояния добавляются отдельными правилами с tests. Успешные unit-тесты текущего pure core проверяют контракт и повторяемость на фиксированном RNG, но не закрывают игровой цикл.
 
 ### 6.1. Семантика хода и snapshots
 
@@ -30,10 +44,21 @@
 
 Закрытие приёма и создание TurnJob атомарны. Если любой шаг завершается ошибкой, вся транзакция откатывается.
 
+### 6.2.1. Реализованный код Stage 1.8
+
+- `createCampaignOrder`, `listCampaignOrders`, `updateCampaignOrder`, `deleteCampaignOrder` реализуют хранение универсального order envelope: `order_type`, `schema_version`, JSONB payload и статус. Записи связаны только с текущей страной активного membership и текущим ходом. Это persistence-контракт, а не whitelist игровых типов/валидатор правил: concrete build/colonization schemas и их игровые эффекты ещё не подключены.
+- Каждая операция изменения заказа начинает транзакцию и сначала берёт `campaigns FOR SHARE`; проверяет active/status, `orders_locked` и `deadline_at > clock_timestamp()`; затем блокирует собственное membership. Обновлять/удалять можно только свои draft/unconfirmed/confirmed orders.
+- При создании/изменении/удалении заказа членское подтверждение отзывается: confirmed приказы этой страны возвращаются в draft, membership `orders_confirmed=false`. Это не позволяет продолжить закрытие после изменения отправленного набора приказов.
+- `confirmCampaignOrders(pool, campaignId, userId)` под `campaigns FOR SHARE` проверяет active membership, страну и DB deadline, переводит все draft/unconfirmed приказы этой страны текущего хода в confirmed и устанавливает membership confirmation в той же транзакции.
+- `closeOrders(pool, campaignId)` берёт `campaigns FOR UPDATE` первой блокировкой, затем snapshot и TurnJob, читает актуальных active members с `FOR SHARE`, проверяет подтверждения/deadline по `clock_timestamp()`, обновляет приказы и кампанию и вставляет TurnJob с `generation=0`.
+- `POST /campaigns/:campaignId/orders/confirm` сначала аутентифицирует и проверяет активного участника/его страну. Если DB deadline уже прошёл, позднее подтверждение отклоняется, а ход закрывается без принятия опоздавших приказов; иначе приказы подтверждаются и затем выполняется попытка закрытия. Ответ содержит `turnQueued: false`, пока ещё не все участники подтвердили и deadline не наступил.
+- Deadline проверяется не только при чтении кампании под блокировкой: INSERT/UPDATE/DELETE приказа повторно проверяют `orders_locked` и `deadline_at > clock_timestamp()` непосредственно в мутации SQL. Если окно закрылось во время ожидания блокировки membership, изменение откатывается вместе с отзывом подтверждения.
+- При выходе участника открытого хода его draft/unconfirmed/confirmed orders переводятся в discarded; покинуть кампанию нельзя, пока её текущий TurnJob pending или processing.
+
 ### 6.3. Защита операций над приказами и участниками
 
 - Любая операция создания, изменения, удаления или подтверждения приказа выполняется в транзакции и сначала берёт `FOR SHARE` на строку `campaigns`.
-- Операция проверяет `orders_locked = false` до изменения приказа.
+- Операция проверяет `orders_locked = false` и что DB deadline ещё не прошёл до изменения приказа.
 - `closeOrders` берёт на ту же строку `FOR UPDATE`; это сериализует закрытие с операциями приказов.
 - Изменение/удаление/добавление участника кампании выполняется в транзакции с `FOR UPDATE` на `campaigns` первым действием. Это не даёт менять состав активных участников во время закрытия приказов.
 - Проверка блокировки и сама мутация приказа/участника находятся в одной транзакции.
@@ -78,6 +103,12 @@ RETURNING id;
 
 Если вернулось не ровно одно значение, worker устарел. Условие `lease_until > clock_timestamp()` обязательно: уже просроченный worker не может продлить собственный lease.
 
+Реализованные функции:
+- `claimNextTurnJob(pool, workerId)` атомарно забирает не более одного старейшего pending job через CTE с `FOR UPDATE SKIP LOCKED`, переводит его в processing, увеличивает generation и возвращает lease; пустая очередь даёт `null`.
+- `renewTurnJobLease(pool, token)` возвращает новый leaseUntil либо `null`, если token устарел или lease уже истёк.
+- `reapExpiredTurnJobs(pool, batchSize)` обрабатывает ограниченную пачку истёкших заданий через `FOR UPDATE SKIP LOCKED`; по умолчанию batchSize=100, допустимый диапазон 1–1000.
+- `completeTurnJob(transaction, token)` выполняет финальный guarded UPDATE в предоставленном `PoolClient`. Вызывающий Worker обязан держать общую транзакцию записи результата и сделать этот UPDATE последней мутацией. При stale token функция бросает `StaleTurnJobLeaseError`; вся транзакция должна быть отменена.
+
 ### 6.6. retry_count и Reaper
 
 `retry_count` — число переназначений после первой попытки.
@@ -96,7 +127,7 @@ RETURNING id;
 - при истёкшем lease и `retry_count >= 5` переводит в `failed`, очищает worker_id и lease_until, не увеличивая retry_count;
 - не сбрасывает generation.
 
-Условия истечения lease в обеих ветках Reaper используют `lease_until < clock_timestamp()`.
+Условия истечения lease в обеих ветках Reaper используют `lease_until <= clock_timestamp()`.
 
 ### 6.7. Единый порядок блокировки строк
 
@@ -124,7 +155,10 @@ RETURNING id;
 
 ```sql
 UPDATE turn_jobs
-SET status = 'completed', completed_at = NOW()
+SET status = 'completed',
+    completed_at = clock_timestamp(),
+    worker_id = NULL,
+    lease_until = NULL
 WHERE id = :job_id
   AND generation = :expected_generation
   AND worker_id = :worker_id
@@ -134,6 +168,8 @@ RETURNING id;
 ```
 
 Ровно одна строка должна быть возвращена. Иначе выбрасывается StaleWorkerError, и вся транзакция, включая snapshot, события, random log, отчёты и seed, откатывается. Проверка lease только в начале транзакции недостаточна.
+
+Реализованный `completeTurnJob(PoolClient, lease)` проверяет это условие и выбрасывает `StaleTurnJobLeaseError`, если обновлено не ровно одно задание. Функция не открывает и не фиксирует транзакцию самостоятельно: Worker владеет общей транзакцией и обязан вызвать её последней операцией после записи всех игровых данных. Сама фиксация next snapshot/events/reports/seed ещё не реализована.
 
 ### 6.9. Завершение кампании и следующий seed
 

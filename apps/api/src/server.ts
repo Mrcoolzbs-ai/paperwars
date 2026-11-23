@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -96,6 +95,11 @@ try {
     socialSystemAdminUserIds,
   });
 
+  const webEntryPath =
+    process.env['NODE_ENV'] === 'production'
+      ? resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html')
+      : undefined;
+
   app = createApp({
     logger: true,
     rulesetVersion,
@@ -104,19 +108,7 @@ try {
     campaignService,
     countrySetupService,
     secureCookies: process.env['NODE_ENV'] === 'production',
-  });
-
-  const webEntry = resolve(dirname(fileURLToPath(import.meta.url)), '../../web/dist/index.html');
-  app.get('/', async (_request, reply) => {
-    try {
-      const page = await readFile(webEntry);
-      return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(page);
-    } catch {
-      return reply.code(503).send({
-        error: 'WEB_CLIENT_NOT_BUILT',
-        message: 'Build the graphical client with "pnpm build" before opening the game.',
-      });
-    }
+    ...(webEntryPath === undefined ? {} : { webEntryPath }),
   });
 
   await app.listen({ port, host });
