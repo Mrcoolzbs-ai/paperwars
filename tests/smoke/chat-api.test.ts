@@ -81,11 +81,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const campaign = await campaignService.createCampaign(
         owner.user.id,
         'chat-campaign-' + randomUUID(),
-        {
-          mapWidth: 40,
-          mapHeight: 30,
-          mapSeed: 'chat-test-world',
-        },
       );
       const app = createApp({
         authService,
