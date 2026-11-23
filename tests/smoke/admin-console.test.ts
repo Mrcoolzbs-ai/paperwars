@@ -78,7 +78,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       try {
         const ownerCountry = await pool.query<{ id: string }>(
-          'INSERT INTO countries (campaign_id, owner_user_id, name, setup_completed) VALUES ($1, $2, $3, TRUE) RETURNING id',
+          'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
           [campaignId, admin.user.id, 'Admin Realm'],
         );
         ownerCountryId = ownerCountry.rows[0]?.id;
