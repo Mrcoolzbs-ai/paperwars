@@ -4,13 +4,11 @@ import {
   assertTurnResolutionMatchesInput,
   TurnResolutionInvariantError,
   type EngineVersionDescriptor,
+  type OrderEnvelope,
   type RulesetManifest,
-} from '@paper-wars/domain';
-import type {
-  OrderEnvelope,
-  TurnResolution,
-  TurnResolver,
-  TurnSimulationInput,
+  type TurnResolution,
+  type TurnResolver,
+  type TurnSimulationInput,
 } from '@paper-wars/domain';
 
 export interface SimulationEngineConfig {
