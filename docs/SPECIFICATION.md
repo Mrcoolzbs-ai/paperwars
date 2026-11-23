@@ -291,6 +291,21 @@ Commit-reveal подтверждает неизменность seed после 
 
 Это исполняемая техническая оболочка, а не готовые игровые фазы. Concrete ruleset resolver, применение приказов, economy/battle/discovery и persistence finalization остаются незавершёнными. Детерминированные unit-тесты orchestration не доказывают полноту игровых механик.
 
+### 7.5. Stage 1.8 — закрытие приказов и инфраструктура TurnJob (начальный инкремент)
+
+В ветке PR #15 добавлены PostgreSQL-backed операции:
+- `confirmCampaignOrders`: подтверждает приказы одного активного участника под `campaigns FOR SHARE`; проверка статуса кампании и `orders_locked` находится в той же транзакции, что и изменение membership.
+- `closeOrders`: сначала блокирует кампанию `FOR UPDATE`, затем snapshot и TurnJob; проверяет active members и deadline через `clock_timestamp()`; в одной транзакции финализирует confirmed orders, отбрасывает draft/unconfirmed, включает `orders_locked` и создаёт один TurnJob для campaign/turn с `generation=0`.
+- `POST /campaigns/:campaignId/orders/confirm` подтверждает участника и ставит ход в очередь, если все активные участники подтвердили приказы либо истёк deadline.
+- `claimNextTurnJob` использует `FOR UPDATE SKIP LOCKED`, задаёт lease 5 минут и увеличивает generation при каждом успешном claim; первая попытка получает generation 1.
+- `renewTurnJobLease` разрешает продление только при совпадении job id, worker id, generation, processing status и действующем lease.
+- `reapExpiredTurnJobs` переназначает истёкшие задания до пяти раз; истечение шестой попытки переводит job в failed без увеличения retry_count сверх 5.
+- `completeTurnJob` предоставляет fenced final UPDATE: только текущий worker и generation с незавершившимся lease могут завершить job. Ошибка требует rollback транзакции вызывающего Worker.
+
+Проверено PostgreSQL integration tests: атомарность closeOrders, подтверждения нескольких участников, DB deadline, отсутствие snapshot, параллельные закрытия, lease renewal, stale generation, шестая неудачная попытка и fenced completion. Контрольный CI прошёл 87/87 тестов в 16 файлах.
+
+Это **не означает готовности полного исполнения хода**. Ещё не реализованы CRUD обработчики игровых приказов, фоновый Worker с concrete ruleset resolver и транзакция сохранения следующего snapshot/events/random log/reports/next seed, а также терминальное завершение кампании. До реализации этих частей полноценный игровой цикл не считается завершённым.
+
 ## 8. Что не следует додумывать
 
 Не считать установленными без сверки первоисточника или отдельного решения:
