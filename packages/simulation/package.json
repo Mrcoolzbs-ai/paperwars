@@ -11,10 +11,13 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@paper-wars/domain": "workspace:*",
-    "@paper-wars/shared": "workspace:*"
+    "@paper-wars/shared": "workspace:*",
+    "@paper-wars/randomness": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
