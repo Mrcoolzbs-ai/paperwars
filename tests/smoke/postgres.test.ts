@@ -59,6 +59,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
         {
+          migration_name: '0002_order_resolution.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+        {
           migration_name: '0003_versioned_domain_payloads.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
