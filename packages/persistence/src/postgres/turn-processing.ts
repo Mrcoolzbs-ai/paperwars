@@ -404,7 +404,6 @@ export async function reapExpiredTurnJobs(
   };
 }
 
-
 export class StaleTurnJobLeaseError extends Error {
   constructor() {
     super('The worker no longer owns a live lease for this turn job');
