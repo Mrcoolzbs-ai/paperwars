@@ -356,6 +356,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(countryMapResponse.statusCode).toBe(200);
         const countryMap = countryMapResponse.json<{
           map: {
+            width: number;
+            height: number;
+            terrain: string;
             countries: Array<{
               id: string;
               isMine: boolean;
@@ -392,24 +395,51 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           gold_mine: 1,
         });
 
-        const firstOwnedCell = ownedCountry?.cells[0];
-        if (!firstOwnedCell) throw new Error('The created country has no owned cells');
+        const availableCell = ownedCountry?.cells.find((cell) =>
+          cell.buildingType === null &&
+          cell.population > 0 &&
+          countryMap.terrain[cell.y * countryMap.width + cell.x] === 'l',
+        );
+        if (!availableCell) throw new Error('The created country has no free dry-land cell with a resident');
+        const localX = availableCell.x - spawn.x + 2;
+        const localY = availableCell.y - spawn.y + 2;
 
         const construction = await app.inject({
           method: 'POST',
           url: `/campaigns/${campaign.id}/countries/mine/buildings`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
-          payload: { type: 'factory', x: firstOwnedCell.x, y: firstOwnedCell.y },
+          payload: { buildingType: 'factory', x: localX, y: localY },
         });
-        expect(construction.statusCode).toBe(404);
+        expect(construction.statusCode).toBe(201);
+        expect(construction.json()).toMatchObject({
+          building: {
+            type: 'factory',
+            x: localX,
+            y: localY,
+            remainingResidents: 0,
+            snapshotVersion: 2,
+          },
+        });
 
-        const capitalMove = await app.inject({
-          method: 'PUT',
-          url: `/campaigns/${campaign.id}/countries/mine/capital`,
+        const refreshedCountryMap = await app.inject({
+          method: 'GET',
+          url: `/campaigns/${campaign.id}/map`,
           headers: { authorization: 'Bearer ' + admin.accessToken },
-          payload: { x: firstOwnedCell.x, y: firstOwnedCell.y },
         });
-        expect(capitalMove.statusCode).toBe(404);
+        const refreshedMap = refreshedCountryMap.json<{ map: typeof countryMap }>().map;
+        const refreshedOwnCountry = refreshedMap.countries.find((item) => item.id === createdCountryId);
+        const builtCell = refreshedOwnCountry?.cells.find((cell) =>
+          cell.x === availableCell.x && cell.y === availableCell.y,
+        );
+        expect(builtCell).toMatchObject({ buildingType: 'factory', population: 0 });
+
+        const duplicateConstruction = await app.inject({
+          method: 'POST',
+          url: `/campaigns/${campaign.id}/countries/mine/buildings`,
+          headers: { authorization: 'Bearer ' + admin.accessToken },
+          payload: { buildingType: 'field', x: localX, y: localY },
+        });
+        expect(duplicateConstruction.statusCode).toBe(400);
       } finally {
         await app.close();
       }
