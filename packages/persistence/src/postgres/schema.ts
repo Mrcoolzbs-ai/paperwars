@@ -465,7 +465,6 @@ export const discoveryAccess = pgTable(
   ],
 );
 
-
 export const chatMessages = pgTable(
   'chat_messages',
   {
