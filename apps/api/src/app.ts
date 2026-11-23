@@ -113,7 +113,10 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof AuthValidationError) {
     return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
   }
-  if (error instanceof EmailAlreadyRegisteredError || error instanceof ExternalIdentityEmailConflictError) {
+  if (
+    error instanceof EmailAlreadyRegisteredError ||
+    error instanceof ExternalIdentityEmailConflictError
+  ) {
     return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED', message: error.message });
   }
   if (error instanceof EmailNotVerifiedError) {

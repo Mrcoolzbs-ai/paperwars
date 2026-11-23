@@ -7,7 +7,11 @@ import {
 import { createPostgresPersistence } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createApp } from './app.js';
-import { createConsoleEmailSender, createResendEmailSender } from './email.js';
+import {
+  createConsoleEmailSender,
+  createResendEmailSender,
+  type VerificationEmailSender,
+} from './email.js';
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -54,17 +58,22 @@ const hasEmailFrom = emailFrom !== undefined && emailFrom.trim().length > 0;
 if (hasResendApiKey !== hasEmailFrom) {
   throw new Error('Configure both RESEND_API_KEY and EMAIL_FROM');
 }
-const verificationEmailSender =
-  hasResendApiKey && hasEmailFrom
-    ? createResendEmailSender({ apiKey: resendApiKey, from: emailFrom })
-    : process.env['NODE_ENV'] === 'production'
-      ? (() => { throw new Error('RESEND_API_KEY and EMAIL_FROM must be configured in production'); })()
-      : createConsoleEmailSender((message) => console.info(message));
+let verificationEmailSender: VerificationEmailSender;
+if (hasResendApiKey && hasEmailFrom) {
+  verificationEmailSender = createResendEmailSender({
+    apiKey: resendApiKey,
+    from: emailFrom,
+  });
+} else if (process.env['NODE_ENV'] === 'production') {
+  throw new Error('RESEND_API_KEY and EMAIL_FROM must be configured in production');
+} else {
+  verificationEmailSender = createConsoleEmailSender((message) => console.info(message));
+}
 
 const vkAppId = process.env['VK_ID_APP_ID'];
 const vkRedirectUri = process.env['VK_ID_REDIRECT_URI'];
 const vkCookieSecret = process.env['VK_ID_COOKIE_SECRET'];
-const vkIsConfigured = [vkAppId, vkCookieSecret].some(
+const vkIsConfigured = [vkAppId, vkRedirectUri, vkCookieSecret].some(
   (value) => value !== undefined && value.trim().length > 0,
 );
 let vkId: { appId: string; redirectUri: string; cookieSecret: Buffer } | undefined;
@@ -74,11 +83,22 @@ if (vkIsConfigured) {
     vkRedirectUri === undefined || vkRedirectUri.trim().length === 0 ||
     vkCookieSecret === undefined || !/^[a-f0-9]{64}$/i.test(vkCookieSecret)
   ) {
-    throw new Error('Configure VK_ID_APP_ID, VK_ID_REDIRECT_URI and a 64-character VK_ID_COOKIE_SECRET together');
+    throw new Error(
+      'Configure VK_ID_APP_ID, VK_ID_REDIRECT_URI and a 64-character VK_ID_COOKIE_SECRET together',
+    );
+  }
+  const vkRedirect = new URL(vkRedirectUri);
+  if (
+    vkRedirect.pathname !== '/auth/vk/callback' ||
+    vkRedirect.origin !== parsedBaseUrl.origin ||
+    vkRedirect.hash.length > 0 ||
+    (process.env['NODE_ENV'] === 'production' && vkRedirect.protocol !== 'https:')
+  ) {
+    throw new Error('VK_ID_REDIRECT_URI must be the HTTPS callback on APP_BASE_URL');
   }
   vkId = {
     appId: vkAppId,
-    redirectUri: vkRedirectUri,
+    redirectUri: vkRedirect.toString(),
     cookieSecret: Buffer.from(vkCookieSecret, 'hex'),
   };
 }

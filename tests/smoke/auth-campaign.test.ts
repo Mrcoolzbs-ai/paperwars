@@ -21,6 +21,12 @@ const databaseUrl = process.env['DATABASE_URL'];
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'authentication and campaign lifecycle integration',
   () => {
+    const registrationTestTitle =
+      'registers, normalizes email, logs in and rotates refresh tokens with reuse detection';
+    const campaignTestTitle =
+      'creates a campaign, membership and the first committed seed in one transaction';
+    const vkTestTitle =
+      'verifies first-time VK accounts and links VK only to an authenticated, verified account';
     const persistence =
       databaseUrl === undefined
         ? undefined
@@ -53,7 +59,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('registers, normalizes email, logs in and rotates refresh tokens with reuse detection', async () => {
+    it(registrationTestTitle, async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -114,7 +120,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await auth.logout(loggedIn.refreshToken);
 
-      const concurrentChallenge = await auth.register(`concurrent-${randomUUID()}@example.test`, password);
+      const concurrentChallenge = await auth.register(
+        `concurrent-${randomUUID()}@example.test`,
+        password,
+      );
       const concurrent = await auth.verifyEmail(concurrentChallenge.verificationToken);
       const attempts = await Promise.allSettled([
         auth.refresh(concurrent.refreshToken),
@@ -140,7 +149,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
     });
 
-    it('creates a campaign, membership and the first committed seed in one transaction', async () => {
+    it(campaignTestTitle, async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -173,7 +182,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(created.firstTurnCommitment).toMatch(/^[a-f0-9]{64}$/);
 
       const membership = await current.pool.query<{ status: string; country_id: string | null }>(
-        'SELECT status, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+        `SELECT status, country_id
+         FROM campaign_memberships
+         WHERE campaign_id = $1 AND user_id = $2`,
         [created.id, user.user.id],
       );
       expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
@@ -184,7 +195,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         encrypted_seed: Buffer;
         nonce: Buffer;
       }>(
-        'SELECT status, commitment, encrypted_seed, nonce FROM random_seeds WHERE campaign_id = $1 AND turn_number = 1',
+        `SELECT status, commitment, encrypted_seed, nonce
+         FROM random_seeds
+         WHERE campaign_id = $1 AND turn_number = 1`,
         [created.id],
       );
       expect(seedRow.rows).toHaveLength(1);
@@ -236,7 +249,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(rows.rows[0]?.count).toBe('0');
     });
 
-    it('verifies first-time VK accounts and links VK only to an authenticated, verified account', async () => {
+    it(vkTestTitle, async () => {
       const auth = createAuthService({
         pool: getPersistence().pool,
         accessTokens: signer,

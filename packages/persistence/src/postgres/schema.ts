@@ -58,10 +58,15 @@ export const emailVerificationTokens = pgTable(
   (table) => [
     uniqueIndex('email_verification_tokens_hash_unique').on(table.tokenHash),
     index('email_verification_tokens_user_created_idx').on(table.userId, table.createdAt),
-    index('email_verification_tokens_expiry_idx').on(table.expiresAt).where(sql`${table.usedAt} is null`),
+    index('email_verification_tokens_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.usedAt} is null`),
     check('email_verification_tokens_hash_check', sql`${table.tokenHash} ~ '^[a-f0-9]{64}$'`),
     check('email_verification_tokens_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
-    check('email_verification_tokens_used_at_check', sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`),
+    check(
+      'email_verification_tokens_used_at_check',
+      sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`,
+    ),
   ],
 );
 
@@ -81,7 +86,10 @@ export const authIdentities = pgTable(
     uniqueIndex('auth_identities_user_provider_unique').on(table.userId, table.provider),
     index('auth_identities_user_idx').on(table.userId),
     check('auth_identities_provider_check', sql`${table.provider} in ('vk')`),
-    check('auth_identities_subject_nonempty', sql`char_length(btrim(${table.providerUserId})) between 1 and 256`),
+    check(
+      'auth_identities_subject_nonempty',
+      sql`char_length(btrim(${table.providerUserId})) between 1 and 256`,
+    ),
   ],
 );
 export const refreshTokens = pgTable(

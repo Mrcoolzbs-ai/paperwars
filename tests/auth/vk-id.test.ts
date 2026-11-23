@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { completeVkAuthorization, createVkAuthorizationStart } from '@paper-wars/api';
 
+const pkceTestTitle =
+  'creates an authorization-code PKCE request with a signed HttpOnly state cookie';
+const exchangeTestTitle =
+  'exchanges the code server-side and verifies the VK identity in user info';
+const stateErrorTitle =
+  'rejects a forged or mismatched state before exchanging the code';
+
 const options = {
   appId: '12345678',
   redirectUri: 'https://paper-wars.example/auth/vk/callback',
@@ -15,7 +22,7 @@ function cookieValue(header: string): string {
 }
 
 describe('VK ID OAuth 2.1 integration', () => {
-  it('creates an authorization-code PKCE request with a signed HttpOnly state cookie', () => {
+  it(pkceTestTitle, () => {
     const start = createVkAuthorizationStart(options, true, 'user-42');
     const url = new URL(start.authorizationUrl);
     expect(url.origin).toBe('https://id.vk.ru');
@@ -31,7 +38,7 @@ describe('VK ID OAuth 2.1 integration', () => {
     expect(start.stateCookie).toContain('Secure');
   });
 
-  it('exchanges the code server-side and verifies the VK identity in user info', async () => {
+  it(exchangeTestTitle, async () => {
     const start = createVkAuthorizationStart(options, false);
     const authUrl = new URL(start.authorizationUrl);
     const state = authUrl.searchParams.get('state');
@@ -44,7 +51,9 @@ describe('VK ID OAuth 2.1 integration', () => {
       if (url.pathname === '/oauth2/auth') {
         expect(url.searchParams.get('grant_type')).toBe('authorization_code');
         expect(url.searchParams.get('code_challenge')).toBeNull();
-        expect(new URLSearchParams(init?.body as URLSearchParams).get('code')).toBe('test-code');
+        expect(
+          new URLSearchParams(init?.body as URLSearchParams).get('code'),
+        ).toBe('test-code');
         return new Response(
           JSON.stringify({ access_token: 'vk-private-access-token', user_id: 42, state }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -68,10 +77,13 @@ describe('VK ID OAuth 2.1 integration', () => {
       providerUserId: '42',
       email: 'player@example.test',
     });
-    expect(calls.map((url) => url.pathname)).toEqual(['/oauth2/auth', '/oauth2/user_info']);
+    expect(calls.map((url) => url.pathname)).toEqual([
+      '/oauth2/auth',
+      '/oauth2/user_info',
+    ]);
   });
 
-  it('rejects a forged or mismatched state before exchanging the code', async () => {
+  it(stateErrorTitle, async () => {
     const start = createVkAuthorizationStart(options, false);
     const authUrl = new URL(start.authorizationUrl);
     const state = authUrl.searchParams.get('state');

@@ -122,9 +122,18 @@ export function createVkAuthorizationStart(
   url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('prompt', 'login consent');
 
+  const cookieParts = [
+    `vk_oauth_state=${encodeURIComponent(stateCookie)}`,
+    'Path=/auth/vk/callback',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=600',
+  ];
+  if (secureCookie) cookieParts.push('Secure');
+
   return {
     authorizationUrl: url.toString(),
-    stateCookie: `vk_oauth_state=${encodeURIComponent(stateCookie)}; Path=/auth/vk/callback; HttpOnly; SameSite=Lax; Max-Age=600${secureCookie ? '; Secure' : ''}`,
+    stateCookie: cookieParts.join('; '),
   };
 }
 

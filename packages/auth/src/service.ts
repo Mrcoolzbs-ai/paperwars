@@ -241,7 +241,9 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
     emailVerificationTtlSeconds < 300 ||
     emailVerificationTtlSeconds > 604_800
   ) {
-    throw new RangeError('Email verification token TTL must be an integer between 300 and 604800 seconds');
+    throw new RangeError(
+      'Email verification token TTL must be an integer between 300 and 604800 seconds',
+    );
   }
 
   return {
@@ -275,7 +277,10 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       } catch (error) {
         if (transactionOpen) await client.query('ROLLBACK');
         const databaseError = error as { code?: string; constraint?: string };
-        if (databaseError.code === '23505' && databaseError.constraint === 'users_email_ci_unique') {
+        if (
+          databaseError.code === '23505' &&
+          databaseError.constraint === 'users_email_ci_unique'
+        ) {
           throw new EmailAlreadyRegisteredError();
         }
         throw error;
@@ -291,7 +296,12 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       try {
         await client.query('BEGIN');
         transactionOpen = true;
-        const found = await client.query<{ id: string; email: string; status: string; email_verified_at: Date | null }>(
+        const found = await client.query<{
+          id: string;
+          email: string;
+          status: string;
+          email_verified_at: Date | null;
+        }>(
           `SELECT id, email, status, email_verified_at
            FROM users WHERE email = $1 FOR UPDATE`,
           [email],
@@ -344,11 +354,15 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           throw new InvalidEmailVerificationTokenError();
         }
         await client.query(
-          'UPDATE users SET email_verified_at = COALESCE(email_verified_at, $2), updated_at = $2 WHERE id = $1',
+          `UPDATE users
+           SET email_verified_at = COALESCE(email_verified_at, $2), updated_at = $2
+           WHERE id = $1`,
           [row.user_id, now],
         );
         await client.query(
-          'UPDATE email_verification_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL',
+          `UPDATE email_verification_tokens
+           SET used_at = $2
+           WHERE user_id = $1 AND used_at IS NULL`,
           [row.user_id, now],
         );
         const session = await createSession(
@@ -514,7 +528,10 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       } catch (error) {
         if (transactionOpen) await client.query('ROLLBACK');
         const databaseError = error as { code?: string; constraint?: string };
-        if (databaseError.code === '23505' && databaseError.constraint === 'users_email_ci_unique') {
+        if (
+          databaseError.code === '23505' &&
+          databaseError.constraint === 'users_email_ci_unique'
+        ) {
           throw new ExternalIdentityEmailConflictError();
         }
         throw error;
@@ -538,6 +555,16 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         const user = account.rows[0];
         if (user === undefined || user.status !== 'active') throw new InvalidCredentialsError();
         if (user.email_verified_at === null) throw new EmailNotVerifiedError();
+        const currentIdentity = await client.query<{ provider_user_id: string }>(
+          `SELECT provider_user_id FROM auth_identities
+           WHERE user_id = $1 AND provider = 'vk'
+           FOR UPDATE`,
+          [userId],
+        );
+        const linkedSubject = currentIdentity.rows[0]?.provider_user_id;
+        if (linkedSubject !== undefined && linkedSubject !== subject) {
+          throw new ExternalIdentityAlreadyLinkedError();
+        }
         const inserted = await client.query<{ user_id: string }>(
           `INSERT INTO auth_identities (user_id, provider, provider_user_id)
            VALUES ($1, 'vk', $2)
