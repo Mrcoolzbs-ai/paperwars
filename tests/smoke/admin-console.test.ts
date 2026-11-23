@@ -315,6 +315,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         await pool.query('DELETE FROM admin_audit_logs WHERE actor_user_id = ANY($1::uuid[])', [
           [admin.user.id, player.user.id],
         ]);
+        await pool.query(
+          `DELETE FROM discovery_access
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [campaignId],
+        );
+        await pool.query(
+          `DELETE FROM discovery_history
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [campaignId],
+        );
+        await pool.query('DELETE FROM discovery_records WHERE campaign_id = $1', [campaignId]);
         await pool.query('DELETE FROM campaigns WHERE id = $1', [campaignId]);
         await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [
           [admin.user.id, player.user.id],
