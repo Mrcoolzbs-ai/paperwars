@@ -169,7 +169,7 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 ### 1.8. Закрытие приказов, очередь и Worker
 
-**Статус на 23 ноября 2026 года: реализован начальный инфраструктурный инкремент; полноценный исполнитель игрового хода ещё не готов.**
+**Статус на 23 ноября 2026 года: закрытие приказов, атомарный Worker и polling lifecycle реализованы; реальные игровые правила внутри resolver и production host остаются следующими задачами.**
 
 - [x] `closeOrders`: первой блокировкой берёт кампанию `FOR UPDATE`; проверяет статус, `orders_locked`, snapshot и актуальный список активных участников.
 - [x] Проверяет подтверждения либо deadline по времени БД `clock_timestamp()`.
@@ -185,8 +185,13 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] Fencing token `generation` не сбрасывается при переназначении.
 - [x] `completeTurnJob` выполняет fenced final UPDATE и требует ровно одну строку по id/worker/generation/status/live lease; иначе выбрасывает ошибку для rollback вызывающей транзакции.
 - [x] Явный порядок блокировок в `closeOrders`: campaigns → world_snapshots → turn_jobs → memberships/orders.
-- [ ] Полноценный Worker должен исполнить resolver и в той же транзакции сохранить следующий snapshot, events, random log, economic/battle reports, next seed и completed TurnJob.
-- [ ] При завершении кампании не создавать следующий seed, не увеличивать current_turn и не открывать следующий приём приказов.
+- [x] `createTurnWorker().processNext()` загружает campaign, исходный snapshot, finalized orders и committed seed, затем вызывает injected `TurnResolver` через Simulation Engine с детерминированным RNG.
+- [x] Worker проверяет версию кампании/ruleset, snapshot version и результат разрешения; каждый приказ должен получить ровно один результат, события и random draws валидируются.
+- [x] В одной PostgreSQL-транзакции сохраняются следующий snapshot, events, random draw log, order results, economic/battle reports, next seed и fenced completion TurnJob.
+- [x] При завершении кампании следующий seed не создаётся, `current_turn` остаётся на завершённом ходе, приём приказов остаётся закрытым, существующие seeds переводятся в `revealed`.
+- [x] `createTurnWorker().run(signal, options)` последовательно опрашивает очередь, сообщает об ошибках через `onError` и завершает polling по `AbortSignal`; текущая обработка хода не прерывается abort-сигналом.
+- [ ] Реализовать конкретный versioned game resolver с подтверждёнными игровыми фазами и механиками; Worker пока исполняет переданный resolver и не придумывает правила самостоятельно.
+- [ ] Добавить production host/entrypoint, который связывает Worker с выбранной версией ruleset и управляет жизненным циклом процесса.
 
 Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId` и POST `/campaigns/:campaignId/orders/confirm`. Хранение order envelope универсально (type/schemaVersion/JSON payload) и пока не валидирует конкретные игровые команды или их эффекты. PostgreSQL integration tests покрывают CRUD/ownership, withdrawal confirmation, deadline, атомарное закрытие, конкурентные закрытия, leave semantics, lease, retry limit и fencing.
 
