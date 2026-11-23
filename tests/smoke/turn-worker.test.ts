@@ -189,6 +189,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
               type: 'worker_test_turn',
               schemaVersion: 1,
               payload: { roll },
+              visibility: 'public',
             },
           ],
           economicReport: { balance: 123, turn: snapshot.turnNumber },
@@ -276,8 +277,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           result_data: { amount: 5 },
         });
 
-        const events = await pool.query<{ id: string; event_type: string; payload: Record<string, unknown> }>(
-          'SELECT id, event_type, payload FROM game_events WHERE campaign_id = $1 AND turn_number = 1',
+        const events = await pool.query<{
+          id: string;
+          event_type: string;
+          payload: Record<string, unknown>;
+          visibility: string;
+        }>(
+          'SELECT id, event_type, payload, visibility FROM game_events WHERE campaign_id = $1 AND turn_number = 1',
           [fixture.campaignId],
         );
         expect(events.rows).toEqual([
@@ -285,6 +291,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             id: eventId,
             event_type: 'worker_test_turn',
             payload: { roll: expect.any(Number) },
+            visibility: 'public',
           },
         ]);
 
