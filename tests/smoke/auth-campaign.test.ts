@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createAccessTokenSigner,
@@ -20,7 +19,7 @@ const databaseUrl = process.env['DATABASE_URL'];
 
 async function createEmailLoginUser(
   auth: ReturnType<typeof createAuthService>,
-  pool: Pool,
+  pool: ReturnType<typeof createPostgresPersistence>['pool'],
   email: string,
   password: string,
 ) {
