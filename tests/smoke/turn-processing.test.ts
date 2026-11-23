@@ -302,118 +302,120 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it(
       'claims a job once, renews only a live matching generation and rejects stale workers',
       async () => {
-      const pool = getPool();
-      const fixture = await createFixture(1, true);
-      try {
-        await pool.query(
-          `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version)
-           VALUES ($1, $2, 1, 7)`,
-          [`turn:${fixture.campaignId}:1`, fixture.campaignId],
-        );
+        const pool = getPool();
+        const fixture = await createFixture(1, true);
+        try {
+          await pool.query(
+            `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version)
+             VALUES ($1, $2, 1, 7)`,
+            [`turn:${fixture.campaignId}:1`, fixture.campaignId],
+          );
 
-        const [first, competing] = await Promise.all([
-          claimNextTurnJob(pool, 'worker-a'),
-          claimNextTurnJob(pool, 'worker-b'),
-        ]);
-        const lease = first ?? competing;
-        expect(first === null || competing === null).toBe(true);
-        expect(lease).not.toBeNull();
-        expect(lease).toMatchObject({
-          campaignId: fixture.campaignId,
-          turnNumber: 1,
-          snapshotVersion: 7,
-          generation: 1,
-          retryCount: 0,
-        });
-        if (lease === null) throw new Error('A pending TurnJob should have been claimed');
-
-        const renewed = await renewTurnJobLease(pool, lease);
-        expect(renewed).toBeInstanceOf(Date);
-
-        await pool.query(
-          'UPDATE turn_jobs SET lease_until = clock_timestamp() - INTERVAL \'1 second\' WHERE id = $1',
-          [lease.id],
-        );
-        await expect(renewTurnJobLease(pool, lease)).resolves.toBeNull();
-
-        const reaped = await reapExpiredTurnJobs(pool);
-        expect(reaped).toEqual({ requeuedCount: 1, failedCount: 0 });
-
-        const row = await pool.query<{
-          status: string;
-          generation: number;
-          retry_count: number;
-          worker_id: string | null;
-          lease_until: Date | null;
-        }>(
-          'SELECT status, generation, retry_count, worker_id, lease_until FROM turn_jobs WHERE id = $1',
-          [lease.id],
-        );
-        expect(row.rows[0]).toEqual({
-          status: 'pending',
-          generation: 1,
-          retry_count: 1,
-          worker_id: null,
-          lease_until: null,
-        });
-      } finally {
-        await removeFixture(fixture);
-      }
-    });
-
-    it(
-      'allows five reassignments and fails the sixth expired attempt without resetting generation',
-      async () => {
-      const pool = getPool();
-      const fixture = await createFixture(1, true);
-      try {
-        await pool.query(
-          `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version)
-           VALUES ($1, $2, 1, 7)`,
-          [`turn:${fixture.campaignId}:1`, fixture.campaignId],
-        );
-
-        for (let attempt = 1; attempt <= 6; attempt += 1) {
-          const lease = await claimNextTurnJob(pool, `worker-${attempt}`);
+          const [first, competing] = await Promise.all([
+            claimNextTurnJob(pool, 'worker-a'),
+            claimNextTurnJob(pool, 'worker-b'),
+          ]);
+          const lease = first ?? competing;
+          expect(first === null || competing === null).toBe(true);
           expect(lease).not.toBeNull();
-          if (lease === null) throw new Error(`Attempt ${attempt} should have a pending job`);
-          expect(lease.generation).toBe(attempt);
-          expect(lease.retryCount).toBe(Math.min(attempt - 1, 5));
+          expect(lease).toMatchObject({
+            campaignId: fixture.campaignId,
+            turnNumber: 1,
+            snapshotVersion: 7,
+            generation: 1,
+            retryCount: 0,
+          });
+          if (lease === null) throw new Error('A pending TurnJob should have been claimed');
+
+          const renewed = await renewTurnJobLease(pool, lease);
+          expect(renewed).toBeInstanceOf(Date);
 
           await pool.query(
             'UPDATE turn_jobs SET lease_until = clock_timestamp() - INTERVAL \'1 second\' WHERE id = $1',
             [lease.id],
           );
-          const reaped = await reapExpiredTurnJobs(pool);
-          if (attempt < 6) {
-            expect(reaped).toEqual({ requeuedCount: 1, failedCount: 0 });
-          } else {
-            expect(reaped).toEqual({ requeuedCount: 0, failedCount: 1 });
-          }
-        }
+          await expect(renewTurnJobLease(pool, lease)).resolves.toBeNull();
 
-        const failed = await pool.query<{
-          status: string;
-          generation: number;
-          retry_count: number;
-          worker_id: string | null;
-          lease_until: Date | null;
-        }>(
-          'SELECT status, generation, retry_count, worker_id, lease_until FROM turn_jobs WHERE campaign_id = $1',
-          [fixture.campaignId],
-        );
-        expect(failed.rows[0]).toEqual({
-          status: 'failed',
-          generation: 6,
-          retry_count: 5,
-          worker_id: null,
-          lease_until: null,
-        });
-        await expect(claimNextTurnJob(pool, 'worker-final')).resolves.toBeNull();
-      } finally {
-        await removeFixture(fixture);
-      }
-    });
+          const reaped = await reapExpiredTurnJobs(pool);
+          expect(reaped).toEqual({ requeuedCount: 1, failedCount: 0 });
+
+          const row = await pool.query<{
+            status: string;
+            generation: number;
+            retry_count: number;
+            worker_id: string | null;
+            lease_until: Date | null;
+          }>(
+            'SELECT status, generation, retry_count, worker_id, lease_until FROM turn_jobs WHERE id = $1',
+            [lease.id],
+          );
+          expect(row.rows[0]).toEqual({
+            status: 'pending',
+            generation: 1,
+            retry_count: 1,
+            worker_id: null,
+            lease_until: null,
+          });
+        } finally {
+          await removeFixture(fixture);
+        }
+      },
+    );
+
+    it(
+      'allows five reassignments and fails the sixth expired attempt without resetting generation',
+      async () => {
+        const pool = getPool();
+        const fixture = await createFixture(1, true);
+        try {
+          await pool.query(
+            `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version)
+             VALUES ($1, $2, 1, 7)`,
+            [`turn:${fixture.campaignId}:1`, fixture.campaignId],
+          );
+
+          for (let attempt = 1; attempt <= 6; attempt += 1) {
+            const lease = await claimNextTurnJob(pool, `worker-${attempt}`);
+            expect(lease).not.toBeNull();
+            if (lease === null) throw new Error(`Attempt ${attempt} should have a pending job`);
+            expect(lease.generation).toBe(attempt);
+            expect(lease.retryCount).toBe(Math.min(attempt - 1, 5));
+
+            await pool.query(
+              'UPDATE turn_jobs SET lease_until = clock_timestamp() - INTERVAL \'1 second\' WHERE id = $1',
+              [lease.id],
+            );
+            const reaped = await reapExpiredTurnJobs(pool);
+            if (attempt < 6) {
+              expect(reaped).toEqual({ requeuedCount: 1, failedCount: 0 });
+            } else {
+              expect(reaped).toEqual({ requeuedCount: 0, failedCount: 1 });
+            }
+          }
+
+          const failed = await pool.query<{
+            status: string;
+            generation: number;
+            retry_count: number;
+            worker_id: string | null;
+            lease_until: Date | null;
+          }>(
+            'SELECT status, generation, retry_count, worker_id, lease_until FROM turn_jobs WHERE campaign_id = $1',
+            [fixture.campaignId],
+          );
+          expect(failed.rows[0]).toEqual({
+            status: 'failed',
+            generation: 6,
+            retry_count: 5,
+            worker_id: null,
+            lease_until: null,
+          });
+          await expect(claimNextTurnJob(pool, 'worker-final')).resolves.toBeNull();
+        } finally {
+          await removeFixture(fixture);
+        }
+      },
+    );
 
     it('requires a live matching generation for the final fenced job update', async () => {
       const pool = getPool();
