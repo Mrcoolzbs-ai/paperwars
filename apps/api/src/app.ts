@@ -36,7 +36,12 @@ import {
   type SocialSystemReviewInput,
 } from '@paper-wars/world';
 import { CHAT_PAGE_HTML } from './chat-page.js';
-import { completeVkAuthorization, createVkAuthorizationStart, type VkIdOptions } from './vk-id.js';
+import {
+  completeVkAuthorization,
+  createVkAuthorizationSession,
+  createVkAuthorizationStart,
+  type VkIdOptions,
+} from './vk-id.js';
 
 export interface CreateAppOptions {
   readonly logger?: boolean;
@@ -293,6 +298,20 @@ function registerVkRoutes(
     const start = createVkAuthorizationStart(vkId, secureCookies);
     reply.header('Set-Cookie', start.stateCookie);
     return reply.redirect(start.authorizationUrl);
+  });
+
+  app.post('/auth/vk/one-tap-config', async (_request, reply) => {
+    if (vkId === undefined) return reply.code(503).send({ error: 'VK_ID_NOT_CONFIGURED' });
+    const session = createVkAuthorizationSession(vkId, secureCookies);
+    reply.header('Cache-Control', 'no-store');
+    reply.header('Pragma', 'no-cache');
+    reply.header('Set-Cookie', session.stateCookie);
+    return reply.send({
+      appId: session.appId,
+      redirectUrl: session.redirectUri,
+      state: session.state,
+      codeVerifier: session.codeVerifier,
+    });
   });
 
   app.post('/auth/vk/link', async (request, reply) => {
