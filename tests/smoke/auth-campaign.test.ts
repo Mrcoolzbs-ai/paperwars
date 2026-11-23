@@ -79,11 +79,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         });
         const email = `Auth-${randomUUID()}@Example.Test`;
         const password = 'a secure test password with enough length';
-  
+
         const registered = await createEmailLoginUser(auth, current.pool, `  ${email}  `, password);
         expect(registered.user.email).toBe(email.trim().toLowerCase());
         expect(await auth.authenticateAccessToken(registered.accessToken)).toEqual(registered.user);
-  
+
         const secondUser = await createEmailLoginUser(
           auth,
           current.pool,
@@ -96,19 +96,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         await expect(auth.login(email, 'wrong password long enough')).rejects.toBeInstanceOf(
           InvalidCredentialsError,
         );
-  
+
         const loggedIn = await auth.login(email, password);
         expect(loggedIn.user.id).toBe(registered.user.id);
         const rotated = await auth.refresh(registered.refreshToken);
         expect(rotated.refreshToken).not.toBe(registered.refreshToken);
-  
+
         await expect(auth.refresh(registered.refreshToken)).rejects.toBeInstanceOf(
           RefreshTokenReuseDetectedError,
         );
         await expect(auth.refresh(rotated.refreshToken)).rejects.toBeInstanceOf(
           InvalidRefreshTokenError,
         );
-  
+
         const stored = await current.pool.query<{
           total: string;
           raw_token_matches: boolean;
@@ -125,12 +125,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(stored.rows[0]?.total).toBe('3');
         expect(stored.rows[0]?.raw_token_matches).toBe(false);
         expect(stored.rows[0]?.revoked).toBe('2');
-  
+
         const accessAfterRefreshReplay = await auth.authenticateAccessToken(loggedIn.accessToken);
         expect(accessAfterRefreshReplay.id).toBe(registered.user.id);
-  
+
         await auth.logout(loggedIn.refreshToken);
-  
+
         const concurrent = await createEmailLoginUser(
           auth,
           current.pool,
@@ -162,7 +162,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       },
     );
 
-    it('creates VK-only profiles and enables optional email/password backup login', async () => {
+    it(
+      'creates VK-only profiles and enables optional email/password backup login',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -197,10 +199,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         displayName: nickname,
       });
 
-        const cleared = await auth.updateProfile(session.user.id, nickname, null);
-        expect(cleared).toMatchObject({ email: null, hasPassword: false });
-        await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
-    });
+      const cleared = await auth.updateProfile(session.user.id, nickname, null);
+      expect(cleared).toMatchObject({ email: null, hasPassword: false });
+      await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
+      },
+    );
 
     it(
       'creates a campaign, membership and the first committed seed in one transaction',
@@ -230,7 +233,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           },
         });
         const campaignName = `integration-${randomUUID()}`;
-  
+
         const created = await campaigns.createCampaign(user.user.id, campaignName, {
           mapWidth: 40,
           mapHeight: 30,
@@ -242,14 +245,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(created.firstTurnCommitment).toMatch(/^[a-f0-9]{64}$/);
         expect(created.mapSeed).toBe('repeatable-world-test');
         expect(created.maxPlayers).toBe(12);
-  
+
         const membership = await current.pool.query<{ status: string; country_id: string | null }>(
           `SELECT status, country_id FROM campaign_memberships
              WHERE campaign_id = $1 AND user_id = $2`,
           [created.id, user.user.id],
         );
         expect(membership.rows[0]).toEqual({ status: 'active', country_id: null });
-  
+
         const seedRow = await current.pool.query<{
           status: string;
           commitment: string;
@@ -265,7 +268,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(seedRow.rows[0]?.commitment).toBe(created.firstTurnCommitment);
         expect(seedRow.rows[0]?.encrypted_seed).not.toEqual(seed);
         expect(seedRow.rows[0]?.nonce).toEqual(nonce);
-  
+
         const summaries = await campaigns.listCampaignsForUser(user.user.id);
         expect(summaries[0]?.id).toBe(created.id);
         expect(summaries[0]?.firstTurnCommitment).toBe(created.firstTurnCommitment);
@@ -312,17 +315,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           { mapWidth: 20, mapHeight: 20, mapSeed: 'capacity-test-world' },
         );
         expect(campaign.maxPlayers).toBe(4);
-  
+
         await campaigns.joinCampaign(guests[0]!.user.id, campaign.id);
         await campaigns.joinCampaign(guests[1]!.user.id, campaign.id);
         await campaigns.joinCampaign(guests[2]!.user.id, campaign.id);
         await expect(campaigns.joinCampaign(guests[3]!.user.id, campaign.id)).rejects.toBeInstanceOf(
           AuthValidationError,
         );
-  
+
         let ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
         expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
-  
+
         await campaigns.leaveCampaign(guests[1]!.user.id, campaign.id);
         expect(await campaigns.listCampaignsForUser(guests[1]!.user.id)).toHaveLength(0);
         await campaigns.joinCampaign(guests[3]!.user.id, campaign.id);
