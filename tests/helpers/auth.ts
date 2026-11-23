@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createPostgresPersistence } from '@paper-wars/persistence';
+import type { createPostgresPersistence } from '@paper-wars/persistence';
 import { hashPassword, type AuthService, type AuthSession } from '@paper-wars/auth';
 
 export async function createEmailLoginUser(
