@@ -761,7 +761,12 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
 
       if (campaignChanged) {
         if (snapshot.rows[0] !== undefined) {
-          const state = await buildSnapshot(client, item.id, campaign.map_width, campaign.map_height);
+          const state = await buildSnapshot(
+            client,
+            item.id,
+            campaign.map_width,
+            campaign.map_height,
+          );
           await client.query(
             `UPDATE world_snapshots
              SET version = $2, state_schema_version = 1,
