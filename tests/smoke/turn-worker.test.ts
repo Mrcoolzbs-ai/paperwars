@@ -296,7 +296,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           visibility: string;
           recipient_country_id: string | null;
         }>(
-          'SELECT id, event_type, payload, visibility, recipient_country_id FROM game_events WHERE campaign_id = $1 AND turn_number = 1',
+          `SELECT id, event_type, payload, visibility, recipient_country_id
+           FROM game_events
+           WHERE campaign_id = $1 AND turn_number = 1`,
           [fixture.campaignId],
         );
         expect(events.rows).toEqual([
@@ -373,7 +375,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('rejects a private event that does not identify its recipient country', async () => {
+    it('rejects private events without a recipient country', async () => {
       const pool = getPool();
       const fixture = await createFixture(false);
       try {
