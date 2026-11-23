@@ -13,6 +13,7 @@
     availableSystems: [],
     pending: [],
     countryProfile: null,
+    constructionSelection: null,
     turnStatus: null,
     orderResults: [],
     turnRoomLoading: false,
@@ -872,6 +873,8 @@
     $('#country-intro').classList.remove('hidden');
     $('#country-builder').classList.remove('hidden');
     $('#country-card-host').classList.add('hidden');
+    $('#country-action-panel').classList.add('hidden');
+    state.constructionSelection = null;
   }
 
   async function loadCountryProfile() {
@@ -1071,6 +1074,67 @@
     if(!values?.length)return '<span class="country-culture-empty">Культура не задана</span>';
     return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
   }
+  function renderConstructionGrid() {
+    const host = $('#construction-grid');
+    const submit = $('#construction-submit');
+    if (!host || !state.countryProfile || !state.mapView) return;
+    const country = state.countryProfile;
+    const centerX = country.territory.centerX;
+    const centerY = country.territory.centerY;
+    const mine = state.mapView.countries.find((item) => item.isMine);
+    const ownedCells = mine?.cells || [];
+    host.replaceChildren();
+
+    for (let y = 0; y < 5; y += 1) {
+      for (let x = 0; x < 5; x += 1) {
+        const worldX = centerX - 2 + x;
+        const worldY = centerY - 2 + y;
+        const cell = ownedCells.find((item) => item.x === worldX && item.y === worldY);
+        const dryLand = mapIsLand(worldX, worldY);
+        const occupied = Boolean(cell?.buildingType);
+        const canBuild = Boolean(cell) && dryLand && !occupied && Number(cell?.population || 0) > 0;
+        const selected = state.constructionSelection?.x === x && state.constructionSelection?.y === y;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'construction-cell' +
+          (selected ? ' selected' : '') +
+          (occupied ? ' occupied' : '') +
+          (!dryLand ? ' water' : '');
+        button.disabled = !canBuild;
+        button.dataset.x = String(x);
+        button.dataset.y = String(y);
+        button.title = occupied
+          ? 'Клетка занята: ' + (buildingMeta[cell.buildingType]?.label || cell.buildingType)
+          : !dryLand ? 'Вода или река — строительство недоступно'
+          : !cell ? 'Клетка не принадлежит государству'
+          : Number(cell.population || 0) < 1 ? 'Нет свободного жителя'
+          : 'Свободная сухопутная клетка';
+        button.textContent = occupied
+          ? (cell.buildingType === 'gold_mine' ? 'З' : buildingMeta[cell.buildingType]?.short || '⌂')
+          : !dryLand ? '≈'
+          : canBuild ? '+'
+          : '·';
+        if (canBuild) {
+          button.addEventListener('click', () => {
+            state.constructionSelection = { x, y };
+            renderConstructionGrid();
+          });
+        }
+        const coordinate = document.createElement('small');
+        coordinate.textContent = x + ',' + y;
+        button.append(coordinate);
+        host.append(button);
+      }
+    }
+
+    const selection = state.constructionSelection;
+    $('#construction-selection').textContent = selection
+      ? 'Выбрана клетка ' + (selection.x + 1) + ':' + (selection.y + 1) +
+        ' · на ней будет размещено новое здание.'
+      : 'Выбери свободную сухопутную клетку.';
+    if (submit) submit.disabled = !selection;
+  }
+
   function renderFoundedCards(country) {
     const faithType = country.officialSystem.type;
     const system = country.officialSystem;
@@ -1188,13 +1252,16 @@
           '</section>' +
         '</div>' +
         '<section class="country-doc-inactive-actions" aria-live="polite">' +
-          '<strong>Игровые действия пока недоступны</strong>' +
-          '<p>Строительство, перемещение, колонизация и приказы появятся после подключения движка ходов.</p>' +
+          '<strong>Доступно строительство зданий</strong>' +
+          '<p>Дополнительные фабрики, поля, научные центры, храмы, казармы и башни можно строить сразу на свободных сухопутных клетках. Каждый объект занимает одного жителя. Остальные действия появятся после реализации соответствующих правил симуляции.</p>' +
         '</section>' +
         '<footer class="country-doc-footer">Территория 5 × 5 · центр ' +
           (country.territory.centerX ?? '—') + ', ' + (country.territory.centerY ?? '—') +
         '</footer>' +
       '</article>';
+    state.constructionSelection = null;
+    $('#country-action-panel').classList.remove('hidden');
+    renderConstructionGrid();
   }
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
     if (state.principles.length >= 10) {
@@ -1681,6 +1748,42 @@
     });
     $('#building-type').addEventListener('change', (event) => { state.selectedBuilding = event.target.value; });
     $('#country-form').addEventListener('submit', submitCountry);
+    $('#construction-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const selection = state.constructionSelection;
+      if (!state.campaign || !selection) return;
+      const submit = $('#construction-submit');
+      submit.disabled = true;
+      setMessage('#construction-message', '');
+      try {
+        const response = await request(
+          '/campaigns/' + encodeURIComponent(state.campaign.id) + '/countries/mine/buildings',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              buildingType: $('#construction-building-type').value,
+              x: selection.x,
+              y: selection.y,
+            }),
+          },
+        );
+        state.constructionSelection = null;
+        await loadCampaignMap();
+        await loadCountryProfile();
+        setMessage(
+          '#construction-message',
+          'Здание построено. Осталось жителей на клетке: ' + response.building.remainingResidents +
+            '. Снимок мира обновлён до версии ' + response.building.snapshotVersion + '.',
+          true,
+        );
+        showToast('Новое здание построено.');
+      } catch (error) {
+        setMessage('#construction-message', error.message || 'Не удалось построить здание.');
+        showToast(error.message || 'Не удалось построить здание.', true);
+      } finally {
+        renderConstructionGrid();
+      }
+    });
     $('#refresh-pending').addEventListener('click', loadPending);
   }
 
