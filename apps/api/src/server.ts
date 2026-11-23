@@ -2,6 +2,7 @@ import {
   createAuthService,
   createAccessTokenSigner,
   createCampaignService,
+  createChatService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence } from '@paper-wars/persistence';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
@@ -78,6 +79,7 @@ try {
     rulesetVersion,
     rngVersion,
   });
+  const chatService = createChatService({ pool: persistence.pool });
 
   app = createApp({
     logger: true,
@@ -85,6 +87,7 @@ try {
     rngVersion,
     authService,
     campaignService,
+    chatService,
     secureCookies: process.env['NODE_ENV'] === 'production',
   });
 

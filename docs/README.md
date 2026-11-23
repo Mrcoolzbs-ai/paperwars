@@ -17,6 +17,7 @@
 - [Разведка, руины, золото и доступ к находкам](architecture/discovery.md).
 - [Информационная видимость и DTO-проекции](architecture/information-visibility.md).
 - [Аутентификация и lifecycle кампании](architecture/authentication.md).
+- [Мировой чат и чат кампании](architecture/chat.md).
 
 ## Лор
 
