@@ -62,7 +62,7 @@ function createOrder(
     id: toId<'OrderId'>(randomUUID()),
     campaignId: toId<'CampaignId'>(campaignId),
     countryId: toId<'CountryId'>(options.countryId ?? countryId),
-    turnNumber: toId<'TurnNumber'>(1),
+    turnNumber: toTurnNumber(1),
     type,
     schemaVersion: options.schemaVersion ?? 1,
     status: 'finalized',
