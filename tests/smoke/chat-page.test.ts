@@ -23,7 +23,7 @@ describe('chat browser page', () => {
     expect(response.body).toContain('Shift+Enter');
     expect(response.body).toContain('/auth/vk/start');
     expect(response.body).toContain('/auth/vk/link');
-    expect(response.body).toContain('Войти через VK ID');
+    expect(response.body).toContain('Войти через ВКонтакте');
     expect(response.body).toContain('Резервный вход по email и паролю');
     expect(response.body).not.toContain('/auth/resend-verification');
     expect(response.body).not.toContain('verify-email');
