@@ -38,6 +38,17 @@ export interface CampaignOrderView {
   readonly updatedAt: Date;
 }
 
+export interface CampaignOrderResultView {
+  readonly id: string;
+  readonly turnNumber: number;
+  readonly type: string;
+  readonly schemaVersion: number;
+  readonly status: 'finalized' | 'discarded';
+  readonly resolutionStatus: 'accepted' | 'rejected' | 'superseded';
+  readonly resultCode: string;
+  readonly finalizedAt: Date | null;
+}
+
 export interface CreateCampaignOrderInput {
   readonly type: unknown;
   readonly schemaVersion?: unknown;
@@ -565,6 +576,68 @@ export async function listCampaignOrders(
     [campaignId, member.country_id],
   );
   return result.rows.map(toCampaignOrder);
+}
+
+/**
+ * Lists only the requesting member country's resolved order outcomes.
+ * Order payloads, result messages/data and country identifiers are not projected.
+ */
+export async function listCampaignOrderResults(
+  pool: Pool,
+  campaignId: string,
+  userId: string,
+): Promise<readonly CampaignOrderResultView[]> {
+  assertUuid(campaignId, 'campaign');
+  const membership = await pool.query<{ country_id: string | null; status: string }>(
+    'SELECT country_id, status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+    [campaignId, userId],
+  );
+  const member = membership.rows[0];
+  if (member?.status !== 'active') {
+    throw new CampaignTurnProcessingError(
+      'NOT_ACTIVE_MEMBER',
+      'Only an active campaign member can view order results',
+    );
+  }
+  if (member.country_id === null) {
+    throw new CampaignTurnProcessingError(
+      'COUNTRY_NOT_REGISTERED',
+      'Register a country before viewing order results',
+    );
+  }
+
+  const result = await pool.query<{
+    id: string;
+    turn_number: number;
+    order_type: string;
+    schema_version: number;
+    status: 'finalized' | 'discarded';
+    resolution_status: 'accepted' | 'rejected' | 'superseded';
+    result_code: string;
+    finalized_at: Date | null;
+  }>(
+    `SELECT id, turn_number, order_type, schema_version, status,
+            resolution_status, result_code, finalized_at
+     FROM orders
+     WHERE campaign_id = $1
+       AND country_id = $2
+       AND status IN ('finalized', 'discarded')
+       AND resolution_status IS NOT NULL
+     ORDER BY turn_number DESC, finalized_at DESC NULLS LAST, id DESC
+     LIMIT 100`,
+    [campaignId, member.country_id],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    turnNumber: row.turn_number,
+    type: row.order_type,
+    schemaVersion: row.schema_version,
+    status: row.status,
+    resolutionStatus: row.resolution_status,
+    resultCode: row.result_code,
+    finalizedAt: row.finalized_at,
+  }));
 }
 
 /** Creates an editable draft and withdraws any previous member confirmation. */
