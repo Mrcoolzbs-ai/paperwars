@@ -343,6 +343,16 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [fixture.campaignId, fixture.countryIds[0]],
         );
 
+        await expect(
+          confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!),
+        ).rejects.toMatchObject({ code: 'ORDERS_DEADLINE_PASSED' });
+        await expect(
+          createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+            type: 'construction',
+            payload: {},
+          }),
+        ).rejects.toMatchObject({ code: 'ORDERS_DEADLINE_PASSED' });
+
         const closed = await closeOrders(pool, fixture.campaignId);
         expect(closed).toMatchObject({
           turnNumber: 1,
