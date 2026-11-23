@@ -295,6 +295,27 @@
           </div>
         </div>
         <div id="country-card-host" class="founded-card-host hidden"></div>
+        <section id="country-action-panel" class="panel country-action-panel hidden">
+          <div class="panel-kicker">РАЗВИТИЕ ГОСУДАРСТВА</div>
+          <h2>Построить здание</h2>
+          <p class="muted">Выбери свободную сухопутную клетку своей территории 5×5. Каждое новое здание занимает одного жителя.</p>
+          <div id="construction-grid" class="construction-grid" aria-label="Территория страны 5 на 5"></div>
+          <div id="construction-selection" class="construction-selection">Выбери свободную клетку.</div>
+          <form id="construction-form" class="construction-form">
+            <label class="field"><span>Тип здания</span>
+              <select id="construction-building-type">
+                <option value="factory">Фабрика</option>
+                <option value="field">Поле</option>
+                <option value="science">Научный центр</option>
+                <option value="religious_building">Храм</option>
+                <option value="barracks">Казармы</option>
+                <option value="tower">Башня</option>
+              </select>
+            </label>
+            <button id="construction-submit" class="button button-primary" type="submit" disabled>Построить на выбранной клетке ↗</button>
+          </form>
+          <p id="construction-message" class="form-message" role="status"></p>
+        </section>
       </section>
 
       <section id="tab-admin" class="tab-panel hidden">
