@@ -8,6 +8,7 @@ import {
   verifyPassword,
 } from './password.js';
 import {
+  AuthValidationError,
   DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
   ExternalIdentityAlreadyLinkedError,
