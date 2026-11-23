@@ -971,7 +971,6 @@ export async function completeTurnJob(
   if (result.rowCount !== 1) throw new StaleTurnJobLeaseError();
 }
 
-
 export interface CampaignTurnStatusView {
   readonly campaignId: string;
   readonly status: 'active' | 'completed';
