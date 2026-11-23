@@ -155,6 +155,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaignId],
       );
 
+      const initialTurnCommitment =
+        campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment;
       const turnStatus = await app.inject({
         method: 'GET',
         url: `/campaigns/${campaignId}/turn`,
@@ -188,8 +190,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         countryId,
         ordersConfirmed: false,
         snapshotVersion: 3,
-        turnCommitment:
-          campaign.json<{ campaign: { firstTurnCommitment: string } }>().campaign.firstTurnCommitment,
+        turnCommitment: initialTurnCommitment,
         turnJobStatus: null,
       });
 
