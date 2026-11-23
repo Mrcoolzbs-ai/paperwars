@@ -126,7 +126,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(worldPost.json().message).toMatchObject({
           scope: 'world',
           campaignId: null,
-          authorLabel: 'Игрок ' + outsider.user.id.replace(/-/g, '').slice(0, 6).toUpperCase(),
+          authorLabel: outsider.user.displayName,
           message: 'Всем привет из мирового чата.',
           isMine: true,
         });
