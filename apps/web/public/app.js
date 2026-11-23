@@ -16,6 +16,9 @@
     constructionSelection: null,
     turnStatus: null,
     orderResults: [],
+    orders: [],
+    ordersLoading: false,
+    ordersError: '',
     turnRoomLoading: false,
     turnRoomError: '',
     orderResultsError: '',
@@ -463,6 +466,9 @@
     state.countryProfile = null;
     state.turnStatus = null;
     state.orderResults = [];
+    state.orders = [];
+    state.ordersLoading = false;
+    state.ordersError = '';
     state.turnRoomLoading = false;
     state.turnRoomError = '';
     $('#workspace-turn-label').textContent = 'СВЕРКА';
@@ -1019,6 +1025,164 @@
     }).join('');
   }
 
+  const demolitionOrderStatusLabels = {
+    draft: 'Черновик',
+    unconfirmed: 'Не подтверждён',
+    confirmed: 'Подтверждён',
+    finalized: 'Закрыт',
+    discarded: 'Отброшен',
+  };
+
+  const buildingLabelsForOrders = {
+    factory: 'Фабрика',
+    field: 'Поле',
+    gold_mine: 'Золотая шахта',
+    capital: 'Столица',
+    religious_building: 'Храм',
+    science: 'Научный центр',
+    barracks: 'Казармы',
+    tower: 'Башня',
+  };
+
+  async function loadCampaignOrders() {
+    if (!state.campaign || !state.turnStatus?.countryId) {
+      state.orders = [];
+      state.ordersError = '';
+      renderTurnOrders();
+      return;
+    }
+    const campaignId = state.campaign.id;
+    state.ordersLoading = true;
+    state.ordersError = '';
+    renderTurnOrders();
+    try {
+      const data = await request('/campaigns/' + encodeURIComponent(campaignId) + '/orders/mine');
+      if (state.campaign?.id !== campaignId) return;
+      state.orders = Array.isArray(data.orders) ? data.orders : [];
+    } catch (error) {
+      if (state.campaign?.id !== campaignId) return;
+      state.orders = [];
+      state.ordersError = error.message || 'Не удалось загрузить приказы.';
+    } finally {
+      if (state.campaign?.id === campaignId) {
+        state.ordersLoading = false;
+        renderTurnOrders();
+      }
+    }
+  }
+
+  function renderTurnOrders() {
+    const list = $('#turn-orders-list');
+    const select = $('#demolition-cell');
+    const addButton = $('#add-demolition-order');
+    const confirmButton = $('#confirm-turn-orders');
+    const pointsLabel = $('#action-points-label');
+    if (!list || !select || !addButton || !confirmButton || !pointsLabel) return;
+
+    const status = state.turnStatus;
+    const accepting = Boolean(status?.ordersAccepting && status.countryId);
+    const confirmed = Boolean(status?.ordersConfirmed);
+    const activeOrders = state.orders.filter((order) =>
+      ['draft', 'unconfirmed', 'confirmed'].includes(order.status),
+    );
+    const demolitionOrders = activeOrders.filter((order) => order.type === 'demolish_building');
+    const actionPointsUsed = demolitionOrders.length;
+    pointsLabel.textContent = 'Запланировано ' + actionPointsUsed + '/3 ОД';
+
+    const mine = state.mapView?.countries?.find((country) => country.isMine);
+    const availableCells = (mine?.cells || []).filter((cell) => Boolean(cell.buildingType));
+    const previousValue = select.value;
+    select.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = state.ordersLoading
+      ? 'Загрузка приказов…'
+      : availableCells.length
+        ? 'Выбери здание и клетку'
+        : 'Нет зданий для сноса';
+    select.append(placeholder);
+    for (const cell of availableCells) {
+      const option = document.createElement('option');
+      option.value = String(cell.x) + ',' + String(cell.y);
+      const buildingLabel = buildingLabelsForOrders[cell.buildingType] || cell.buildingType;
+      option.textContent = buildingLabel + ' · клетка ' + cell.x + ':' + cell.y;
+      select.append(option);
+    }
+    if ([...select.options].some((option) => option.value === previousValue)) {
+      select.value = previousValue;
+    }
+
+    const canAdd = accepting && !confirmed && actionPointsUsed < 3 &&
+      availableCells.length > 0 && !state.ordersLoading && !state.ordersError;
+    select.disabled = !canAdd;
+    addButton.disabled = !canAdd;
+    confirmButton.disabled = !accepting || confirmed || state.ordersLoading;
+
+    if (state.ordersLoading) {
+      list.innerHTML = '<div class="turn-empty"><strong>Загружаем твои приказы…</strong><p>Сверяем их с текущим ходом.</p></div>';
+      return;
+    }
+    if (state.ordersError) {
+      list.innerHTML = '<div class="turn-empty turn-empty-error"><strong>Не удалось загрузить приказы</strong><p>' + escapeHtml(state.ordersError) + '</p></div>';
+      return;
+    }
+    if (!status?.countryId) {
+      list.innerHTML = '<div class="turn-empty"><strong>Сначала основай государство</strong><p>После основания появится форма составления приказов.</p></div>';
+      return;
+    }
+    if (!state.orders.length) {
+      list.innerHTML = '<div class="turn-empty"><strong>Приказов пока нет</strong><p>Добавь снос здания или подтверди пустой набор приказов, если в этом ходу действий не требуется.</p></div>';
+      return;
+    }
+
+    list.replaceChildren();
+    for (const order of state.orders) {
+      const row = document.createElement('article');
+      row.className = 'turn-order-row';
+      const main = document.createElement('div');
+      main.className = 'turn-order-main';
+      const title = document.createElement('strong');
+      const x = order.payload && Number.isSafeInteger(order.payload.x) ? order.payload.x : null;
+      const y = order.payload && Number.isSafeInteger(order.payload.y) ? order.payload.y : null;
+      title.textContent = order.type === 'demolish_building'
+        ? 'Снос здания' + (x === null || y === null ? '' : ' · клетка ' + x + ':' + y)
+        : 'Неизвестный приказ · ' + order.type;
+      const meta = document.createElement('small');
+      meta.textContent = 'Ход ' + order.turnNumber + ' · схема ' + order.schemaVersion;
+      main.append(title, meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'turn-order-actions';
+      const statusLabel = document.createElement('span');
+      statusLabel.className = 'turn-order-status' + (order.status === 'confirmed' ? ' confirmed' : '');
+      statusLabel.textContent = demolitionOrderStatusLabels[order.status] || order.status;
+      actions.append(statusLabel);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'turn-order-delete';
+      remove.textContent = 'Удалить';
+      remove.disabled = !accepting || confirmed || !['draft', 'unconfirmed'].includes(order.status);
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try {
+          await request(
+            '/campaigns/' + encodeURIComponent(state.campaign.id) + '/orders/' + encodeURIComponent(order.id),
+            { method: 'DELETE' },
+          );
+          await loadTurnRoom();
+          setMessage('#turn-orders-message', 'Приказ удалён. Подтверждение набора, если оно было, отозвано.', true);
+        } catch (error) {
+          setMessage('#turn-orders-message', error.message || 'Не удалось удалить приказ.');
+          remove.disabled = false;
+        }
+      });
+      actions.append(remove);
+      row.append(main, actions);
+      list.append(row);
+    }
+  }
+
   async function loadTurnRoom() {
     if (!state.campaign) return;
     const campaignId = state.campaign.id;
@@ -1042,6 +1206,7 @@
       } else {
         state.orderResults = [];
       }
+      await loadCampaignOrders();
     } catch (error) {
       if (state.campaign?.id !== campaignId) return;
       state.turnStatus = null;
@@ -1602,6 +1767,64 @@
     });
 
     $('#refresh-open-campaigns').addEventListener('click', () => { void loadOpenCampaigns(); });
+    $('#refresh-turn-room').addEventListener('click', () => { void loadTurnRoom(); });
+
+    $('#demolition-order-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.campaign || !state.turnStatus?.ordersAccepting || state.turnStatus.ordersConfirmed) return;
+      const selected = $('#demolition-cell').value;
+      const [xText, yText] = selected.split(',');
+      const x = Number(xText);
+      const y = Number(yText);
+      if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) {
+        setMessage('#turn-orders-message', 'Выбери клетку со зданием.');
+        return;
+      }
+      const button = $('#add-demolition-order');
+      button.disabled = true;
+      setMessage('#turn-orders-message', '');
+      try {
+        await request('/campaigns/' + encodeURIComponent(state.campaign.id) + '/orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'demolish_building',
+            schemaVersion: 1,
+            payload: { x, y },
+          }),
+        });
+        await loadTurnRoom();
+        setMessage('#turn-orders-message', 'Приказ на снос добавлен. Он исполнится после подтверждения всеми участниками или по дедлайну.', true);
+      } catch (error) {
+        setMessage('#turn-orders-message', error.message || 'Не удалось добавить приказ.');
+      } finally {
+        renderTurnOrders();
+      }
+    });
+
+    $('#confirm-turn-orders').addEventListener('click', async () => {
+      if (!state.campaign || !state.turnStatus?.ordersAccepting || state.turnStatus.ordersConfirmed) return;
+      const button = $('#confirm-turn-orders');
+      button.disabled = true;
+      setMessage('#turn-orders-message', '');
+      try {
+        const data = await request(
+          '/campaigns/' + encodeURIComponent(state.campaign.id) + '/orders/confirm',
+          { method: 'POST' },
+        );
+        await loadTurnRoom();
+        setMessage(
+          '#turn-orders-message',
+          data.turnQueued
+            ? 'Все участники подтвердили приказы. Ход поставлен в очередь на обработку.'
+            : 'Твои приказы подтверждены. Ожидаем подтверждения остальных участников или дедлайна.',
+          true,
+        );
+      } catch (error) {
+        setMessage('#turn-orders-message', error.message || 'Не удалось подтвердить приказы.');
+      } finally {
+        renderTurnOrders();
+      }
+    });
 
     $('#logout-button').addEventListener('click', async () => {
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
