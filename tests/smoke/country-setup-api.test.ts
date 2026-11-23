@@ -68,7 +68,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rngVersion: 'rng-v1',
       });
       const admin = await createEmailLoginUser(
-        current.pool,
+        persistence.pool,
         auth,
         `social-system-admin-${randomUUID()}@example.test`,
         'social system api admin password',
