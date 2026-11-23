@@ -12,7 +12,8 @@ export type CampaignTurnProcessingErrorCode =
   | 'INVALID_ORDER'
   | 'COUNTRY_NOT_REGISTERED'
   | 'ORDER_NOT_FOUND'
-  | 'ORDER_NOT_EDITABLE';
+  | 'ORDER_NOT_EDITABLE'
+  | 'ORDERS_DEADLINE_PASSED';
 
 export class CampaignTurnProcessingError extends Error {
   constructor(
@@ -133,8 +134,11 @@ async function lockWritableOrderContext(
     status: string;
     current_turn: number;
     orders_locked: boolean;
+    deadline_elapsed: boolean;
   }>(
-    'SELECT id, status, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR SHARE',
+    `SELECT id, status, current_turn, orders_locked,
+            deadline_at IS NOT NULL AND deadline_at <= clock_timestamp() AS deadline_elapsed
+     FROM campaigns WHERE id = $1 FOR SHARE`,
     [campaignId],
   );
   const row = campaign.rows[0];
@@ -148,6 +152,12 @@ async function lockWritableOrderContext(
     throw new CampaignTurnProcessingError(
       'ORDERS_ALREADY_LOCKED',
       'Orders for this turn are already locked',
+    );
+  }
+  if (row.deadline_elapsed) {
+    throw new CampaignTurnProcessingError(
+      'ORDERS_DEADLINE_PASSED',
+      'The turn deadline has passed; late order changes are not accepted',
     );
   }
 
@@ -253,7 +263,13 @@ export async function confirmCampaignOrders(
       id: string;
       status: string;
       orders_locked: boolean;
-    }>('SELECT id, status, orders_locked FROM campaigns WHERE id = $1 FOR SHARE', [campaignId]);
+      deadline_elapsed: boolean;
+    }>(
+      `SELECT id, status, orders_locked,
+              deadline_at IS NOT NULL AND deadline_at <= clock_timestamp() AS deadline_elapsed
+       FROM campaigns WHERE id = $1 FOR SHARE`,
+      [campaignId],
+    );
     const row = campaign.rows[0];
     if (row === undefined) {
       throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Campaign does not exist');
@@ -265,6 +281,12 @@ export async function confirmCampaignOrders(
       throw new CampaignTurnProcessingError(
         'ORDERS_ALREADY_LOCKED',
         'Orders for this turn are already locked',
+      );
+    }
+    if (row.deadline_elapsed) {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_DEADLINE_PASSED',
+        'The turn deadline has passed; late confirmations are not accepted',
       );
     }
 
