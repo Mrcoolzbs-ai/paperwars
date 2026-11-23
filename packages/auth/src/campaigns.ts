@@ -123,14 +123,6 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
 
     async confirmOrders(userId, campaignId) {
       try {
-        return await closeOrders(options.pool, campaignId);
-      } catch (error) {
-        if (!(error instanceof CampaignTurnProcessingError)) throw error;
-        if (error.code === 'ORDERS_ALREADY_LOCKED') return null;
-        if (error.code !== 'ORDERS_NOT_READY') throw error;
-      }
-
-      try {
         await confirmCampaignOrders(options.pool, campaignId, userId);
       } catch (error) {
         if (
@@ -139,6 +131,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         ) {
           throw error;
         }
+        return closeOrders(options.pool, campaignId);
       }
 
       try {
@@ -153,7 +146,6 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         throw error;
       }
     },
-
     async createCampaign(ownerUserId, nameInput, mapSize) {
       const turnDurationHours = mapSize?.turnDurationHours ?? 24;
       if (![1, 2, 4, 8, 12, 24, 48, 72, 168].includes(turnDurationHours)) {
