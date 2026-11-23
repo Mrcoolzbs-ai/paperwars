@@ -446,7 +446,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-
     it('keeps world chat global and campaign chat limited to active members', async () => {
       const pool = getPool();
       const auth = createAuthService({
@@ -472,11 +471,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         `chat-outsider-${randomUUID()}@example.test`,
         'chat outsider integration password',
       );
-      const campaign = await campaigns.createCampaign(
-        owner.user.id,
-        `chat-room-${randomUUID()}`,
-        { mapWidth: 40, mapHeight: 30, mapSeed: 'chat-room-test' },
-      );
+      const campaign = await campaigns.createCampaign(owner.user.id, `chat-room-${randomUUID()}`, {
+        mapWidth: 40,
+        mapHeight: 30,
+        mapSeed: 'chat-room-test',
+      });
       await pool.query('DELETE FROM turn_jobs WHERE campaign_id = $1', [campaign.id]);
       const app = createApp({
         authService: auth,
@@ -507,8 +506,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         expect(worldPost.json().message).toMatchObject({
           scope: 'world',
           campaignId: null,
-          authorLabel:
-            'Игрок ' + outsider.user.id.replace(/-/g, '').slice(0, 6).toUpperCase(),
+          authorLabel: 'Игрок ' + outsider.user.id.replace(/-/g, '').slice(0, 6).toUpperCase(),
           message: 'Всем привет из мирового чата.',
           isMine: true,
         });
