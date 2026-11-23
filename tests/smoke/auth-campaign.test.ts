@@ -68,7 +68,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('registers, normalizes email, logs in and rotates refresh tokens with reuse detection', async () => {
+    it(
+      'registers, normalizes email, logs in and rotates refresh tokens with reuse detection',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -195,7 +197,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
     });
 
-    it('creates a campaign, membership and the first committed seed in one transaction', async () => {
+    it(
+      'creates a campaign, membership and the first committed seed in one transaction',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
@@ -265,7 +269,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(summaries[0]?.mapSeed).toBe('repeatable-world-test');
     });
 
-    it('enforces one player slot per 100 map cells and frees slots when a player leaves', async () => {
+    it(
+      'enforces one player slot per 100 map cells and frees slots when a player leaves',
+      async () => {
       const current = getPersistence();
       const auth = createAuthService({
         pool: current.pool,
