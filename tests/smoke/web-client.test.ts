@@ -70,8 +70,8 @@ describe('browser client', () => {
     expect(script.body).toContain('/campaigns');
     expect(script.body).toContain("'/chat/world'");
     expect(script.body).toContain("'/chat'");
-    expect(script.body).toContain('NOT_ACTIVE_CAMPAIGN_MEMBER');
-    expect(script.body).toContain('CHAT_RATE_LIMITED');
+    expect(script.body).toContain('Доступ к чату кампании есть только у активных участников.');
+    expect(script.body).toContain('Слишком много сообщений подряд. Подожди несколько секунд.');
     const mapRenderer = script.body.slice(
       script.body.indexOf('function drawBuildingMapIcon'),
       script.body.indexOf(
