@@ -243,7 +243,8 @@ function registerAuthRoutes(
           challenge.user.email,
           challenge.verificationToken,
         );
-      } catch {
+      } catch (error) {
+        request.log.error({ err: error }, 'Registration verification email delivery failed');
         return reply.code(503).send({
           error: 'VERIFICATION_EMAIL_FAILED',
           message: 'Не удалось отправить письмо. Попробуйте запросить его повторно.',
@@ -273,7 +274,8 @@ function registerAuthRoutes(
             challenge.user.email,
             challenge.verificationToken,
           );
-        } catch {
+        } catch (error) {
+          request.log.error({ err: error }, 'Resent verification email delivery failed');
           return reply.code(503).send({ error: 'VERIFICATION_EMAIL_FAILED' });
         }
       }
