@@ -154,14 +154,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers: { authorization: `Bearer ${guest.accessToken}` },
       });
       expect(openLobby.statusCode).toBe(200);
-      expect(
-        openLobby.json<{ campaigns: Array<{ id: string; playerCount: number }> }>().campaigns,
-      ).toContainEqual(
-        expect.objectContaining({
+      expect(openLobby.json<{ campaigns: Array<{ id: string; playerCount: number }> }>().campaigns)
+        .toContainEqual(expect.objectContaining({
           id: campaign.json<{ campaign: { id: string } }>().campaign.id,
           playerCount: 1,
-        }),
-      );
+        }));
       const joined = await app.inject({
         method: 'POST',
         url: `/campaigns/${campaign.json<{ campaign: { id: string } }>().campaign.id}/join`,
@@ -173,13 +170,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         url: '/campaigns/open',
         headers: { authorization: `Bearer ${guest.accessToken}` },
       });
-      expect(
-        guestLobbyAfterJoin.json<{ campaigns: Array<{ id: string }> }>().campaigns,
-      ).not.toContainEqual(
-        expect.objectContaining({
+      expect(guestLobbyAfterJoin.json<{ campaigns: Array<{ id: string }> }>().campaigns)
+        .not.toContainEqual(expect.objectContaining({
           id: campaign.json<{ campaign: { id: string } }>().campaign.id,
-        }),
-      );
+        }));
 
       const campaignList = await app.inject({
         method: 'GET',
