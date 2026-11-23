@@ -34,7 +34,6 @@ interface VkTokenResponse {
 interface VkUserInfoResponse {
   readonly user?: {
     readonly user_id?: unknown;
-    readonly email?: unknown;
   };
 }
 
@@ -115,7 +114,6 @@ export function createVkAuthorizationStart(
   url.searchParams.set('redirect_uri', options.redirectUri);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('sdk_type', 'vkid');
-  url.searchParams.set('scope', 'email');
   url.searchParams.set('state', state);
   url.searchParams.set('code_challenge', codeChallenge);
   url.searchParams.set('code_challenge_method', 's256');
@@ -195,10 +193,8 @@ export async function completeVkAuthorization(
   if (infoUserId !== undefined && String(infoUserId) !== providerUserId) {
     throw new Error('VK ID user identity did not match the token');
   }
-  const email = userInfo.user?.email;
   return {
     providerUserId,
-    ...(typeof email === 'string' && email.trim().length > 0 ? { email: email.trim() } : {}),
     ...(stateValue.userId === undefined ? {} : { linkUserId: stateValue.userId }),
   };
 }
