@@ -311,6 +311,27 @@ export async function confirmCampaignOrders(
       );
     }
 
+    const confirmedMembership = await client.query<{ user_id: string }>(
+      `UPDATE campaign_memberships
+       SET orders_confirmed = TRUE
+       WHERE campaign_id = $1
+         AND user_id = $2
+         AND status = 'active'
+         AND EXISTS (
+           SELECT 1 FROM campaigns
+           WHERE id = $1
+             AND (deadline_at IS NULL OR deadline_at > clock_timestamp())
+         )
+       RETURNING user_id`,
+      [campaignId, userId],
+    );
+    if (confirmedMembership.rowCount !== 1) {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_DEADLINE_PASSED',
+        'The turn deadline has passed; late confirmations are not accepted',
+      );
+    }
+
     await client.query(
       `UPDATE orders
        SET status = 'confirmed', updated_at = clock_timestamp()
@@ -321,12 +342,6 @@ export async function confirmCampaignOrders(
          )
          AND status IN ('draft', 'unconfirmed')`,
       [campaignId, member.country_id],
-    );
-    await client.query(
-      `UPDATE campaign_memberships
-       SET orders_confirmed = TRUE
-       WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
-      [campaignId, userId],
     );
 
     await client.query('COMMIT');
