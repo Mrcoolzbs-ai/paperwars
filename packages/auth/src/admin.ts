@@ -1,5 +1,9 @@
 import type { Pool } from 'pg';
-import { closeOrders, type ClosedTurnJob } from '@paper-wars/persistence';
+import {
+  CampaignTurnProcessingError,
+  closeOrders,
+  type ClosedTurnJob,
+} from '@paper-wars/persistence';
 
 export interface AdminOverview {
   readonly users: readonly Record<string, unknown>[];
@@ -134,9 +138,7 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
       );
       const campaign = campaignResult.rows[0];
       if (campaign === undefined) {
-        const error = new Error('Campaign does not exist') as Error & { code: string };
-        error.code = 'CAMPAIGN_NOT_FOUND';
-        throw error;
+        throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Campaign does not exist');
       }
 
       const [
