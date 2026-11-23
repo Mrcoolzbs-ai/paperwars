@@ -15,6 +15,22 @@ if (!/<script\b[^>]*src=["']\/app\.js["'][^>]*><\/script>/i.test(html)) {
 const browserScript = await readFile(resolve(source, 'app.js'), 'utf8');
 new Script(browserScript, { filename: 'apps/web/public/app.js' });
 
+for (const marker of [
+  'id="tab-turn"',
+  'id="turn-status-content"',
+  'id="order-results-list"',
+  'id="refresh-turn-room"',
+]) {
+  if (!html.includes(marker)) {
+    throw new Error(`The campaign turn room is missing required markup: ${marker}`);
+  }
+}
+for (const endpoint of ["'/turn'", "'/orders/results'"]) {
+  if (!browserScript.includes(endpoint)) {
+    throw new Error(`The campaign turn room is missing its API request: ${endpoint}`);
+  }
+}
+
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(source, output, { recursive: true });
