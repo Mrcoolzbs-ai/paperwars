@@ -145,7 +145,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       expect(backupLogin.statusCode).toBe(200);
 
-
       const me = await app.inject({
         method: 'GET',
         url: '/auth/me',

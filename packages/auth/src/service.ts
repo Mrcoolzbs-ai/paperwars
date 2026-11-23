@@ -211,10 +211,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           email: string | null;
           display_name: string;
           status: string;
-        }>(
-          'SELECT id, email, display_name, status FROM users WHERE id = $1 FOR UPDATE',
-          [row.id],
-        );
+        }>('SELECT id, email, display_name, status FROM users WHERE id = $1 FOR UPDATE', [row.id]);
         const userRow = locked.rows[0];
         if (userRow === undefined || userRow.status !== 'active') {
           throw new InvalidCredentialsError();
@@ -502,10 +499,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           throw new RefreshTokenReuseDetectedError();
         }
 
-        if (
-          row.expires_at.getTime() <= now.getTime() ||
-          row.user_status !== 'active'
-        ) {
+        if (row.expires_at.getTime() <= now.getTime() || row.user_status !== 'active') {
           await revokeFamily(client, row.family_id, now);
           await client.query('COMMIT');
           transactionOpen = false;
