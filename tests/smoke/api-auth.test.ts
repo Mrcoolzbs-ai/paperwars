@@ -155,6 +155,44 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaignId],
       );
 
+      const turnStatus = await app.inject({
+        method: 'GET',
+        url: `/campaigns/${campaignId}/turn`,
+        headers: { authorization: `Bearer ${body.accessToken}` },
+      });
+      expect(turnStatus.statusCode).toBe(200);
+      expect(
+        turnStatus.json<{
+          turn: {
+            campaignId: string;
+            status: string;
+            currentTurn: number;
+            ordersLocked: boolean;
+            ordersAccepting: boolean;
+            deadlineAt: string | null;
+            turnDurationHours: number;
+            countryId: string | null;
+            ordersConfirmed: boolean;
+            snapshotVersion: number | null;
+            turnCommitment: string | null;
+            turnJobStatus: string | null;
+          };
+        }>().turn,
+      ).toMatchObject({
+        campaignId,
+        status: 'active',
+        currentTurn: 1,
+        ordersLocked: false,
+        ordersAccepting: true,
+        turnDurationHours: 24,
+        countryId,
+        ordersConfirmed: false,
+        snapshotVersion: 3,
+        turnCommitment: campaign.json<{ campaign: { firstTurnCommitment: string } }>()
+          .campaign.firstTurnCommitment,
+        turnJobStatus: null,
+      });
+
       const createdOrder = await app.inject({
         method: 'POST',
         url: `/campaigns/${campaignId}/orders`,
@@ -249,6 +287,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { name: 'private' },
       });
       expect(noAuth.statusCode).toBe(401);
+
+      const noTurnAccess = await app.inject({
+        method: 'GET',
+        url: `/campaigns/${randomUUID()}/turn`,
+      });
+      expect(noTurnAccess.statusCode).toBe(401);
 
       const noConfirm = await app.inject({
         method: 'POST',
