@@ -197,9 +197,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         displayName: nickname,
       });
 
-      const cleared = await auth.updateProfile(session.user.id, nickname, null);
-      expect(cleared).toMatchObject({ email: null, hasPassword: false });
-      await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
+        const cleared = await auth.updateProfile(session.user.id, nickname, null);
+        expect(cleared).toMatchObject({ email: null, hasPassword: false });
+        await expect(auth.login(email, password)).rejects.toBeInstanceOf(InvalidCredentialsError);
     });
 
     it(
