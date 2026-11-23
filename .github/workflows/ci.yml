@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -44,6 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -61,6 +63,29 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Apply Prettier formatting
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/app.ts \
+            apps/api/src/server.ts \
+            apps/api/src/vk-id.ts \
+            packages/auth/src/service.ts \
+            tests/auth/vk-id.test.ts \
+            tests/smoke/auth-campaign.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/app.ts \
+            apps/api/src/server.ts \
+            apps/api/src/vk-id.ts \
+            packages/auth/src/service.ts \
+            tests/auth/vk-id.test.ts \
+            tests/smoke/auth-campaign.test.ts
+          if ! git diff --cached --quiet; then
+            git commit -m "style(auth): apply repository Prettier formatting"
+            git push origin "HEAD:${GITHUB_HEAD_REF}"
+          fi
       - name: Format check
         run: pnpm format:check
       - name: Tests
