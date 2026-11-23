@@ -426,9 +426,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       try {
         await client.query('BEGIN');
         const user = await client.query<{ id: string }>(
-          `INSERT INTO users (email, password_hash)
-           VALUES ($1, $2) RETURNING id`,
-          [`schema-version-${randomUUID()}@example.test`, 'test-hash'],
+          `INSERT INTO users (email, password_hash, display_name)
+           VALUES ($1, $2, $3) RETURNING id`,
+          [
+            `schema-version-${randomUUID()}@example.test`,
+            'test-hash',
+            `SchemaTest-${randomUUID().slice(0, 8)}`,
+          ],
         );
         const userId = user.rows[0]?.id;
         if (userId === undefined) throw new Error('User insert did not return id');
