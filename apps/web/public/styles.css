@@ -320,3 +320,266 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
     flex-basis: 88px;
   }
 }
+
+
+/* Turn room: live campaign state and member-scoped order history. */
+.turn-section-intro {
+  align-items: center;
+  gap: 18px;
+}
+.turn-room-layout {
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+  gap: 18px;
+  align-items: start;
+}
+.turn-room-panel {
+  min-width: 0;
+  height: 100%;
+}
+.turn-live-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid #536c58;
+  color: #49654d;
+  font: 700 9px/1 "DM Mono", monospace;
+  letter-spacing: .12em;
+}
+.turn-live-mark i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5a9a68;
+  box-shadow: 0 0 0 3px rgba(90,154,104,.14);
+}
+.turn-status-hero {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(18px, 2.4vw, 27px);
+  border: 1px solid #26372b;
+  background:
+    radial-gradient(circle at 88% 10%, rgba(194,158,83,.17), transparent 34%),
+    linear-gradient(145deg, #17241c, #223126);
+  color: #f5f0e4;
+}
+.turn-status-hero::after {
+  content: "PW";
+  position: absolute;
+  right: -8px;
+  bottom: -31px;
+  color: rgba(255,255,255,.045);
+  font: 900 142px/1 Georgia, serif;
+  pointer-events: none;
+}
+.turn-status-topline,
+.turn-status-foot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.turn-overline {
+  color: #b5bda9;
+  font: 700 9px/1.3 "DM Mono", monospace;
+  letter-spacing: .16em;
+}
+.turn-number {
+  position: relative;
+  z-index: 1;
+  margin: 19px 0 4px;
+  color: #d7d2c1;
+  font: 700 12px/1.25 "DM Mono", monospace;
+  letter-spacing: .13em;
+}
+.turn-number strong {
+  display: block;
+  margin-top: 2px;
+  color: #f2e7c9;
+  font: 400 clamp(52px, 8vw, 76px)/.98 Georgia, serif;
+  letter-spacing: -.045em;
+}
+.turn-status-hero > p {
+  position: relative;
+  z-index: 1;
+  margin: 12px 0 19px;
+  color: #cbd2c8;
+  font: 13px/1.5 Arial, sans-serif;
+}
+.turn-state-pill,
+.result-state-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid #a7ad9b;
+  color: #dbe2d7;
+  font: 700 9px/1.25 "DM Mono", monospace;
+  letter-spacing: .05em;
+  text-align: center;
+}
+.turn-state-pill.active,
+.turn-state-pill.open,
+.turn-state-pill.confirmed {
+  border-color: #82a987;
+  background: rgba(106,157,111,.16);
+  color: #d9eed9;
+}
+.turn-state-pill.complete {
+  border-color: #d2b66f;
+  color: #f3e4bc;
+}
+.turn-state-pill.closed,
+.turn-state-pill.waiting {
+  border-color: #a98d5e;
+  background: rgba(169,141,94,.13);
+  color: #f0dfbf;
+}
+.turn-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 11px;
+}
+.turn-metric {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 83px;
+  padding: 12px 13px;
+  border: 1px solid #d8d5c9;
+  background: #f7f5ed;
+}
+.turn-metric > span {
+  color: #667064;
+  font: 700 8px/1.35 "DM Mono", monospace;
+  letter-spacing: .1em;
+}
+.turn-metric > strong {
+  color: #20271f;
+  font: 600 13px/1.35 Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+.order-results-list {
+  display: grid;
+  gap: 0;
+}
+.order-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, .9fr);
+  align-items: center;
+  gap: 13px;
+  padding: 13px 0;
+  border-bottom: 1px solid #dedbcf;
+}
+.order-result-row:first-child { padding-top: 2px; }
+.order-result-row:last-child { border-bottom: 0; }
+.order-result-main,
+.order-result-outcome {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.order-result-main > strong {
+  color: #20271f;
+  font: 700 13px/1.3 Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+.order-result-main > small {
+  color: #77796e;
+  font: 10px/1.4 "DM Mono", monospace;
+}
+.order-result-outcome {
+  justify-items: start;
+}
+.result-state-pill {
+  border-color: #777d70;
+  background: #efeee7;
+  color: #454c43;
+}
+.result-state-pill.accepted {
+  border-color: #6b8d70;
+  background: #e5eee3;
+  color: #315b39;
+}
+.result-state-pill.rejected {
+  border-color: #b57c69;
+  background: #f4e8e2;
+  color: #8b4534;
+}
+.result-state-pill.superseded {
+  border-color: #9a8d6a;
+  background: #f1eedf;
+  color: #71613c;
+}
+.order-result-outcome code {
+  max-width: 100%;
+  padding: 3px 5px;
+  background: #eeece3;
+  color: #51584e;
+  font: 10px/1.35 "DM Mono", monospace;
+  overflow-wrap: anywhere;
+}
+.order-result-outcome time {
+  color: #818175;
+  font: 10px/1.3 Arial, sans-serif;
+}
+.turn-empty {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-height: 120px;
+  align-content: center;
+  padding: 18px;
+  border: 1px dashed #b9b9aa;
+  background: #f5f3ea;
+  color: #2c332b;
+}
+.turn-empty strong {
+  font: 700 13px/1.35 Arial, sans-serif;
+}
+.turn-empty p {
+  max-width: 460px;
+  margin: 0;
+  color: #72766c;
+  font: 12px/1.5 Arial, sans-serif;
+}
+.turn-empty-error {
+  border-color: #bd9384;
+  background: #f6eeea;
+}
+.turn-loading-mark {
+  color: #788a70;
+  font: 26px/1 Georgia, serif;
+}
+.turn-privacy-note {
+  margin: 13px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #dedbcf;
+  color: #797b70;
+  font: 10px/1.55 Arial, sans-serif;
+}
+#refresh-turn-room:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+@media (max-width: 900px) {
+  .turn-room-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .turn-section-intro { align-items: flex-start; flex-direction: column; }
+  .turn-section-intro .button { width: 100%; }
+  .turn-metric-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
+  .turn-metric { min-height: 78px; padding: 10px; }
+  .turn-metric > strong { font-size: 12px; }
+  .order-result-row { grid-template-columns: 1fr; gap: 8px; }
+  .order-result-outcome { grid-template-columns: auto 1fr; align-items: center; }
+  .order-result-outcome time { grid-column: 1 / -1; }
+  .turn-status-foot { justify-content: flex-start; }
+}
