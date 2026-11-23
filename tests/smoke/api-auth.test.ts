@@ -210,21 +210,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(temporaryOrder.statusCode).toBe(201);
       expect(deletedOrder.statusCode).toBe(204);
 
-      await persistence!.pool.query(
-        `INSERT INTO world_snapshots (
-           campaign_id, turn_number, version, state_schema_version, ruleset_version, state
-         ) VALUES ($1, 1, 3, 1, 'baseline-v1', '{}'::jsonb)`,
-        [campaignId],
-      );
-      await persistence!.pool.query(
-        `UPDATE campaigns
-         SET orders_locked = FALSE,
-             orders_locked_at = NULL,
-             deadline_at = clock_timestamp() + INTERVAL '1 hour'
-         WHERE id = $1`,
-        [campaignId],
-      );
-
       const confirmation = await app.inject({
         method: 'POST',
         url: `/campaigns/${campaignId}/orders/confirm`,
