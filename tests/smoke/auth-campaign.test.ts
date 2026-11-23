@@ -271,9 +271,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(returning.kind).toBe('session');
       if (returning.kind !== 'session') throw new Error('Verified VK identity should sign in');
 
-      await expect(
-        auth.signInWithVk('vk-user-1002', vkEmail),
-      ).rejects.toBeInstanceOf(ExternalIdentityEmailConflictError);
+      await expect(auth.signInWithVk('vk-user-1002', vkEmail)).rejects.toBeInstanceOf(
+        ExternalIdentityEmailConflictError,
+      );
 
       const ownerChallenge = await auth.register(
         `vk-link-owner-${randomUUID()}@example.test`,
@@ -283,10 +283,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await auth.linkVkIdentity(owner.user.id, 'vk-user-2001');
       const linkedLogin = await auth.signInWithVk('vk-user-2001', undefined);
       expect(linkedLogin.kind).toBe('session');
-      await expect(
-        auth.linkVkIdentity(verified.user.id, 'vk-user-2001'),
-      ).rejects.toBeInstanceOf(ExternalIdentityAlreadyLinkedError);
+      await expect(auth.linkVkIdentity(verified.user.id, 'vk-user-2001')).rejects.toBeInstanceOf(
+        ExternalIdentityAlreadyLinkedError,
+      );
     });
-
   },
 );

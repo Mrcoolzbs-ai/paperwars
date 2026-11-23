@@ -79,9 +79,12 @@ const vkIsConfigured = [vkAppId, vkRedirectUri, vkCookieSecret].some(
 let vkId: { appId: string; redirectUri: string; cookieSecret: Buffer } | undefined;
 if (vkIsConfigured) {
   if (
-    vkAppId === undefined || vkAppId.trim().length === 0 ||
-    vkRedirectUri === undefined || vkRedirectUri.trim().length === 0 ||
-    vkCookieSecret === undefined || !/^[a-f0-9]{64}$/i.test(vkCookieSecret)
+    vkAppId === undefined ||
+    vkAppId.trim().length === 0 ||
+    vkRedirectUri === undefined ||
+    vkRedirectUri.trim().length === 0 ||
+    vkCookieSecret === undefined ||
+    !/^[a-f0-9]{64}$/i.test(vkCookieSecret)
   ) {
     throw new Error(
       'Configure VK_ID_APP_ID, VK_ID_REDIRECT_URI and a 64-character VK_ID_COOKIE_SECRET together',

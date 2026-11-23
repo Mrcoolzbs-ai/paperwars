@@ -20,11 +20,7 @@ import { createSimulationEngine } from '@paper-wars/simulation';
 import { CHAT_PAGE_HTML } from './chat-page.js';
 import type { VerificationEmailSender } from './email.js';
 import { VERIFY_EMAIL_PAGE_HTML } from './verify-email-page.js';
-import {
-  completeVkAuthorization,
-  createVkAuthorizationStart,
-  type VkIdOptions,
-} from './vk-id.js';
+import { completeVkAuthorization, createVkAuthorizationStart, type VkIdOptions } from './vk-id.js';
 
 export interface CreateAppOptions {
   readonly logger?: boolean;
@@ -338,11 +334,7 @@ function registerVkRoutes(
       const code = query['code'];
       const state = query['state'];
       const deviceId = query['device_id'];
-      if (
-        typeof code !== 'string' ||
-        typeof state !== 'string' ||
-        typeof deviceId !== 'string'
-      ) {
+      if (typeof code !== 'string' || typeof state !== 'string' || typeof deviceId !== 'string') {
         throw new AuthValidationError('VK ID callback is incomplete');
       }
       const result = await completeVkAuthorization(vkId, {

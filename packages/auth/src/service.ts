@@ -165,7 +165,6 @@ async function revokeFamily(client: PoolClient, familyId: string, at: Date): Pro
   );
 }
 
-
 interface EmailVerificationTokenRow {
   readonly id: string;
   readonly user_id: string;
@@ -223,7 +222,6 @@ async function maybeIssueEmailVerificationChallenge(
   }
   return issueEmailVerificationChallenge(client, user, now, ttlSeconds);
 }
-
 
 export function createAuthService(options: AuthServiceOptions): AuthService {
   if (

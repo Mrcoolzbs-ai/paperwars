@@ -39,9 +39,7 @@ interface VkUserInfoResponse {
 }
 
 function signPayload(encodedPayload: string, secret: Buffer): Buffer {
-  return createHmac('sha256', secret)
-    .update(`paperwars-vkid:${encodedPayload}`, 'utf8')
-    .digest();
+  return createHmac('sha256', secret).update(`paperwars-vkid:${encodedPayload}`, 'utf8').digest();
 }
 
 function encodeState(payload: VkStatePayload, secret: Buffer): string {
