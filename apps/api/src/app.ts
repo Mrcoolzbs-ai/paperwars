@@ -87,7 +87,7 @@ function getBearerToken(request: FastifyRequest): string {
   if (typeof authorization !== 'string') {
     throw new UnauthenticatedError();
   }
-  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+  const match = /^***;
   if (match?.[1] === undefined) {
     throw new UnauthenticatedError();
   }
@@ -354,11 +354,7 @@ function registerCampaignRoutes(
     async (request, reply) => {
       try {
         const user = await authService.authenticateAccessToken(getBearerToken(request));
-        await campaignService.deleteOrder(
-          user.id,
-          getCampaignId(request),
-          request.params.orderId,
-        );
+        await campaignService.deleteOrder(user.id, getCampaignId(request), request.params.orderId);
         return reply.code(204).send();
       } catch (error) {
         return sendAuthError(error, reply);
