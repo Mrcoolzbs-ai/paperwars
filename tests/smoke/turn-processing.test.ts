@@ -118,7 +118,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('confirms each member's drafts, atomically finalizes the orders and creates a generation zero job', async () => {
+    it('confirms member drafts, finalizes orders and creates a generation zero job', async () => {
       const pool = getPool();
       const fixture = await createFixture(2);
       try {
