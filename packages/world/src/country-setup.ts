@@ -653,13 +653,8 @@ async function buildSnapshot(
  * Campaigns whose first turn has already been queued are left untouched.
  */
 export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
-  const campaigns = await pool.query<{
-    readonly id: string;
-    readonly map_width: number;
-    readonly map_height: number;
-    readonly map_seed: string;
-  }>(
-    `SELECT campaign.id, campaign.map_width, campaign.map_height, campaign.map_seed
+  const campaigns = await pool.query<{ readonly id: string }>(
+    `SELECT campaign.id
      FROM campaigns AS campaign
      WHERE campaign.current_turn = 1
        AND campaign.map_width IS NOT NULL
