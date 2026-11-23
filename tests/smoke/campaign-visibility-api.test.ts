@@ -12,6 +12,15 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
+async function registerVerified(
+  auth: ReturnType<typeof createAuthService>,
+  email: string,
+  password: string,
+) {
+  const challenge = await auth.register(email, password);
+  return auth.verifyEmail(challenge.verificationToken);
+}
+
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'campaign visibility projections',
   () => {
@@ -60,15 +69,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rulesetVersion: 'baseline-v1',
         rngVersion: 'rng-v1',
       });
-      const owner = await auth.register(
+      const owner = await registerVerified(auth,
         `visibility-owner-${randomUUID()}@example.test`,
         'visibility api owner password',
       );
-      const member = await auth.register(
+      const member = await registerVerified(auth,
         `visibility-member-${randomUUID()}@example.test`,
         'visibility api member password',
       );
-      const outsider = await auth.register(
+      const outsider = await registerVerified(auth,
         `visibility-outsider-${randomUUID()}@example.test`,
         'visibility api outsider password',
       );
