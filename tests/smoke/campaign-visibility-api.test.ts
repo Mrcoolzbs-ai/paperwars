@@ -77,6 +77,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         `visibility-api-${randomUUID()}`,
         { mapWidth: 40, mapHeight: 30, mapSeed: 'visibility-api-map' },
       );
+      // This test covers read projections only; keep its turn job out of Worker tests.
+      await pool.query('DELETE FROM turn_jobs WHERE campaign_id = $1', [campaign.id]);
 
       const ownerCountry = await pool.query<{ id: string }>(
         'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
@@ -345,11 +347,24 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           await app.close();
         }
       } finally {
-        await pool.query('DELETE FROM campaigns WHERE id = $1', [campaign.id]);
         await pool.query(
-          'DELETE FROM users WHERE id = ANY($1::uuid[])',
-          [[owner.user.id, member.user.id, outsider.user.id]],
+          `DELETE FROM discovery_access
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [campaign.id],
         );
+        await pool.query(
+          `DELETE FROM discovery_history
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [campaign.id],
+        );
+        await pool.query('DELETE FROM campaigns WHERE id = $1', [campaign.id]);
+        await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [
+          [owner.user.id, member.user.id, outsider.user.id],
+        ]);
       }
     });
   },
