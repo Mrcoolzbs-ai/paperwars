@@ -296,10 +296,13 @@
 
     try {
       const config = await request('/auth/vk/one-tap-config', { method: 'POST' });
-      if (!config || !Number.isSafeInteger(config.appId) ||
-          typeof config.redirectUrl !== 'string' ||
-          typeof config.state !== 'string' ||
-          typeof config.codeVerifier !== 'string') {
+      if (
+        !config ||
+        !Number.isSafeInteger(config.appId) ||
+        typeof config.redirectUrl !== 'string' ||
+        typeof config.state !== 'string' ||
+        typeof config.codeVerifier !== 'string'
+      ) {
         throw new Error('Сервер вернул неполные настройки VK ID.');
       }
 
