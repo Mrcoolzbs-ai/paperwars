@@ -331,7 +331,12 @@
     try {
       await request('/campaigns/' + campaignId + '/leave', { method: 'DELETE' });
       const wasOpen = state.campaign?.id === campaignId;
-      if (wasOpen) state.campaign = null;
+      if (wasOpen) {
+        stopChatPolling();
+        state.campaign = null;
+        state.chatRequestId += 1;
+        state.chatMessages = [];
+      }
       await loadCampaigns();
       if (wasOpen) showScreen('game');
       showToast('Ты покинул кампанию. Она удалена из твоего списка.');
@@ -1794,6 +1799,9 @@
 
     $('#logout-button').addEventListener('click', async () => {
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
+      stopChatPolling();
+      state.chatRequestId += 1;
+      state.chatMessages = [];
       state.token = '';
       state.user = null;
       state.isAdmin = false;
@@ -1831,6 +1839,7 @@
     });
 
     $('#back-to-campaigns').addEventListener('click', async () => {
+      stopChatPolling();
       await loadCampaigns();
       showScreen('game');
     });
@@ -1943,6 +1952,17 @@
     $('#country-form').addEventListener('submit', submitCountry);
     $('#refresh-pending').addEventListener('click', loadPending);
     $('#refresh-admin').addEventListener('click', loadAdminConsole);
+    $$('.chat-channel-button').forEach((button) => {
+      button.addEventListener('click', () => selectChatRoom(button.dataset.chatRoom));
+    });
+    $('#chat-form').addEventListener('submit', submitChatMessage);
+    $('#chat-input').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        $('#chat-form').requestSubmit();
+      }
+    });
+    $('#refresh-chat').addEventListener('click', () => void loadChatMessages());
     $('#admin-campaign-list').addEventListener('click', (event) => {
       const button = event.target.closest('[data-admin-campaign-id]');
       if (button?.dataset.adminCampaignId) loadAdminCampaignDetail(button.dataset.adminCampaignId);
