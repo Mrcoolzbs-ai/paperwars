@@ -46,12 +46,13 @@
 
 В ветке PR #15 реализован начальный Stage 1.7: pure Simulation Engine проверяет совместимость ruleset/snapshot и finalized orders, вызывает подключённый resolver и самостоятельно ведёт журнал RNG draws. Concrete ruleset resolver и игровые эффекты ещё не подключены. Stage 1.7 прошёл CI: Build, Typecheck, Lint, Format check и 79/79 тестов в 15 файлах ([run 45078180497](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45078180497)).
 
-Начальный инфраструктурный инкремент Stage 1.8 также реализован: транзакционные `confirmCampaignOrders`/`closeOrders`, endpoint `POST /campaigns/:campaignId/orders/confirm`, TurnJob creation, claim через `SKIP LOCKED`, lease renewal, reaper с пятью переназначениями и fenced `completeTurnJob`. Контрольный CI на коммите `8a4e912` прошёл Build, Typecheck, Lint, Format check и 87/87 PostgreSQL/unit tests в 16 файлах ([run 45110828475](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45110828475)).
+Инфраструктурный инкремент Stage 1.8 расширен: транзакционные order CRUD текущей страны/хода (черновик, изменение, удаление, список), отзыв прежнего подтверждения при редактировании, deadline guards на времени PostgreSQL, подтверждение всех приказов страны и атомарное `closeOrders`. API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId`, POST `/campaigns/:campaignId/orders/confirm`. Очередь включает TurnJob creation, claim через `SKIP LOCKED`, lease renewal, reaper с пятью переназначениями и fenced `completeTurnJob`. Типы приказов пока являются универсальными versioned envelopes; конкретные игровые схемы и эффекты не реализованы.
+
+Контрольный CI для предыдущего инфраструктурного инкремента прошёл Build, Typecheck, Lint, Format check и 87/87 PostgreSQL/unit tests в 16 файлах ([run 45110828475](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45110828475)). Расширенный CRUD/deadline/leave сценарий сейчас проходит отдельный контрольный CI перед фиксацией нового статуса.
 
 Незавершённые части Stage 2 и последующих этапов:
 - приглашения второго игрока, полноценные membership/roles и обязательное административное согласование религий/идеологий (текущий автодоступ в PR #15 — известное расхождение с Baseline);
-- CRUD приказов строительства/колонизации и связанные проверки блокировок;
-- полноценный фоновый Worker с ruleset resolver и атомарной фиксацией следующего snapshot, events, random log, economic/battle reports, next seed и TurnJob; логика завершения кампании;
+- concrete ruleset schemas/validators и эффекты приказов строительства/колонизации;
 - экономика, население, сезоны, разведка/руины/золото, дипломатия, армия и полный цикл ходов;
 - полные DTO-проекции по видимости и защита закрытых данных.
 
