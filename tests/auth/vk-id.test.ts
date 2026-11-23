@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { completeVkAuthorization, createVkAuthorizationStart } from '@paper-wars/api';
+import {
+  completeVkAuthorization,
+  createVkAuthorizationSession,
+  createVkAuthorizationStart,
+} from '@paper-wars/api';
 
 const pkceTestTitle =
   'creates an authorization-code PKCE request with a signed HttpOnly state cookie';
@@ -21,6 +25,18 @@ function cookieValue(header: string): string {
 }
 
 describe('VK ID OAuth 2.1 integration', () => {
+  it('creates SDK-ready One Tap configuration with a matching HttpOnly PKCE cookie', () => {
+    const session = createVkAuthorizationSession(options, true);
+    expect(session.appId).toBe(12345678);
+    expect(session.redirectUri).toBe(options.redirectUri);
+    expect(session.state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(session.codeVerifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(session.stateCookie).toContain('HttpOnly');
+    expect(session.stateCookie).toContain('SameSite=Lax');
+    expect(session.stateCookie).toContain('Path=/auth/vk/callback');
+    expect(session.stateCookie).toContain('Secure');
+  });
+
   it(pkceTestTitle, () => {
     const start = createVkAuthorizationStart(options, true, 'user-42');
     const url = new URL(start.authorizationUrl);
