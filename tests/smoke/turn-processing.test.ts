@@ -703,7 +703,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     });
 
     it(
-      'returns only the active member current-turn projection and derives order availability from database time',
+      'returns a member-scoped turn status and respects the order deadline',
       async () => {
         const pool = getPool();
         const fixture = await createFixture(1);
