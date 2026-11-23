@@ -586,6 +586,7 @@
     if (!summary || !confirm) return;
     const draftCount = state.mapOrders.filter((order) => order.status !== 'confirmed').length;
     const confirmedCount = state.mapOrders.length - draftCount;
+    summary.hidden = !state.campaign?.countryId;
     summary.textContent = state.mapOrders.length
       ? `Приказы: ${state.mapOrders.length} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`
       : 'Приказов пока нет · ПКМ по клетке, чтобы выбрать действие';
