@@ -65,9 +65,7 @@ interface WritableOrderContext {
 }
 
 function assertUuid(value: string, field: 'campaign' | 'order'): void {
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-  ) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
     throw new CampaignTurnProcessingError(
       field === 'campaign' ? 'CAMPAIGN_NOT_FOUND' : 'ORDER_NOT_FOUND',
       field === 'campaign' ? 'Campaign does not exist' : 'Order does not exist',
@@ -108,10 +106,16 @@ function normalizeOrderPayload(value: unknown): Readonly<Record<string, unknown>
   try {
     serialized = JSON.stringify(value);
   } catch {
-    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order payload must be JSON serializable');
+    throw new CampaignTurnProcessingError(
+      'INVALID_ORDER',
+      'Order payload must be JSON serializable',
+    );
   }
   if (serialized === undefined) {
-    throw new CampaignTurnProcessingError('INVALID_ORDER', 'Order payload must be JSON serializable');
+    throw new CampaignTurnProcessingError(
+      'INVALID_ORDER',
+      'Order payload must be JSON serializable',
+    );
   }
   const normalized: unknown = JSON.parse(serialized);
   if (typeof normalized !== 'object' || normalized === null || Array.isArray(normalized)) {
