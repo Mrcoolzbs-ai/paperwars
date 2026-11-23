@@ -478,7 +478,7 @@ export const chatMessages = pgTable(
     message: text('message').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .defaultNow(),
+      .default(sql`clock_timestamp()`),
   },
   (table) => [
     index('chat_messages_world_created_idx')
