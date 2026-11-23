@@ -20,12 +20,23 @@ for (const marker of [
   'id="turn-status-content"',
   'id="order-results-list"',
   'id="refresh-turn-room"',
+  'id="admin-tab-label"',
+  'id="admin-overview-stats"',
+  'id="admin-campaign-list"',
+  'id="admin-campaign-detail"',
 ]) {
   if (!html.includes(marker)) {
     throw new Error(`The campaign turn room is missing required markup: ${marker}`);
   }
 }
-for (const endpoint of ["'/turn'", "'/orders/results'"]) {
+for (const endpoint of [
+  "'/turn'",
+  "'/orders/results'",
+  "'/admin/access'",
+  "'/admin/overview'",
+  "'/admin/campaigns/'",
+  "'/turn/force-close'",
+]) {
   if (!browserScript.includes(endpoint)) {
     throw new Error(`The campaign turn room is missing its API request: ${endpoint}`);
   }
