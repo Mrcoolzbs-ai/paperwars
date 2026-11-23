@@ -85,10 +85,7 @@ export interface CampaignService {
   getTurnStatus(userId: string, campaignId: string): Promise<CampaignTurnStatusView>;
   listEvents(userId: string, campaignId: string): Promise<readonly CampaignEventView[]>;
   listOrders(userId: string, campaignId: string): Promise<readonly CampaignOrderView[]>;
-  listOrderResults(
-    userId: string,
-    campaignId: string,
-  ): Promise<readonly CampaignOrderResultView[]>;
+  listOrderResults(userId: string, campaignId: string): Promise<readonly CampaignOrderResultView[]>;
   createOrder(
     userId: string,
     campaignId: string,
