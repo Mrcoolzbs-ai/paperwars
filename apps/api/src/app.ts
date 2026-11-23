@@ -2,13 +2,20 @@ import { readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   AuthValidationError,
+  ChatServiceError,
   EmailAlreadyRegisteredError,
+  EmailNotVerifiedError,
+  ExternalIdentityAlreadyLinkedError,
+  ExternalIdentityEmailConflictError,
+  ExternalIdentityEmailRequiredError,
+  InvalidEmailVerificationTokenError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
   UnauthenticatedError,
   type AuthService,
   type CampaignService,
+  type ChatService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
 import { CampaignTurnProcessingError } from '@paper-wars/persistence';
@@ -31,6 +38,10 @@ import {
   type OfficialSystemType,
   type SocialSystemReviewInput,
 } from '@paper-wars/world';
+import { CHAT_PAGE_HTML } from './chat-page.js';
+import type { VerificationEmailSender } from './email.js';
+import { VERIFY_EMAIL_PAGE_HTML } from './verify-email-page.js';
+import { completeVkAuthorization, createVkAuthorizationStart, type VkIdOptions } from './vk-id.js';
 
 export interface CreateAppOptions {
   readonly logger?: boolean;
@@ -39,6 +50,10 @@ export interface CreateAppOptions {
   readonly authService?: AuthService;
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
+  readonly chatService?: ChatService;
+  readonly verificationEmailSender?: VerificationEmailSender;
+  readonly appBaseUrl?: string;
+  readonly vkId?: VkIdOptions;
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
   readonly webEntryPath?: string;
@@ -63,18 +78,15 @@ function asRecord(value: unknown): RecordBody {
   return value as RecordBody;
 }
 
-function getRefreshCookie(request: FastifyRequest): string | undefined {
+
+function getCookie(request: FastifyRequest, cookieName: string): string | undefined {
   const cookieHeader = request.headers.cookie;
   if (cookieHeader === undefined) return undefined;
-
   for (const part of cookieHeader.split(';')) {
     const separator = part.indexOf('=');
-    if (separator < 0) continue;
-    const name = part.slice(0, separator).trim();
-    if (name !== 'refresh_token') continue;
-    const rawValue = part.slice(separator + 1).trim();
+    if (separator < 0 || part.slice(0, separator).trim() !== cookieName) continue;
     try {
-      return decodeURIComponent(rawValue);
+      return decodeURIComponent(part.slice(separator + 1).trim());
     } catch {
       return undefined;
     }
@@ -82,17 +94,10 @@ function getRefreshCookie(request: FastifyRequest): string | undefined {
   return undefined;
 }
 
-function getBearerToken(request: FastifyRequest): string {
-  const authorization = request.headers.authorization;
-  if (typeof authorization !== 'string') {
-    throw new UnauthenticatedError();
-  }
-  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
-  if (match?.[1] === undefined) {
-    throw new UnauthenticatedError();
-  }
-  return match[1];
+function getRefreshCookie(request: FastifyRequest): string | undefined {
+  return getCookie(request, 'refresh_token');
 }
+
 
 function setRefreshCookie(reply: FastifyReply, session: AuthRouteSession, secure: boolean): void {
   const maxAge = Math.max(
@@ -113,6 +118,26 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
     `refresh_token=; Path=/auth; HttpOnly; SameSite=Strict; Max-Age=0${secureAttribute}`,
   );
 }
+function setRefreshCookie(reply: FastifyReply, session: AuthRouteSession, secure: boolean): void {
+  const maxAge = Math.max(
+    0,
+    Math.floor((session.refreshTokenExpiresAt.getTime() - Date.now()) / 1000),
+  );
+  const secureAttribute = secure ? '; Secure' : '';
+  reply.header(
+    'Set-Cookie',
+    `refresh_token=${encodeURIComponent(session.refreshToken)}; Path=/auth; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secureAttribute}`,
+  );
+}
+
+function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
+  const secureAttribute = secure ? '; Secure' : '';
+  reply.header(
+    'Set-Cookie',
+    `refresh_token=; Path=/auth; HttpOnly; SameSite=Strict; Max-Age=0${secureAttribute}`,
+  );
+}
+
 
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof AuthValidationError) {
@@ -130,8 +155,26 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     }
     return reply.code(409).send({ error: error.code, message: error.message });
   }
-  if (error instanceof EmailAlreadyRegisteredError) {
-    return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED' });
+  if (
+    error instanceof EmailAlreadyRegisteredError ||
+    error instanceof ExternalIdentityEmailConflictError
+  ) {
+    return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED', message: error.message });
+  }
+  if (error instanceof EmailNotVerifiedError) {
+    return reply.code(403).send({
+      error: 'EMAIL_NOT_VERIFIED',
+      message: 'Подтвердите email по ссылке из письма.',
+    });
+  }
+  if (error instanceof InvalidEmailVerificationTokenError) {
+    return reply.code(400).send({ error: 'INVALID_VERIFICATION_TOKEN', message: error.message });
+  }
+  if (
+    error instanceof ExternalIdentityEmailRequiredError ||
+    error instanceof ExternalIdentityAlreadyLinkedError
+  ) {
+    return reply.code(409).send({ error: 'VK_IDENTITY_CONFLICT', message: error.message });
   }
   if (
     error instanceof RefreshTokenReuseDetectedError ||
@@ -149,10 +192,9 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof SocialSystemAdminRequiredError
   ) {
     return reply.code(403).send({
-      error:
-        error instanceof SocialSystemAdminRequiredError
-          ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
-          : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
+      error: error instanceof SocialSystemAdminRequiredError
+        ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
+        : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
     });
   }
   if (error instanceof SocialSystemNotFoundError) {
@@ -178,17 +220,96 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
 }
 
+
+function createVerificationUrl(baseUrl: string, token: string): string {
+  const url = new URL('/verify-email', baseUrl);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+async function deliverVerificationEmail(
+  sender: VerificationEmailSender | undefined,
+  baseUrl: string,
+  email: string,
+  token: string,
+): Promise<void> {
+  if (sender === undefined) throw new Error('Email verification delivery is not configured');
+  await sender.sendVerificationEmail(email, createVerificationUrl(baseUrl, token));
+}
+
 function registerAuthRoutes(
   app: FastifyInstance,
   authService: AuthService,
   secureCookies: boolean,
+  verificationEmailSender: VerificationEmailSender | undefined,
+  appBaseUrl: string,
 ): void {
   app.post('/auth/register', async (request, reply) => {
     try {
+      if (verificationEmailSender === undefined) {
+        return reply.code(503).send({ error: 'EMAIL_DELIVERY_NOT_CONFIGURED' });
+      }
       const body = asRecord(request.body);
-      const session = await authService.register(body['email'], body['password']);
+      const challenge = await authService.register(body['email'], body['password']);
+      try {
+        await deliverVerificationEmail(
+          verificationEmailSender,
+          appBaseUrl,
+          challenge.user.email,
+          challenge.verificationToken,
+        );
+      } catch {
+        return reply.code(503).send({
+          error: 'VERIFICATION_EMAIL_FAILED',
+          message: 'Не удалось отправить письмо. Попробуйте запросить его повторно.',
+        });
+      }
+      return reply.code(202).send({
+        verificationRequired: true,
+        message: 'Письмо с подтверждением отправлено на указанный адрес.',
+      });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/auth/resend-verification', async (request, reply) => {
+    try {
+      if (verificationEmailSender === undefined) {
+        return reply.code(503).send({ error: 'EMAIL_DELIVERY_NOT_CONFIGURED' });
+      }
+      const body = asRecord(request.body);
+      const challenge = await authService.resendEmailVerification(body['email']);
+      if (challenge !== undefined) {
+        try {
+          await deliverVerificationEmail(
+            verificationEmailSender,
+            appBaseUrl,
+            challenge.user.email,
+            challenge.verificationToken,
+          );
+        } catch {
+          return reply.code(503).send({ error: 'VERIFICATION_EMAIL_FAILED' });
+        }
+      }
+      return reply.code(202).send({
+        message:
+          'Если аккаунт ожидает подтверждения, письмо будет отправлено. Подождите не менее минуты перед повторным запросом.',
+      });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/auth/verify-email', async (request, reply) => {
+    try {
+      const body = asRecord(request.body);
+      if (typeof body['token'] !== 'string') {
+        throw new AuthValidationError('Verification token is required');
+      }
+      const session = await authService.verifyEmail(body['token']);
       setRefreshCookie(reply, session, secureCookies);
-      return reply.code(201).send({
+      return reply.send({
         user: session.user,
         accessToken: session.accessToken,
         accessTokenExpiresAt: session.accessTokenExpiresAt,
@@ -255,7 +376,90 @@ function registerAuthRoutes(
     }
   });
 }
+function registerVkRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  secureCookies: boolean,
+  verificationEmailSender: VerificationEmailSender | undefined,
+  appBaseUrl: string,
+  vkId: VkIdOptions | undefined,
+): void {
+  app.get('/auth/vk/start', async (_request, reply) => {
+    if (vkId === undefined) return reply.redirect('/verify-email?error=vk-unavailable');
+    const start = createVkAuthorizationStart(vkId, secureCookies);
+    reply.header('Set-Cookie', start.stateCookie);
+    return reply.redirect(start.authorizationUrl);
+  });
 
+  app.post('/auth/vk/link', async (request, reply) => {
+    try {
+      if (vkId === undefined) return reply.code(503).send({ error: 'VK_ID_NOT_CONFIGURED' });
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const start = createVkAuthorizationStart(vkId, secureCookies, user.id);
+      reply.header('Set-Cookie', start.stateCookie);
+      return reply.send({ authorizationUrl: start.authorizationUrl });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/auth/vk/callback', async (request, reply) => {
+    if (vkId === undefined) return reply.redirect('/verify-email?error=vk-unavailable');
+    try {
+      const query = request.query as RecordBody;
+      const code = query['code'];
+      const state = query['state'];
+      const deviceId = query['device_id'];
+      if (typeof code !== 'string' || typeof state !== 'string' || typeof deviceId !== 'string') {
+        throw new AuthValidationError('VK ID callback is incomplete');
+      }
+      const result = await completeVkAuthorization(vkId, {
+        code,
+        state,
+        deviceId,
+        stateCookie: getCookie(request, 'vk_oauth_state'),
+      });
+      if (result.linkUserId !== undefined) {
+        await authService.linkVkIdentity(result.linkUserId, result.providerUserId);
+        return reply.redirect('/chat?vk=linked');
+      }
+      const authResult = await authService.signInWithVk(result.providerUserId, result.email);
+      if (authResult.kind === 'session') {
+        setRefreshCookie(reply, authResult.session, secureCookies);
+        return reply.redirect('/chat');
+      }
+      if (authResult.challenge !== undefined) {
+        await deliverVerificationEmail(
+          verificationEmailSender,
+          appBaseUrl,
+          authResult.challenge.user.email,
+          authResult.challenge.verificationToken,
+        );
+      }
+      return reply.redirect('/verify-email?sent=1');
+    } catch (error) {
+      if (error instanceof ExternalIdentityEmailConflictError) {
+        return reply.redirect('/verify-email?error=vk-email-exists');
+      }
+      if (error instanceof ExternalIdentityEmailRequiredError) {
+        return reply.redirect('/verify-email?error=vk-no-email');
+      }
+      request.log.warn({ err: error }, 'VK ID authentication failed');
+      return reply.redirect('/chat?authError=vk-failed');
+    } finally {
+      const currentCookies = reply.getHeader('Set-Cookie');
+      const existingCookies = Array.isArray(currentCookies)
+        ? currentCookies
+        : currentCookies === undefined
+          ? []
+          : [String(currentCookies)];
+      reply.header('Set-Cookie', [
+        ...existingCookies,
+        `vk_oauth_state=; Path=/auth/vk/callback; HttpOnly; SameSite=Lax; Max-Age=0${secureCookies ? '; Secure' : ''}`,
+      ]);
+    }
+  });
+}
 function registerCampaignRoutes(
   app: FastifyInstance,
   authService: AuthService,
@@ -416,7 +620,6 @@ function registerCampaignRoutes(
     }
   });
 }
-
 function parseCoordinate(value: unknown, field: string): number {
   if (typeof value === 'number' && Number.isSafeInteger(value)) return value;
   if (typeof value === 'string' && /^-?[0-9]+$/.test(value)) {
@@ -595,7 +798,71 @@ function registerCountryRoutes(
     }
   });
 }
+function sendChatError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof ChatServiceError) {
+    const status = error.code === 'NOT_ACTIVE_CAMPAIGN_MEMBER' ? 403 : 429;
+    return reply.code(status).send({ error: error.code, message: error.message });
+  }
+  return sendAuthError(error, reply);
+}
 
+function registerChatRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  chatService: ChatService,
+): void {
+  app.get('/chat/world', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const messages = await chatService.listWorldMessages(user.id);
+      return reply.send({ messages });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.post('/chat/world', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const message = await chatService.sendWorldMessage(user.id, body['message']);
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.get('/campaigns/:campaignId/chat', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const params = request.params as RecordBody;
+      const campaignId = params['campaignId'];
+      if (typeof campaignId !== 'string') {
+        throw new AuthValidationError('Campaign ID is required');
+      }
+      const messages = await chatService.listCampaignMessages(user.id, campaignId);
+      return reply.send({ messages });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
+  app.post('/campaigns/:campaignId/chat', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const params = request.params as RecordBody;
+      const campaignId = params['campaignId'];
+      if (typeof campaignId !== 'string') {
+        throw new AuthValidationError('Campaign ID is required');
+      }
+      const body = asRecord(request.body);
+      const message = await chatService.sendCampaignMessage(user.id, campaignId, body['message']);
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+}
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
@@ -622,37 +889,23 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   app.get('/styles.css', async (_request, reply) => {
     const stylesheet = await readFile(new URL('../../web/public/styles.css', import.meta.url));
-    return reply
-      .type('text/css; charset=utf-8')
-      .header('Cache-Control', 'no-cache')
-      .send(stylesheet);
+    return reply.type('text/css; charset=utf-8').header('Cache-Control', 'no-cache').send(stylesheet);
   });
 
   app.get('/app.js', async (_request, reply) => {
     const script = await readFile(new URL('../../web/public/app.js', import.meta.url));
-    return reply
-      .type('text/javascript; charset=utf-8')
-      .header('Cache-Control', 'no-cache')
-      .send(script);
+    return reply.type('text/javascript; charset=utf-8').header('Cache-Control', 'no-cache').send(script);
   });
 
   app.get('/assets/buildings/:file', async (request, reply) => {
     const params = request.params as { readonly file?: unknown };
     const allowed = new Set([
-      'factory.jpg',
-      'field.jpg',
-      'tower.jpg',
-      'barracks.jpg',
-      'capital.jpg',
-      'science.jpg',
-      'gold-mark.jpg',
+      'factory.jpg', 'field.jpg', 'tower.jpg', 'barracks.jpg', 'capital.jpg', 'science.jpg', 'gold-mark.jpg',
     ]);
     if (typeof params.file !== 'string' || !allowed.has(params.file)) {
       return reply.code(404).send({ error: 'BUILDING_ASSET_NOT_FOUND' });
     }
-    const asset = await readFile(
-      new URL('../../web/public/assets/buildings/' + params.file, import.meta.url),
-    );
+    const asset = await readFile(new URL('../../web/public/assets/buildings/' + params.file, import.meta.url));
     return reply.type('image/jpeg').header('Cache-Control', 'public, max-age=86400').send(asset);
   });
 
@@ -661,16 +914,45 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
     return reply.type('image/svg+xml').header('Cache-Control', 'public, max-age=86400').send(icon);
   });
 
+  app.get('/chat', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'no-referrer');
+    return reply.type('text/html; charset=utf-8').send(CHAT_PAGE_HTML);
+  });
+
+  app.get('/verify-email', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'no-referrer');
+    return reply.type('text/html; charset=utf-8').send(VERIFY_EMAIL_PAGE_HTML);
+  });
+
   app.get('/health', async () => ({
     status: 'ok',
-    apiContractVersion: 'browser-auth-v1',
+    apiContractVersion: 'browser-auth-v2',
     engineVersion: engine.engineVersion,
     rulesetVersion: engine.rulesetVersion,
     rngVersion: engine.rngVersion,
   }));
 
   if (options.authService !== undefined) {
-    registerAuthRoutes(app, options.authService, options.secureCookies ?? false);
+    const appBaseUrl = options.appBaseUrl ?? 'http://127.0.0.1:3000';
+    registerAuthRoutes(
+      app,
+      options.authService,
+      options.secureCookies ?? false,
+      options.verificationEmailSender,
+      appBaseUrl,
+    );
+    registerVkRoutes(
+      app,
+      options.authService,
+      options.secureCookies ?? false,
+      options.verificationEmailSender,
+      appBaseUrl,
+      options.vkId,
+    );
   }
 
   if (options.authService !== undefined && options.campaignService !== undefined) {
@@ -679,6 +961,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.countrySetupService !== undefined) {
     registerCountryRoutes(app, options.authService, options.countrySetupService);
+  }
+
+  if (options.authService !== undefined && options.chatService !== undefined) {
+    registerChatRoutes(app, options.authService, options.chatService);
   }
 
   return app;
