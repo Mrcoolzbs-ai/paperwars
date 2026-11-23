@@ -363,10 +363,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const events = await pool.query<{
           visibility: string;
           recipient_country_id: string | null;
-        }>(
-          'SELECT visibility, recipient_country_id FROM game_events WHERE id = $1',
-          [eventId],
-        );
+        }>('SELECT visibility, recipient_country_id FROM game_events WHERE id = $1', [eventId]);
         expect(events.rows).toEqual([
           { visibility: 'private', recipient_country_id: fixture.countryId },
         ]);
