@@ -117,7 +117,7 @@
           <p id="workspace-meta" class="muted"></p>
         </div>
         <div class="workspace-header-actions">
-          <div class="turn-chip"><span class="turn-dot"></span><span>ПОДГОТОВКА</span><b>ХОД 01</b></div>
+          <div class="turn-chip"><span class="turn-dot"></span><span id="workspace-turn-label">СВЕРКА</span><b id="workspace-turn-number">ХОД 01</b></div>
           <div id="player-count-chip" class="player-count-chip">Игроки 1/1</div>
           <button id="leave-campaign" class="button button-quiet" type="button">Выйти из кампании</button>
         </div>
@@ -125,6 +125,7 @@
 
       <nav class="workspace-nav" aria-label="Разделы кампании">
         <button class="workspace-tab active" data-tab="overview" type="button">Обзор мира</button>
+        <button class="workspace-tab" data-tab="turn" type="button">Ход и летопись</button>
         <button id="systems-tab-label" class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
         <button id="country-tab-label" class="workspace-tab" data-tab="country" type="button">Основание страны</button>
       </nav>
@@ -159,8 +160,8 @@
           <div class="side-stack">
             <div class="panel info-panel">
               <div class="panel-kicker">ПАРАМЕТРЫ МИРА</div>
-              <div class="info-line"><span>Статус</span><b>Подготовка</b></div>
-              <div class="info-line"><span>Текущий ход</span><b>01</b></div>
+              <div class="info-line"><span>Статус</span><b id="world-status-value">Загрузка</b></div>
+              <div class="info-line"><span>Текущий ход</span><b id="world-turn-value">01</b></div>
               <div class="info-line"><span>Размер карты</span><b id="map-size-detail">80 × 60</b></div>
               <div class="info-line"><span>Seed мира</span><b id="map-seed-detail">—</b></div>
               <div class="info-line"><span>Игроки</span><b id="player-count-detail">1/1</b></div>
@@ -169,6 +170,38 @@
             </div>
             <div class="panel note-panel"><span class="note-icon">✦</span><div><strong>Первый шаг</strong><p>Выбери место на карте, затем создай или выбери веру и основывай государство.</p><button type="button" class="text-link" data-go-tab="systems">К созданию системы →</button></div></div>
           </div>
+        </div>
+      </section>
+
+      <section id="tab-turn" class="tab-panel hidden">
+        <div class="section-intro turn-section-intro">
+          <div>
+            <div class="panel-kicker">ОПЕРАТИВНАЯ СВОДКА</div>
+            <h2>Ход за ходом.</h2>
+            <p class="muted">Состояние цикла кампании и личная летопись уже обработанных приказов.</p>
+          </div>
+          <button id="refresh-turn-room" class="button button-outline" type="button">Обновить данные ↻</button>
+        </div>
+        <div class="turn-room-layout">
+          <section class="panel turn-room-panel">
+            <div class="panel-heading">
+              <div><div class="panel-kicker">СЕЙЧАС</div><h2>Состояние хода</h2></div>
+              <span class="turn-live-mark"><i></i> API</span>
+            </div>
+            <div id="turn-status-content" aria-live="polite">
+              <div class="turn-empty"><strong>Загрузка состояния…</strong><p>Подключаемся к кампании.</p></div>
+            </div>
+          </section>
+          <section class="panel turn-room-panel turn-history-panel">
+            <div class="panel-heading">
+              <div><div class="panel-kicker">ТОЛЬКО ТВОЯ СТРАНА</div><h2>Летопись приказов</h2></div>
+              <span id="order-results-total" class="count-chip">—</span>
+            </div>
+            <div id="order-results-list" class="order-results-list" aria-live="polite">
+              <div class="turn-empty"><strong>История загружается…</strong><p>Здесь появятся безопасные сводки завершённых приказов.</p></div>
+            </div>
+            <p class="turn-privacy-note">Показываются только исходы приказов твоего государства. Содержимое приказов, сообщения с результатами и данные других стран не передаются в этот экран.</p>
+          </section>
         </div>
       </section>
 

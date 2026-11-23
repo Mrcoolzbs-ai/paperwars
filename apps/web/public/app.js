@@ -11,6 +11,11 @@
     availableSystems: [],
     pending: [],
     countryProfile: null,
+    turnStatus: null,
+    orderResults: [],
+    turnRoomLoading: false,
+    turnRoomError: '',
+    orderResultsError: '',
     loadedSystemEmblemDataUrl: null,
     buildingIconCache: {},
     principles: [],
@@ -366,6 +371,15 @@
     state.librarySystems = [];
     state.availableSystems = [];
     state.countryProfile = null;
+    state.turnStatus = null;
+    state.orderResults = [];
+    state.turnRoomLoading = false;
+    state.turnRoomError = '';
+    $('#workspace-turn-label').textContent = 'СВЕРКА';
+    $('#workspace-turn-number').textContent = 'ХОД ' + String(campaign.currentTurn || 1).padStart(2, '0');
+    $('#world-status-value').textContent = 'Загрузка';
+    $('#world-turn-value').textContent = String(campaign.currentTurn || 1).padStart(2, '0');
+    state.orderResultsError = '';
     state.loadedSystemEmblemDataUrl = null;
     state.placements = {};
     resetFoundedPanels();
@@ -384,6 +398,7 @@
     activateTab('overview');
     await loadSystems();
     if (campaign.countryId) await loadCountryProfile();
+    await loadTurnRoom();
     if (!campaign.countryId) {
       const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
       if (reservation) {
@@ -655,6 +670,7 @@
     $$('.workspace-tab').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
     $$('.tab-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== `tab-${tab}`));
     if (tab === 'systems') loadSystems();
+    if (tab === 'turn') loadTurnRoom();
     if (tab === 'country') {
       resetTerritoryGrid();
       refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
@@ -776,6 +792,175 @@
       state.countryProfile = data.country || null;
       if (state.countryProfile) renderFoundedCards(state.countryProfile);
     } catch (error) { showToast('Не удалось загрузить карточку государства: ' + error.message, true); }
+  }
+
+  function formatTurnDate(value) {
+    if (!value) return 'Не назначен';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '—';
+    return new Intl.DateTimeFormat('ru-RU', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  }
+
+  function turnJobLabel(status) {
+    const labels = {
+      pending: 'В очереди',
+      processing: 'Выполняется',
+      completed: 'Завершён',
+      failed: 'Ошибка обработки',
+    };
+    return status ? (labels[status] || 'Неизвестное состояние') : 'Не запускался';
+  }
+
+  function orderTypeLabel(type) {
+    const labels = {
+      construction: 'Строительство',
+      colonization: 'Колонизация',
+      movement: 'Перемещение',
+      research: 'Исследование',
+      diplomacy: 'Дипломатия',
+      battle: 'Боевой приказ',
+    };
+    return labels[type] || type || 'Приказ';
+  }
+
+  function renderTurnRoom() {
+    const statusHost = $('#turn-status-content');
+    const resultsHost = $('#order-results-list');
+    const resultsTotal = $('#order-results-total');
+    const refreshButton = $('#refresh-turn-room');
+    if (!statusHost || !resultsHost || !resultsTotal) return;
+    if (refreshButton) refreshButton.disabled = state.turnRoomLoading;
+
+    const status = state.turnStatus;
+    if (status) {
+      const turnLabel = String(status.currentTurn).padStart(2, '0');
+      const headerStatus = status.status === 'completed'
+        ? 'ЗАВЕРШЕНО'
+        : (status.turnJobStatus === 'processing'
+          ? 'ХОД ОБРАБАТЫВАЕТСЯ'
+          : (status.ordersAccepting ? 'ПРИЁМ ОТКРЫТ' : 'ПРИЁМ ЗАКРЫТ'));
+      $('#workspace-turn-label').textContent = headerStatus;
+      $('#workspace-turn-number').textContent = 'ХОД ' + turnLabel;
+      $('#world-status-value').textContent = status.status === 'completed'
+        ? 'Завершена'
+        : (status.turnJobStatus === 'processing'
+          ? 'Обработка'
+          : (status.ordersAccepting ? 'Приём приказов' : 'Ожидание'));
+      $('#world-turn-value').textContent = turnLabel;
+    }
+    if (state.turnRoomLoading && !status) {
+      statusHost.innerHTML = '<div class="turn-empty"><span class="turn-loading-mark">↻</span><strong>Сверяем состояние мира…</strong><p>Получаем текущий ход и личный статус приказов.</p></div>';
+    } else if (state.turnRoomError) {
+      statusHost.innerHTML = '<div class="turn-empty turn-empty-error"><strong>Не удалось загрузить состояние хода</strong><p>' + escapeHtml(state.turnRoomError) + '</p></div>';
+    } else if (!status) {
+      statusHost.innerHTML = '<div class="turn-empty"><strong>Состояние хода пока недоступно</strong><p>Обнови данные, чтобы повторить запрос.</p></div>';
+    } else {
+      const campaignState = status.status === 'completed'
+        ? { label: 'Кампания завершена', tone: 'complete' }
+        : { label: 'Кампания активна', tone: 'active' };
+      const intakeState = status.ordersAccepting
+        ? { label: 'Приём приказов открыт', tone: 'open' }
+        : { label: status.ordersLocked ? 'Приём приказов закрыт' : 'Приём приказов приостановлен', tone: 'closed' };
+      const ownConfirmation = !status.countryId
+        ? 'Государство не основано'
+        : (status.ordersConfirmed ? 'Приказы подтверждены' : 'Ожидает подтверждения');
+      const turnLabel = String(status.currentTurn).padStart(2, '0');
+      statusHost.innerHTML = `
+        <div class="turn-status-hero">
+          <div class="turn-status-topline">
+            <span class="turn-overline">ТЕКУЩИЙ ЦИКЛ</span>
+            <span class="turn-state-pill ${campaignState.tone}">${campaignState.label}</span>
+          </div>
+          <div class="turn-number">ХОД <strong>${escapeHtml(turnLabel)}</strong></div>
+          <p>${intakeState.label}. Длительность цикла — ${escapeHtml(status.turnDurationHours)} ч.</p>
+          <div class="turn-status-foot">
+            <span class="turn-state-pill ${intakeState.tone}">${intakeState.label}</span>
+            <span class="turn-state-pill ${status.ordersConfirmed ? 'confirmed' : 'waiting'}">${escapeHtml(ownConfirmation)}</span>
+          </div>
+        </div>
+        <div class="turn-metric-grid">
+          <div class="turn-metric"><span>ДЕДЛАЙН</span><strong>${escapeHtml(formatTurnDate(status.deadlineAt))}</strong></div>
+          <div class="turn-metric"><span>ОБРАБОТКА ХОДА</span><strong>${escapeHtml(turnJobLabel(status.turnJobStatus))}</strong></div>
+          <div class="turn-metric"><span>ВЕРСИЯ СНИМКА</span><strong>${status.snapshotVersion === null ? '—' : escapeHtml(status.snapshotVersion)}</strong></div>
+          <div class="turn-metric"><span>ПРОДОЛЖИТЕЛЬНОСТЬ</span><strong>${escapeHtml(status.turnDurationHours)} ч</strong></div>
+        </div>`;
+    }
+
+    if (!status?.countryId) {
+      resultsTotal.textContent = '—';
+      resultsHost.innerHTML = '<div class="turn-empty"><strong>Летопись пока пуста</strong><p>Личные исходы появятся после основания государства и завершения первых приказов.</p></div>';
+      return;
+    }
+    if (state.orderResultsError) {
+      resultsTotal.textContent = 'Ошибка';
+      resultsHost.innerHTML = '<div class="turn-empty turn-empty-error"><strong>Не удалось загрузить летопись</strong><p>' + escapeHtml(state.orderResultsError) + '</p></div>';
+      return;
+    }
+    const results = state.orderResults;
+    resultsTotal.textContent = String(results.length);
+    if (!results.length) {
+      resultsHost.innerHTML = '<div class="turn-empty"><strong>Записей пока нет</strong><p>После обработки приказов здесь появятся их исходы. Содержимое самих приказов и скрытые данные не показываются.</p></div>';
+      return;
+    }
+
+    const resolutionLabels = { accepted: 'Принят', rejected: 'Отклонён', superseded: 'Заменён' };
+    resultsHost.innerHTML = results.map((result) => {
+      const tone = result.resolutionStatus === 'accepted' ? 'accepted'
+        : result.resolutionStatus === 'rejected' ? 'rejected' : 'superseded';
+      const resolutionLabel = resolutionLabels[result.resolutionStatus] || result.resolutionStatus;
+      const terminalLabel = result.status === 'discarded' ? 'Снят' : 'Завершён';
+      return `
+        <article class="order-result-row">
+          <div class="order-result-main">
+            <strong>${escapeHtml(orderTypeLabel(result.type))}</strong>
+            <small>Ход ${escapeHtml(result.turnNumber)} · схема v${escapeHtml(result.schemaVersion)} · ${terminalLabel}</small>
+          </div>
+          <div class="order-result-outcome">
+            <span class="result-state-pill ${tone}">${escapeHtml(resolutionLabel)}</span>
+            <code>${escapeHtml(result.resultCode || '—')}</code>
+            <time>${escapeHtml(formatTurnDate(result.finalizedAt))}</time>
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  async function loadTurnRoom() {
+    if (!state.campaign) return;
+    const campaignId = state.campaign.id;
+    state.turnRoomLoading = true;
+    state.turnRoomError = '';
+    state.orderResultsError = '';
+    renderTurnRoom();
+    try {
+      const turnData = await request('/campaigns/' + campaignId + '/turn');
+      if (state.campaign?.id !== campaignId) return;
+      state.turnStatus = turnData.turn || null;
+      if (state.turnStatus?.countryId) {
+        try {
+          const resultsData = await request('/campaigns/' + campaignId + '/orders/results');
+          if (state.campaign?.id !== campaignId) return;
+          state.orderResults = Array.isArray(resultsData.results) ? resultsData.results : [];
+        } catch (error) {
+          state.orderResults = [];
+          state.orderResultsError = error.message || 'Неизвестная ошибка';
+        }
+      } else {
+        state.orderResults = [];
+      }
+    } catch (error) {
+      if (state.campaign?.id !== campaignId) return;
+      state.turnStatus = null;
+      state.orderResults = [];
+      state.turnRoomError = error.message || 'Неизвестная ошибка';
+    } finally {
+      if (state.campaign?.id === campaignId) {
+        state.turnRoomLoading = false;
+        renderTurnRoom();
+      }
+    }
   }
 
   const cultureInfo={
