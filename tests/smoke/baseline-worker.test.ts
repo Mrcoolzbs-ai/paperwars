@@ -37,7 +37,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('processes demolition once and synchronizes the snapshot and relational map projection atomically', async () => {
+    it(
+      'processes demolition once and synchronizes the snapshot and relational map projection atomically',
+      async () => {
       const pool = getPool();
       const campaignId = randomUUID();
       const userId = randomUUID();
@@ -139,7 +141,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             'SELECT encryption_key_version FROM random_seeds WHERE campaign_id = $1 AND turn_number = 1',
             [campaignId],
           );
-          expect(storedSeed.rows[0]?.encryption_key_version).toBe(seedReference.encryptionKeyVersion);
+          expect(storedSeed.rows[0]?.encryption_key_version).toBe(
+            seedReference.encryptionKeyVersion,
+          );
           await seedClient.query('COMMIT');
         } catch (error) {
           await seedClient.query('ROLLBACK');
@@ -232,6 +236,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         await pool.query('DELETE FROM campaigns WHERE id = $1', [campaignId]);
         await pool.query('DELETE FROM users WHERE id = $1', [userId]);
       }
-    });
+      },
+    );
   },
 );
