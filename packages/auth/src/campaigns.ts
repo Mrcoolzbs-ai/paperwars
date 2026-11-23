@@ -351,20 +351,56 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
       try {
         await client.query('BEGIN');
         transactionOpen = true;
-        const campaign = await client.query<{ id: string }>(
-          'SELECT id FROM campaigns WHERE id = $1 FOR UPDATE',
+        const campaign = await client.query<{
+          id: string;
+          current_turn: number;
+          orders_locked: boolean;
+        }>(
+          'SELECT id, current_turn, orders_locked FROM campaigns WHERE id = $1 FOR UPDATE',
           [campaignId],
         );
-        if (campaign.rows.length === 0) {
+        const target = campaign.rows[0];
+        if (target === undefined) {
           throw new AuthValidationError('Campaign does not exist');
         }
-        const membership = await client.query<{ campaign_id: string }>(
-          'SELECT campaign_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
+
+        // Keep the global row lock order: campaign -> snapshot -> turn job -> membership/orders.
+        await client.query(
+          'SELECT version FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, target.current_turn],
+        );
+        const job = await client.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, target.current_turn],
+        );
+        if (job.rows.some((row) => row.status === 'pending' || row.status === 'processing')) {
+          throw new CampaignTurnProcessingError(
+            'ORDERS_ALREADY_LOCKED',
+            'A campaign member cannot leave while the current turn is being processed',
+          );
+        }
+
+        const membership = await client.query<{ campaign_id: string; country_id: string | null }>(
+          'SELECT campaign_id, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
           [campaignId, userId, 'active'],
         );
-        if (membership.rows.length === 0) {
+        const member = membership.rows[0];
+        if (member === undefined) {
           throw new AuthValidationError('You are not an active member of this campaign');
         }
+
+        if (!target.orders_locked && member.country_id !== null) {
+          await client.query(
+            `UPDATE orders
+             SET status = 'discarded', updated_at = clock_timestamp()
+             WHERE campaign_id = $1
+               AND country_id = $2
+               AND turn_number = $3
+               AND status IN ('draft', 'unconfirmed', 'confirmed')`,
+            [campaignId, member.country_id, target.current_turn],
+          );
+        }
+
         await client.query(
           `UPDATE campaign_memberships SET status = 'left', orders_confirmed = FALSE
            WHERE campaign_id = $1 AND user_id = $2`,
