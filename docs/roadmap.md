@@ -194,7 +194,8 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 
 - [x] Минимальный Fastify API skeleton с `GET /health`.
 - [x] API endpoints: register/login/refresh/logout/me и базовые campaigns create/list.
-- [ ] API endpoints: управление membership, orders, turn status и world view.
+- [x] API endpoints: базовое управление membership и CRUD/confirmation приказов текущей страны.
+- [ ] API endpoints: статус хода, world view и DTO-проекции по уровню видимости.
 - [ ] Next.js/React Web-клиент: вход, список кампаний, базовая карта и экран приказов.
 - [ ] Валидация входящих payload и DTO-проекции по уровню видимости.
 - [ ] Не сериализовать внутренний WorldState напрямую.
