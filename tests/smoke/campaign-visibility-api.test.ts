@@ -69,18 +69,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rulesetVersion: 'baseline-v1',
         rngVersion: 'rng-v1',
       });
-      const owner = await registerVerified(
-        auth,
+      const owner = await registerVerified(auth,
         `visibility-owner-${randomUUID()}@example.test`,
         'visibility api owner password',
       );
-      const member = await registerVerified(
-        auth,
+      const member = await registerVerified(auth,
         `visibility-member-${randomUUID()}@example.test`,
         'visibility api member password',
       );
-      const outsider = await registerVerified(
-        auth,
+      const outsider = await registerVerified(auth,
         `visibility-outsider-${randomUUID()}@example.test`,
         'visibility api outsider password',
       );
