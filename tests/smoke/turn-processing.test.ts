@@ -117,98 +117,98 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
     it(
       'waits for every active participant, atomically finalizes/discards orders and creates generation zero job',
       async () => {
-      const pool = getPool();
-      const fixture = await createFixture(2);
-      try {
-        await pool.query(
-          `INSERT INTO orders (campaign_id, country_id, turn_number, order_type, payload, status)
-           VALUES
-             ($1, $2, 1, 'test.confirmed', '{}'::jsonb, 'confirmed'),
-             ($1, $2, 1, 'test.draft', '{}'::jsonb, 'draft'),
-             ($1, $3, 1, 'test.unconfirmed', '{}'::jsonb, 'unconfirmed')`,
-          [fixture.campaignId, fixture.countryIds[0], fixture.countryIds[1]],
-        );
+        const pool = getPool();
+        const fixture = await createFixture(2);
+        try {
+          await pool.query(
+            `INSERT INTO orders (campaign_id, country_id, turn_number, order_type, payload, status)
+             VALUES
+               ($1, $2, 1, 'test.confirmed', '{}'::jsonb, 'confirmed'),
+               ($1, $2, 1, 'test.draft', '{}'::jsonb, 'draft'),
+               ($1, $3, 1, 'test.unconfirmed', '{}'::jsonb, 'unconfirmed')`,
+            [fixture.campaignId, fixture.countryIds[0], fixture.countryIds[1]],
+          );
 
-        await expect(closeOrders(pool, fixture.campaignId)).rejects.toMatchObject({
-          code: 'ORDERS_NOT_READY',
-        });
+          await expect(closeOrders(pool, fixture.campaignId)).rejects.toMatchObject({
+            code: 'ORDERS_NOT_READY',
+          });
 
-        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
-        await expect(closeOrders(pool, fixture.campaignId)).rejects.toMatchObject({
-          code: 'ORDERS_NOT_READY',
-        });
+          await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+          await expect(closeOrders(pool, fixture.campaignId)).rejects.toMatchObject({
+            code: 'ORDERS_NOT_READY',
+          });
 
-        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[1]!);
-        const closed = await closeOrders(pool, fixture.campaignId);
+          await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[1]!);
+          const closed = await closeOrders(pool, fixture.campaignId);
 
-        expect(closed).toMatchObject({
-          campaignId: fixture.campaignId,
-          turnNumber: 1,
-          snapshotVersion: 7,
-          finalizedOrderCount: 1,
-          discardedOrderCount: 2,
-        });
-        expect(closed.id).toMatch(/^[0-9a-f-]{36}$/i);
+          expect(closed).toMatchObject({
+            campaignId: fixture.campaignId,
+            turnNumber: 1,
+            snapshotVersion: 7,
+            finalizedOrderCount: 1,
+            discardedOrderCount: 2,
+          });
+          expect(closed.id).toMatch(/^[0-9a-f-]{36}$/i);
 
-        const campaign = await pool.query<{
-          orders_locked: boolean;
-          orders_locked_at: Date | null;
-        }>(
-          'SELECT orders_locked, orders_locked_at FROM campaigns WHERE id = $1',
-          [fixture.campaignId],
-        );
-        expect(campaign.rows[0]?.orders_locked).toBe(true);
-        expect(campaign.rows[0]?.orders_locked_at).toBeInstanceOf(Date);
+          const campaign = await pool.query<{
+            orders_locked: boolean;
+            orders_locked_at: Date | null;
+          }>(
+            'SELECT orders_locked, orders_locked_at FROM campaigns WHERE id = $1',
+            [fixture.campaignId],
+          );
+          expect(campaign.rows[0]?.orders_locked).toBe(true);
+          expect(campaign.rows[0]?.orders_locked_at).toBeInstanceOf(Date);
 
-        const members = await pool.query<{ orders_confirmed: boolean }>(
-          'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 ORDER BY user_id',
-          [fixture.campaignId],
-        );
-        expect(members.rows).toEqual([{ orders_confirmed: true }, { orders_confirmed: true }]);
+          const members = await pool.query<{ orders_confirmed: boolean }>(
+            'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 ORDER BY user_id',
+            [fixture.campaignId],
+          );
+          expect(members.rows).toEqual([{ orders_confirmed: true }, { orders_confirmed: true }]);
 
-        const orders = await pool.query<{
-          order_type: string;
-          status: string;
-          finalized_at: Date | null;
-        }>(
-          'SELECT order_type, status, finalized_at FROM orders WHERE campaign_id = $1 ORDER BY order_type',
-          [fixture.campaignId],
-        );
-        expect(orders.rows).toEqual([
-          { order_type: 'test.confirmed', status: 'finalized', finalized_at: expect.any(Date) },
-          { order_type: 'test.draft', status: 'discarded', finalized_at: null },
-          { order_type: 'test.unconfirmed', status: 'discarded', finalized_at: null },
-        ]);
+          const orders = await pool.query<{
+            order_type: string;
+            status: string;
+            finalized_at: Date | null;
+          }>(
+            'SELECT order_type, status, finalized_at FROM orders WHERE campaign_id = $1 ORDER BY order_type',
+            [fixture.campaignId],
+          );
+          expect(orders.rows).toEqual([
+            { order_type: 'test.confirmed', status: 'finalized', finalized_at: expect.any(Date) },
+            { order_type: 'test.draft', status: 'discarded', finalized_at: null },
+            { order_type: 'test.unconfirmed', status: 'discarded', finalized_at: null },
+          ]);
 
-        const jobs = await pool.query<{
-          id: string;
-          job_key: string;
-          status: string;
-          generation: number;
-          retry_count: number;
-          snapshot_version: number;
-        }>(
-          `SELECT id, job_key, status, generation, retry_count, snapshot_version
-           FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1`,
-          [fixture.campaignId],
-        );
-        expect(jobs.rows).toEqual([
-          {
-            id: closed.id,
-            job_key: `turn:${fixture.campaignId}:1`,
-            status: 'pending',
-            generation: 0,
-            retry_count: 0,
-            snapshot_version: 7,
-          },
-        ]);
+          const jobs = await pool.query<{
+            id: string;
+            job_key: string;
+            status: string;
+            generation: number;
+            retry_count: number;
+            snapshot_version: number;
+          }>(
+            `SELECT id, job_key, status, generation, retry_count, snapshot_version
+             FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1`,
+            [fixture.campaignId],
+          );
+          expect(jobs.rows).toEqual([
+            {
+              id: closed.id,
+              job_key: `turn:${fixture.campaignId}:1`,
+              status: 'pending',
+              generation: 0,
+              retry_count: 0,
+              snapshot_version: 7,
+            },
+          ]);
 
-        await expect(
-          confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!),
-        ).rejects.toMatchObject({ code: 'ORDERS_ALREADY_LOCKED' });
-      } finally {
-        await removeFixture(fixture);
-      }
+          await expect(
+            confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!),
+          ).rejects.toMatchObject({ code: 'ORDERS_ALREADY_LOCKED' });
+        } finally {
+          await removeFixture(fixture);
+        }
       },
     );
 
@@ -299,7 +299,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('claims a job once, renews only a live matching generation and rejects stale workers', async () => {
+    it(
+      'claims a job once, renews only a live matching generation and rejects stale workers',
+      async () => {
       const pool = getPool();
       const fixture = await createFixture(1, true);
       try {
@@ -359,7 +361,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('allows five reassignments and fails the sixth expired attempt without resetting generation', async () => {
+    it(
+      'allows five reassignments and fails the sixth expired attempt without resetting generation',
+      async () => {
       const pool = getPool();
       const fixture = await createFixture(1, true);
       try {
@@ -435,7 +439,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
         const currentLease = await claimNextTurnJob(pool, 'worker-current');
         expect(currentLease).not.toBeNull();
-        if (currentLease === null) throw new Error('Replacement worker should have claimed the job');
+        if (currentLease === null) {
+          throw new Error('Replacement worker should have claimed the job');
+        }
         expect(currentLease.generation).toBe(staleLease.generation + 1);
 
         const staleTransaction = await pool.connect();
