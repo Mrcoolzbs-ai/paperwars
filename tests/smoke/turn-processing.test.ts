@@ -118,7 +118,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
-    it('waits for every active participant, atomically finalizes/discards orders and creates generation zero job', async () => {
+    it('confirms each member's drafts, atomically finalizes the orders and creates a generation zero job', async () => {
       const pool = getPool();
       const fixture = await createFixture(2);
       try {
@@ -147,8 +147,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           campaignId: fixture.campaignId,
           turnNumber: 1,
           snapshotVersion: 7,
-          finalizedOrderCount: 1,
-          discardedOrderCount: 2,
+          finalizedOrderCount: 3,
+          discardedOrderCount: 0,
         });
         expect(closed.id).toMatch(/^[0-9a-f-]{36}$/i);
 
@@ -177,8 +177,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
         expect(orders.rows).toEqual([
           { order_type: 'test.confirmed', status: 'finalized', finalized_at: expect.any(Date) },
-          { order_type: 'test.draft', status: 'discarded', finalized_at: null },
-          { order_type: 'test.unconfirmed', status: 'discarded', finalized_at: null },
+          { order_type: 'test.draft', status: 'finalized', finalized_at: expect.any(Date) },
+          { order_type: 'test.unconfirmed', status: 'finalized', finalized_at: expect.any(Date) },
         ]);
 
         const jobs = await pool.query<{
