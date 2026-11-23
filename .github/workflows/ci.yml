@@ -54,10 +54,7 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Format check
-        run: |
-          pnpm exec prettier --write apps/api/src/app.ts packages/persistence/src/postgres/schema.ts packages/persistence/src/postgres/turn-processing.ts tests/smoke/admin-console.test.ts
-          git diff --unified=0 -- apps/api/src/app.ts packages/persistence/src/postgres/schema.ts packages/persistence/src/postgres/turn-processing.ts tests/smoke/admin-console.test.ts
-        continue-on-error: true
+        run: pnpm format:check
 
       - name: Tests
         run: pnpm --filter @paper-wars/tests test
