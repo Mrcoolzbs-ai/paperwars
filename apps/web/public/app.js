@@ -1726,7 +1726,11 @@
         } else if (error.code === 'UNAUTHENTICATED') {
           message = 'Неверная почта или пароль.';
         } else if (error.code === 'EMAIL_ALREADY_REGISTERED') {
-          message = 'Аккаунт с этой почтой уже существует. Переключись на вкладку «Войти».';
+          $('#email-verification-actions').classList.remove('hidden');
+          message = 'Аккаунт с этой почтой уже существует. Попробуй войти. Если адрес ещё не подтверждён, можно запросить письмо повторно.';
+        } else if (error.code === 'VERIFICATION_EMAIL_FAILED') {
+          $('#email-verification-actions').classList.remove('hidden');
+          message = 'Аккаунт создан, но письмо не удалось отправить. Проверь настройки почтового сервиса или попробуй отправить письмо повторно позже.';
         } else if (error.code === 'INTERNAL_SERVER_ERROR') {
           message = 'Внутренняя ошибка сервера. Проверь сообщения в окне «Paper Wars API».';
         } else if (error instanceof TypeError) {
