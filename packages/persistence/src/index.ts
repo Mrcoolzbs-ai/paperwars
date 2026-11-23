@@ -19,6 +19,8 @@ export {
 export {
   confirmCampaignOrders,
   closeOrders,
+  completeTurnJob,
+  StaleTurnJobLeaseError,
   claimNextTurnJob,
   renewTurnJobLease,
   reapExpiredTurnJobs,
