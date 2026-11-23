@@ -18,6 +18,7 @@ import {
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
 import { CHAT_PAGE_HTML } from './chat-page.js';
+import { GAME_PAGE_HTML } from './game-page.js';
 import type { VerificationEmailSender } from './email.js';
 import { VERIFY_EMAIL_PAGE_HTML } from './verify-email-page.js';
 import { completeVkAuthorization, createVkAuthorizationStart, type VkIdOptions } from './vk-id.js';
@@ -484,6 +485,13 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const engine = createSimulationEngine({
     rulesetVersion: options.rulesetVersion ?? 'baseline-v1',
     rngVersion: options.rngVersion ?? 'rng-v1',
+  });
+
+  app.get('/', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'same-origin');
+    return reply.type('text/html; charset=utf-8').send(GAME_PAGE_HTML);
   });
 
   app.get('/chat', async (_request, reply) => {
