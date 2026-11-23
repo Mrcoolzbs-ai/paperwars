@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type {
   DomainEvent,
   OrderEnvelope,
@@ -303,7 +303,7 @@ function assertResolutionReports<TEvent>(
 }
 
 async function persistCountryCellProjection(
-  client: import('pg').PoolClient,
+  client: PoolClient,
   campaignId: string,
   nextState: Record<string, unknown>,
 ): Promise<void> {
