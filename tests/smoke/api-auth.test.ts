@@ -49,10 +49,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             rulesetVersion: 'baseline-v1',
             rngVersion: 'rng-v1',
           });
+    const verificationEmails: string[] = [];
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
       secureCookies: false,
+      appBaseUrl: 'https://paper-wars.example',
+      verificationEmailSender: {
+        sendVerificationEmail: async (_email, verificationUrl) => {
+          verificationEmails.push(verificationUrl);
+        },
+      },
       ...(auth === undefined ? {} : { authService: auth }),
       ...(campaigns === undefined ? {} : { campaignService: campaigns }),
     });
@@ -73,17 +80,37 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         url: '/auth/register',
         payload: { email, password: 'an api integration test password' },
       });
-      expect(response.statusCode).toBe(201);
-      const body = response.json<{
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({ verificationRequired: true });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(verificationEmails).toHaveLength(1);
+      const verificationToken = new URL(verificationEmails[0] ?? '').searchParams.get('token');
+      if (verificationToken === null) throw new Error('Verification email did not include a token');
+
+      const unverifiedLogin = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password: 'an api integration test password' },
+      });
+      expect(unverifiedLogin.statusCode).toBe(403);
+      expect(unverifiedLogin.json()).toMatchObject({ error: 'EMAIL_NOT_VERIFIED' });
+
+      const verified = await app.inject({
+        method: 'POST',
+        url: '/auth/verify-email',
+        payload: { token: verificationToken },
+      });
+      expect(verified.statusCode).toBe(200);
+      const body = verified.json<{
         user: { id: string; email: string };
         accessToken: string;
         accessTokenExpiresAt: string;
       }>();
       expect(body.user.email).toBe(email);
       expect(body.accessToken.length).toBeGreaterThan(40);
-      expect(response.body).not.toContain('refreshToken');
+      expect(verified.body).not.toContain('refreshToken');
 
-      const setCookieHeader = response.headers['set-cookie'];
+      const setCookieHeader = verified.headers['set-cookie'];
       const cookieHeader = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
       if (cookieHeader === undefined) {
         throw new Error('Registration response did not set a refresh cookie');

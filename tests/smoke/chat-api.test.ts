@@ -54,7 +54,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         accessTokens: signer,
         refreshTokenTtlSeconds: 3600,
       });
-      const [owner, member, outsider] = await Promise.all([
+      const challenges = await Promise.all([
         authService.register(
           'chat-owner-' + randomUUID() + '@example.test',
           'secure chat owner integration password',
@@ -68,6 +68,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           'secure chat outsider integration password',
         ),
       ]);
+      const verifiedUsers = await Promise.all(
+        challenges.map((challenge) => authService.verifyEmail(challenge.verificationToken)),
+      );
+      const owner = verifiedUsers[0];
+      const member = verifiedUsers[1];
+      const outsider = verifiedUsers[2];
+      if (owner === undefined || member === undefined || outsider === undefined) {
+        throw new Error('Expected all three verified chat users');
+      }
       const campaignService = createCampaignService({
         pool,
         keyProvider,

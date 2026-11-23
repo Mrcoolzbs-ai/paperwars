@@ -1,12 +1,17 @@
 # Аутентификация и lifecycle кампании
 
-**Статус:** Stage 1.4 — базовые registration/login/session и campaign create/list реализованы. Participant/role management, аудит и полный production security hardening остаются незавершёнными.
+**Статус:** email verification и VK ID OAuth 2.1 добавлены поверх Stage 1.4. Production deployment требует настроенного email-провайдера и (для VK-входа) зарегистрированного VK ID приложения.
 
 ## Пароли и пользователи
 
 Код: `packages/auth/src/password.ts`.
 
 - Email нормализуется через trim + lowercase; PostgreSQL обеспечивает case-insensitive uniqueness индексом по `lower(email)`.
+- Новая регистрация не выдаёт сессию до подтверждения email. Одноразовый токен хранится только как SHA-256 hash и истекает по TTL (по умолчанию 24 часа).
+- Повторная отправка доступна через `POST /auth/resend-verification`, ограничена интервалом в 60 секунд и не раскрывает, существует ли указанный адрес.
+- Успешная проверка через `POST /auth/verify-email` отмечает адрес подтверждённым, расходует активные verification tokens и только затем создаёт сессию.
+- Существующие на момент миграции аккаунты сохраняются подтверждёнными; новые аккаунты требуют подтверждения.
+- Login, refresh и access-token authentication дополнительно проверяют `email_verified_at`, так что сессию нельзя получить в обход подтверждения.
 - Пароль хешируется scrypt (`N=16384, r=8, p=1`), соль 16 байт, derived key 64 байта.
 - Сравнение derived keys — constant-time.
 - При login с несуществующим email выполняется scrypt с dummy hash.
@@ -39,15 +44,30 @@
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| POST | `/auth/register` | регистрация и создание session |
+| POST | `/auth/register` | регистрация и отправка письма (202 Accepted) |
+| POST | `/auth/resend-verification` | повторная отправка с cooldown |
+| POST | `/auth/verify-email` | подтверждение одноразовым токеном и создание session |
 | POST | `/auth/login` | вход |
 | POST | `/auth/refresh` | refresh rotation |
 | POST | `/auth/logout` | revoke session family |
 | GET | `/auth/me` | access token authentication |
+| GET | `/auth/vk/start` | запуск VK ID OAuth 2.1 |
+| GET | `/auth/vk/callback` | server-side code exchange и вход |
+| POST | `/auth/vk/link` | начать привязку VK к уже подтверждённому аккаунту |
 | POST | `/campaigns` | создать кампанию |
 | GET | `/campaigns` | список кампаний пользователя |
 
 Refresh token устанавливается только cookie `HttpOnly; SameSite=Strict; Path=/auth`; в production добавляется `Secure`. Raw refresh token не отправляется в JSON. Access token возвращается для Bearer-аутентификации.
+
+## Почта и VK ID
+
+- Email-рассылка реализована через Resend REST API. В development при отсутствии Resend-переменных одноразовая ссылка выводится в лог процесса; в production отсутствие `RESEND_API_KEY` или `EMAIL_FROM` останавливает запуск.
+- `APP_BASE_URL` задаёт origin ссылок подтверждения и должен быть HTTPS в production.
+- VK реализован на официальных VK ID OAuth 2.1 endpoints (`id.vk.ru`) с authorization code, PKCE S256, подписанной HttpOnly state-cookie, проверкой `state` и серверным обменом кода.
+- VK access token остаётся на сервере и используется только для чтения профиля; Paper Wars сохраняет внешний subject в `auth_identities`, но не сохраняет VK токены.
+- Email, полученный от VK, не считается подтверждённым автоматически: при первом VK входе Paper Wars отправляет собственное письмо и требует подтверждения владения почтовым ящиком.
+- Существующие Paper Wars аккаунты не связываются с VK по совпадению email. Пользователь входит обычным способом и затем запускает привязку из авторизованного чата; это предотвращает takeover при совпадении адресов.
+- Переменные VK: `VK_ID_APP_ID`, `VK_ID_REDIRECT_URI`, `VK_ID_COOKIE_SECRET` (32 случайных байта в hex). Callback URL необходимо зарегистрировать в настройках приложения VK ID.
 
 ## Атомарное создание кампании
 
@@ -75,7 +95,7 @@ Stage 1.4 merged в `main` через PR #6. Чистый GitHub Actions CI на
 - Invitations, participant management и полноценная role model.
 - Audit trail регистрации/входов/критичных campaign actions.
 - Rate limiting и защита от brute-force для публичных auth endpoints.
-- Email verification, password reset/change и управление устройствами/сессиями.
+- Password reset/change, управление устройствами/сессиями, полная защита от brute-force и production mail deliverability/bounce monitoring.
 - Отдельные CSRF/Origin controls для cookie endpoints и signing-key rotation/overlap.
 - Country setup, начальная карта/world snapshot и регистрационная конфигурация государства.
 

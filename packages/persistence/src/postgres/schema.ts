@@ -31,6 +31,7 @@ export const users = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(),
+    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true, mode: 'date' }),
     status: text('status').notNull().default('active'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
@@ -42,6 +43,55 @@ export const users = pgTable(
   ],
 );
 
+export const emailVerificationTokens = pgTable(
+  'email_verification_tokens',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    uniqueIndex('email_verification_tokens_hash_unique').on(table.tokenHash),
+    index('email_verification_tokens_user_created_idx').on(table.userId, table.createdAt),
+    index('email_verification_tokens_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.usedAt} is null`),
+    check('email_verification_tokens_hash_check', sql`${table.tokenHash} ~ '^[a-f0-9]{64}$'`),
+    check('email_verification_tokens_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'email_verification_tokens_used_at_check',
+      sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
+export const authIdentities = pgTable(
+  'auth_identities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    providerUserId: text('provider_user_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('auth_identities_provider_subject_unique').on(table.provider, table.providerUserId),
+    uniqueIndex('auth_identities_user_provider_unique').on(table.userId, table.provider),
+    index('auth_identities_user_idx').on(table.userId),
+    check('auth_identities_provider_check', sql`${table.provider} in ('vk')`),
+    check(
+      'auth_identities_subject_nonempty',
+      sql`char_length(btrim(${table.providerUserId})) between 1 and 256`,
+    ),
+  ],
+);
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {
