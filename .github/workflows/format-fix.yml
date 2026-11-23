@@ -47,3 +47,5 @@ jobs:
             git commit -m "style: format game client integration"
             git push
           fi
+
+# Trigger the one-time formatter now that this workflow is present on the default branch.
