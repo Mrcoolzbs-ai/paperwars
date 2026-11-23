@@ -570,7 +570,8 @@ export async function closeOrders(
           campaign.current_turn,
           {
             activeMemberCount: activeMembers.rows.length,
-            confirmedMemberCount: activeMembers.rows.filter((member) => member.orders_confirmed).length,
+            confirmedMemberCount: activeMembers.rows.filter((member) => member.orders_confirmed)
+              .length,
             finalizedOrderCount: finalized.rowCount ?? finalized.rows.length,
             discardedOrderCount: discarded.rowCount ?? discarded.rows.length,
             deadlineElapsed,
