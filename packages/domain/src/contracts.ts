@@ -104,6 +104,10 @@ export interface TurnResolution<
   readonly orderResults: readonly OrderResolution[];
   readonly events: readonly TEvent[];
   readonly randomDraws: readonly RandomDrawRecord[];
+  /** Aggregate economic report produced by the selected ruleset for this turn. */
+  readonly economicReport?: Readonly<Record<string, unknown>>;
+  /** Zero or more battle reports produced by the selected ruleset for this turn. */
+  readonly battleReports?: readonly Readonly<Record<string, unknown>>[];
   readonly campaignEnded: boolean;
 }
 
