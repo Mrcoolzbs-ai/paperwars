@@ -50,6 +50,27 @@ export interface ProcessedTurnJob<TEvent> {
 
 export type TurnWorkerResult<TEvent> = { readonly status: 'idle' } | ProcessedTurnJob<TEvent>;
 
+export interface TurnWorkerRunOptions {
+  /** Called for a failed job; the lease is left for the reaper to reclaim safely. */
+  readonly onError: (error: unknown) => void;
+  /** Delay between empty polls and failed attempts. Defaults to 1000 ms. */
+  readonly pollIntervalMs?: number;
+}
+
+async function waitForPollOrAbort(signal: AbortSignal, milliseconds: number): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, milliseconds);
+    signal.addEventListener('abort', finish, { once: true });
+    if (signal.aborted) finish();
+  });
+}
+
 interface CampaignRow {
   readonly status: string;
   readonly current_turn: number;
@@ -532,6 +553,23 @@ export function createTurnWorker<
         campaignEnded: resolution.campaignEnded,
         resolution: resolution as TurnResolution<Record<string, unknown>, TEvent>,
       };
+    },
+
+    async run(signal: AbortSignal, options: TurnWorkerRunOptions): Promise<void> {
+      const pollIntervalMs = options.pollIntervalMs ?? 1000;
+      if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 10 || pollIntervalMs > 60_000) {
+        throw new RangeError('pollIntervalMs must be an integer between 10 and 60000');
+      }
+
+      while (!signal.aborted) {
+        try {
+          const result = await this.processNext();
+          if (result.status === 'idle') await waitForPollOrAbort(signal, pollIntervalMs);
+        } catch (error) {
+          options.onError(error);
+          await waitForPollOrAbort(signal, pollIntervalMs);
+        }
+      }
     },
   };
 }
