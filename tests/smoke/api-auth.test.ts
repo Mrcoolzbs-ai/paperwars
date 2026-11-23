@@ -151,7 +151,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(confirmation.json()).toMatchObject({
         confirmed: true,
         turnQueued: true,
-        turnJob: { turnNumber: 1, snapshotVersion: 3, finalizedOrderCount: 0, discardedOrderCount: 0 },
+        turnJob: {
+          turnNumber: 1,
+          snapshotVersion: 3,
+          finalizedOrderCount: 0,
+          discardedOrderCount: 0,
+        },
       });
 
       const refreshed = await app.inject({
