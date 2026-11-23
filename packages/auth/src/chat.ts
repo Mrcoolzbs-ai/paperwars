@@ -229,15 +229,13 @@ export function createChatService(options: ChatServiceOptions): ChatService {
   return {
     async listWorldMessages(userId) {
       validateUuid(userId, 'User');
-      return pool
-        .connect()
-        .then(async (client) => {
-          try {
-            return await listMessages(client, userId, 'world', null);
-          } finally {
-            client.release();
-          }
-        });
+      return pool.connect().then(async (client) => {
+        try {
+          return await listMessages(client, userId, 'world', null);
+        } finally {
+          client.release();
+        }
+      });
     },
 
     async sendWorldMessage(userId, messageInput) {
