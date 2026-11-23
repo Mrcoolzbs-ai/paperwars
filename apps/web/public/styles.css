@@ -637,3 +637,114 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .vk-one-tap iframe {
   max-width: 100%;
 }
+
+/* Global-map order context menu */
+.map-order-summary {
+  grid-column: 1 / -1;
+  color: #d5c49e;
+  font: 10px/1.4 "DM Mono", monospace;
+  letter-spacing: .03em;
+}
+.map-context-menu {
+  position: fixed;
+  z-index: 4100;
+  width: min(290px, calc(100vw - 20px));
+  max-height: min(78vh, 540px);
+  overflow-y: auto;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #9a8458;
+  background: linear-gradient(145deg, #202d23f5, #111a14f7);
+  color: #eee8d8;
+  box-shadow: 0 12px 40px #000b, inset 0 0 0 1px #ffffff0a;
+}
+.map-context-menu header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #59634a;
+}
+.map-context-menu header strong,
+.map-context-group>span {
+  color: #d9bd82;
+  font: 700 10px/1.4 "DM Mono", monospace;
+  letter-spacing: .12em;
+}
+.map-context-menu header button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #60705c;
+  background: transparent;
+  color: #e9e2d0;
+  font-size: 19px;
+  line-height: 1;
+}
+.map-context-location,
+.map-context-note {
+  margin: 0;
+  color: #c2cbbb;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.map-context-menu small {
+  color: #8f9d8d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.map-context-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.map-context-group>span {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+}
+.map-context-action {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #52664f;
+  background: #283a2d;
+  color: #ece7d8;
+  text-align: left;
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.map-context-action:hover:not(:disabled) {
+  border-color: #d5af6a;
+  background: #394b35;
+}
+.map-context-action:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.map-context-remove {
+  grid-column: 1 / -1;
+  border-color: #765447;
+  background: #382720;
+}
+.map-context-remove:hover:not(:disabled) {
+  border-color: #c17f68;
+  background: #513329;
+}
+#confirm-map-orders:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+@media(max-width:520px) {
+  .map-context-menu {
+    left: 10px !important;
+    right: 10px;
+    bottom: 10px;
+    top: auto !important;
+    width: auto;
+    max-height: 65vh;
+  }
+  .map-order-summary {
+    font-size: 9px;
+  }
+}
