@@ -28,10 +28,7 @@ export class ChatServiceError extends Error {
 export interface ChatService {
   listWorldMessages(userId: string): Promise<readonly ChatMessageView[]>;
   sendWorldMessage(userId: string, message: unknown): Promise<ChatMessageView>;
-  listCampaignMessages(
-    userId: string,
-    campaignId: string,
-  ): Promise<readonly ChatMessageView[]>;
+  listCampaignMessages(userId: string, campaignId: string): Promise<readonly ChatMessageView[]>;
   sendCampaignMessage(
     userId: string,
     campaignId: string,
@@ -43,8 +40,7 @@ export interface ChatServiceOptions {
   readonly pool: Pool;
 }
 
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const messageLimit = 50;
 const messageRateWindowSeconds = 10;
 const messageRateLimit = 5;
@@ -220,9 +216,7 @@ export function createChatService(options: ChatServiceOptions): ChatService {
   return {
     async listWorldMessages(userId) {
       validateUuid(userId, 'User');
-      return withTransaction(pool, (client) =>
-        listMessages(client, userId, 'world', null),
-      );
+      return withTransaction(pool, (client) => listMessages(client, userId, 'world', null));
     },
 
     async sendWorldMessage(userId, messageInput) {
