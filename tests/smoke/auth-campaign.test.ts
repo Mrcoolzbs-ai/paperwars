@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createAccessTokenSigner,
   createAuthService,
   createCampaignService,
+  hashPassword,
+  DisplayNameAlreadyTakenError,
   AuthValidationError,
   EmailAlreadyRegisteredError,
-  EmailNotVerifiedError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
@@ -16,13 +18,20 @@ import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
-async function registerVerifiedUser(
+async function createEmailLoginUser(
   auth: ReturnType<typeof createAuthService>,
+  pool: Pool,
   email: string,
   password: string,
 ) {
-  const challenge = await auth.register(email, password);
-  return auth.verifyEmail(challenge.verificationToken);
+  const normalizedEmail = email.trim().toLowerCase();
+  const userId = randomUUID();
+  await pool.query(
+    `INSERT INTO users (id, email, password_hash, display_name)
+     VALUES ($1, $2, $3, $4)`,
+    [userId, normalizedEmail, await hashPassword(password), `Test-${userId.slice(0, 8)}`],
+  );
+  return auth.login(normalizedEmail, password);
 }
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
