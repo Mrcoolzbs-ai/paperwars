@@ -19,9 +19,14 @@ export {
 export {
   confirmCampaignOrders,
   closeOrders,
+  claimNextTurnJob,
+  renewTurnJobLease,
+  reapExpiredTurnJobs,
   CampaignTurnProcessingError,
 } from './postgres/turn-processing.js';
 export type {
   CampaignTurnProcessingErrorCode,
   ClosedTurnJob,
+  TurnJobLease,
+  ReapedTurnJobs,
 } from './postgres/turn-processing.js';
