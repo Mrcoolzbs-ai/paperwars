@@ -382,10 +382,10 @@ async function persistResolution<TEvent extends DomainEvent<string, Readonly<Rec
       assertJsonRecord(orderResult.data ?? {}, `Order result ${orderResult.orderId} data`);
       const updated = await client.query<{ id: string }>(
         `UPDATE orders
-         SET resolution_status = $5,
-             result_code = $6,
-             result_message = $7,
-             result_data = $8,
+         SET resolution_status = $4,
+             result_code = $5,
+             result_message = $6,
+             result_data = $7,
              updated_at = clock_timestamp()
          WHERE id = $1
            AND campaign_id = $2
