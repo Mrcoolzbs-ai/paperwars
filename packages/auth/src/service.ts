@@ -370,7 +370,8 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           };
         } else {
           const userId = randomUUID();
-          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
+          const displayName =
+            'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
           const created = await client.query<{
             id: string;
             email: string | null;
@@ -428,7 +429,9 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           [userId],
         );
         const user = account.rows[0];
-        if (user === undefined || user.status !== 'active') throw new InvalidCredentialsError();
+        if (user === undefined || user.status !== 'active') {
+          throw new InvalidCredentialsError();
+        }
         const currentIdentity = await client.query<{ provider_user_id: string }>(
           `SELECT provider_user_id FROM auth_identities
            WHERE user_id = $1 AND provider = 'vk'
@@ -452,7 +455,9 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
              WHERE provider = 'vk' AND provider_user_id = $1 FOR UPDATE`,
             [subject],
           );
-          if (existing.rows[0]?.user_id !== userId) throw new ExternalIdentityAlreadyLinkedError();
+          if (existing.rows[0]?.user_id !== userId) {
+            throw new ExternalIdentityAlreadyLinkedError();
+          }
         }
         await client.query('COMMIT');
         transactionOpen = false;
