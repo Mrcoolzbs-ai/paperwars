@@ -99,6 +99,14 @@ function getRefreshCookie(request: FastifyRequest): string | undefined {
 }
 
 
+function getBearerToken(request: FastifyRequest): string {
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== 'string') throw new UnauthenticatedError();
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+  if (match?.[1] === undefined) throw new UnauthenticatedError();
+  return match[1];
+}
+
 function setRefreshCookie(reply: FastifyReply, session: AuthRouteSession, secure: boolean): void {
   const maxAge = Math.max(
     0,
@@ -118,27 +126,6 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
     `refresh_token=; Path=/auth; HttpOnly; SameSite=Strict; Max-Age=0${secureAttribute}`,
   );
 }
-function setRefreshCookie(reply: FastifyReply, session: AuthRouteSession, secure: boolean): void {
-  const maxAge = Math.max(
-    0,
-    Math.floor((session.refreshTokenExpiresAt.getTime() - Date.now()) / 1000),
-  );
-  const secureAttribute = secure ? '; Secure' : '';
-  reply.header(
-    'Set-Cookie',
-    `refresh_token=${encodeURIComponent(session.refreshToken)}; Path=/auth; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secureAttribute}`,
-  );
-}
-
-function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
-  const secureAttribute = secure ? '; Secure' : '';
-  reply.header(
-    'Set-Cookie',
-    `refresh_token=; Path=/auth; HttpOnly; SameSite=Strict; Max-Age=0${secureAttribute}`,
-  );
-}
-
-
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof AuthValidationError) {
     return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
