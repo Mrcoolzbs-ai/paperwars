@@ -60,17 +60,13 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     </header>
     <section id="auth-panel" class="panel auth">
       <div><div class="brand">ДОСТУП К ЧАТАМ</div><h2 id="auth-title">Войти в Paper Wars</h2></div>
+      <a id="vk-login" class="vk-login" href="/auth/vk/start">Войти через ВКонтакте</a>
       <form id="auth-form" style="display:grid;gap:13px">
+        <p class="muted">Резервный вход по email и паролю</p>
         <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
         <label>Пароль<input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="1024"></label>
-        <div class="auth-actions"><button id="auth-submit" type="submit">Войти</button><button id="auth-mode" class="link" type="button">Создать аккаунт</button></div>
+        <div class="auth-actions"><button id="auth-submit" type="submit">Войти по email</button></div>
       </form>
-      <a id="vk-login" class="vk-login" href="/auth/vk/start">Войти через VK ID</a>
-      <section id="verification-actions" class="verification-actions hidden">
-        <div id="verification-message"></div>
-        <button id="resend-verification" type="button">Отправить письмо ещё раз</button>
-        <button id="back-to-login" class="link" type="button">Вернуться ко входу</button>
-      </section>
       <div id="auth-error" class="error" role="alert"></div>
     </section>
     <section id="chat-panel" class="panel chat hidden">
@@ -93,7 +89,7 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
 <script>
 (() => {
   'use strict';
-  const state = { token: null, register: false, room: 'world', campaignId: null, campaigns: [], requestId: 0, timer: null, sending: false, refreshPromise: null };
+  const state = { token: null, room: 'world', campaignId: null, campaigns: [], requestId: 0, timer: null, sending: false, refreshPromise: null };
   const $ = (id) => document.getElementById(id);
   const authPanel = $('auth-panel');
   const chatPanel = $('chat-panel');
@@ -105,13 +101,6 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     $('status').textContent = value || '';
     $('status').style.color = isError ? '#ff9f91' : '';
   }
-  function showVerification(message) {
-    $('auth-form').classList.add('hidden');
-    $('vk-login').classList.add('hidden');
-    $('verification-actions').classList.remove('hidden');
-    $('verification-message').textContent = message;
-    $('auth-error').textContent = '';
-  }
   function showAuth(error) {
     stopPolling();
     state.token = null;
@@ -120,7 +109,6 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
     $('logout').classList.add('hidden');
     $('vk-link').classList.add('hidden');
     $('auth-form').classList.remove('hidden');
-    $('verification-actions').classList.add('hidden');
     $('vk-login').classList.remove('hidden');
     $('auth-error').textContent = error || '';
   }
@@ -294,61 +282,23 @@ export const CHAT_PAGE_HTML = String.raw`<!doctype html>
       showAuth(error.message || 'Не удалось восстановить сессию.');
     }
   }
-  function setAuthMode(register) {
-    state.register = register;
-    $('auth-title').textContent = state.register ? 'Создать аккаунт' : 'Войти в Paper Wars';
-    $('auth-submit').textContent = state.register ? 'Зарегистрироваться' : 'Войти';
-    $('auth-mode').textContent = state.register ? 'У меня уже есть аккаунт' : 'Создать аккаунт';
-    $('password').autocomplete = state.register ? 'new-password' : 'current-password';
-    $('auth-error').textContent = '';
-  }
   authForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     $('auth-submit').disabled = true;
     $('auth-error').textContent = '';
     try {
-      const endpoint = state.register ? '/auth/register' : '/auth/login';
-      const body = await api(endpoint, {
+      const body = await api('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email: $('email').value, password: $('password').value }),
       });
-      if (body && body.verificationRequired === true) {
-        showVerification('Мы отправили письмо на ' + $('email').value + '. Откройте его и нажмите ссылку подтверждения. После этого можно будет войти.');
-        return;
-      }
       state.token = body.accessToken;
       await enterChat();
     } catch (error) {
-      if (error.code === 'EMAIL_NOT_VERIFIED') {
-        showVerification('Сначала подтвердите адрес ' + $('email').value + '. Можно запросить новое письмо ниже.');
-      } else {
-        $('auth-error').textContent = error.status === 401
-          ? 'Неверный email или пароль.'
-          : error.message;
-      }
+      $('auth-error').textContent = error.status === 401
+        ? 'Неверный email или пароль. Новые аккаунты создаются через VK ID.'
+        : error.message;
     } finally {
       $('auth-submit').disabled = false;
-    }
-  });
-  $('auth-mode').addEventListener('click', () => setAuthMode(!state.register));
-  $('back-to-login').addEventListener('click', () => {
-    $('verification-actions').classList.add('hidden');
-    $('auth-form').classList.remove('hidden');
-    $('vk-login').classList.remove('hidden');
-    setAuthMode(false);
-  });
-  $('resend-verification').addEventListener('click', async () => {
-    $('resend-verification').disabled = true;
-    try {
-      const body = await api('/auth/resend-verification', {
-        method: 'POST',
-        body: JSON.stringify({ email: $('email').value }),
-      });
-      $('verification-message').textContent = body.message || 'Если аккаунт ожидает подтверждения, мы отправим письмо.';
-    } catch (error) {
-      $('verification-message').textContent = error.message || 'Не удалось отправить письмо.';
-    } finally {
-      window.setTimeout(() => { $('resend-verification').disabled = false; }, 1500);
     }
   });
   $('vk-link').addEventListener('click', async () => {
