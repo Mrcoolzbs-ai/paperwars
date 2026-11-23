@@ -126,7 +126,7 @@ try {
   const recalculatedCampaigns = await recalculateCountryPopulations(persistence.pool);
   if (recalculatedCampaigns > 0) {
     process.stdout.write(
-      `Corrected resident populations in ${recalculatedCampaigns} turn-one campaign(s).\\n`,
+      `Corrected resident populations in ${recalculatedCampaigns} turn-one campaign(s).\n`,
     );
   }
 
