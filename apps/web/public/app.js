@@ -590,10 +590,13 @@
       ? `Приказы: ${state.mapOrders.length} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`
       : 'Приказов пока нет · ПКМ по клетке, чтобы выбрать действие';
     confirm.hidden = !state.campaign?.countryId;
-    confirm.disabled = draftCount === 0 || state.turnStatus?.ordersAccepting !== true;
+    confirm.disabled =
+      state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
     confirm.textContent = state.turnStatus?.ordersConfirmed
       ? 'Приказы подтверждены'
-      : `Подтвердить приказы (${draftCount})`;
+      : draftCount > 0
+        ? `Подтвердить приказы (${draftCount})`
+        : 'Подтвердить ход без приказов';
   }
 
   async function loadMapOrders() {
