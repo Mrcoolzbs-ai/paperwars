@@ -22,7 +22,7 @@ export const VERIFY_EMAIL_PAGE_HTML = String.raw`<!doctype html>
     <p id="message">Нажмите кнопку, чтобы подтвердить адрес электронной почты и завершить регистрацию.</p>
     <button id="confirm" type="button">Подтвердить email</button>
     <p id="error" class="error" role="alert"></p>
-    <a id="login" class="hidden" href="/chat">Перейти к входу</a>
+    <a id="login" class="hidden" href="/">Перейти к входу</a>
   </main>
 <script>
 (() => {
@@ -84,7 +84,7 @@ export const VERIFY_EMAIL_PAGE_HTML = String.raw`<!doctype html>
       title.textContent = 'Email подтверждён';
       message.textContent = 'Регистрация завершена. Перенаправляем вас в Paper Wars…';
       button.classList.add('hidden');
-      window.location.replace('/chat');
+      window.location.replace('/');
     } catch (err) {
       errorBox.textContent = err instanceof Error ? err.message : 'Не удалось подтвердить email.';
       button.disabled = false;
