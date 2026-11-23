@@ -717,11 +717,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
         continue;
       }
 
-      const world = generateWorldMap(
-        campaign.map_seed,
-        campaign.map_width,
-        campaign.map_height,
-      );
+      const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
       const cells = await client.query<{
         readonly country_id: string;
         readonly cell_id: string;
@@ -765,12 +761,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
 
       if (campaignChanged) {
         if (snapshot.rows[0] !== undefined) {
-          const state = await buildSnapshot(
-            client,
-            item.id,
-            campaign.map_width,
-            campaign.map_height,
-          );
+          const state = await buildSnapshot(client, item.id, campaign.map_width, campaign.map_height);
           await client.query(
             `UPDATE world_snapshots
              SET version = $2, state_schema_version = 1,
@@ -1625,8 +1616,7 @@ export function createCountrySetupService(options: {
           const cellId = cellIds.get(`${cell.x},${cell.y}`);
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
-          const isDryLand =
-            spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
+          const isDryLand = spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
           return [campaignId, countryId, cellId, isDryLand && !hasBuilding ? 1 : 0] as const;
         });
         const initialResidentCount = countryCellValues.reduce((sum, row) => sum + row[3], 0);
