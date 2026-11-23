@@ -5,6 +5,8 @@ import {
   closeOrders,
   confirmCampaignOrders,
   claimNextTurnJob,
+  completeTurnJob,
+  StaleTurnJobLeaseError,
   renewTurnJobLease,
   reapExpiredTurnJobs,
   createPostgresPersistence,
@@ -404,6 +406,76 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           lease_until: null,
         });
         await expect(claimNextTurnJob(pool, 'worker-final')).resolves.toBeNull();
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('requires a live matching generation for the final fenced job update', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(1, true);
+      try {
+        await pool.query(
+          `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version)
+           VALUES ($1, $2, 1, 7)`,
+          [`turn:${fixture.campaignId}:1`, fixture.campaignId],
+        );
+
+        const staleLease = await claimNextTurnJob(pool, 'worker-old');
+        expect(staleLease).not.toBeNull();
+        if (staleLease === null) throw new Error('First worker should have claimed the job');
+
+        await pool.query(
+          `UPDATE turn_jobs
+           SET lease_until = clock_timestamp() - INTERVAL '1 second'
+           WHERE id = $1`,
+          [staleLease.id],
+        );
+        await reapExpiredTurnJobs(pool);
+
+        const currentLease = await claimNextTurnJob(pool, 'worker-current');
+        expect(currentLease).not.toBeNull();
+        if (currentLease === null) throw new Error('Replacement worker should have claimed the job');
+        expect(currentLease.generation).toBe(staleLease.generation + 1);
+
+        const staleTransaction = await pool.connect();
+        try {
+          await staleTransaction.query('BEGIN');
+          await expect(completeTurnJob(staleTransaction, staleLease)).rejects.toBeInstanceOf(
+            StaleTurnJobLeaseError,
+          );
+          await staleTransaction.query('ROLLBACK');
+        } finally {
+          staleTransaction.release();
+        }
+
+        const currentTransaction = await pool.connect();
+        try {
+          await currentTransaction.query('BEGIN');
+          await expect(completeTurnJob(currentTransaction, currentLease)).resolves.toBeUndefined();
+          await currentTransaction.query('COMMIT');
+        } catch (error) {
+          await currentTransaction.query('ROLLBACK');
+          throw error;
+        } finally {
+          currentTransaction.release();
+        }
+
+        const completed = await pool.query<{
+          status: string;
+          generation: number;
+          worker_id: string | null;
+          lease_until: Date | null;
+        }>(
+          'SELECT status, generation, worker_id, lease_until FROM turn_jobs WHERE campaign_id = $1',
+          [fixture.campaignId],
+        );
+        expect(completed.rows[0]).toEqual({
+          status: 'completed',
+          generation: currentLease.generation,
+          worker_id: null,
+          lease_until: null,
+        });
       } finally {
         await removeFixture(fixture);
       }
