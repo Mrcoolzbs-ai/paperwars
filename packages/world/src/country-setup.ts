@@ -1696,21 +1696,32 @@ export function createCountrySetupService(options: {
           throw new CountrySetupValidationError('Found a country before issuing building actions');
         }
 
-        const origin = await client.query<{ origin_x: number | null; origin_y: number | null }>(
-          `SELECT MIN(cell.x)::int AS origin_x, MIN(cell.y)::int AS origin_y
-           FROM country_cells AS owned
-           JOIN cells AS cell ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
-           WHERE owned.campaign_id = $1 AND owned.country_id = $2`,
+        // Use the reserved 5x5 centre saved with country_created, not MIN(x/y)
+        // of owned land cells: a coastal territory may have water in its first row/column.
+        const origin = await client.query<{ center_x: string | null; center_y: string | null }>(
+          `SELECT payload->'center'->>'x' AS center_x,
+                  payload->'center'->>'y' AS center_y
+           FROM game_events
+           WHERE campaign_id = $1
+             AND event_type = 'country_created'
+             AND payload->>'countryId' = $2
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1`,
           [campaignId, member.country_id],
         );
         const originRow = origin.rows[0];
-        if (originRow?.origin_x === null || originRow?.origin_x === undefined ||
-            originRow.origin_y === null || originRow.origin_y === undefined) {
+        const centerX = originRow?.center_x === null || originRow?.center_x === undefined
+          ? Number.NaN
+          : Number(originRow.center_x);
+        const centerY = originRow?.center_y === null || originRow?.center_y === undefined
+          ? Number.NaN
+          : Number(originRow.center_y);
+        if (!Number.isSafeInteger(centerX) || !Number.isSafeInteger(centerY)) {
           throw new CountrySetupValidationError('The country territory is not available');
         }
 
-        const worldX = originRow.origin_x + input.x;
-        const worldY = originRow.origin_y + input.y;
+        const worldX = centerX - TERRITORY_HALF + input.x;
+        const worldY = centerY - TERRITORY_HALF + input.y;
         const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
         if (world.terrain[worldY * campaign.map_width + worldX] !== 'l') {
           throw new CountrySetupValidationError('Buildings can only be placed on dry land');
