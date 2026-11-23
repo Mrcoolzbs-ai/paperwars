@@ -35,5 +35,5 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add packages/worker/src/baseline-resolver.ts packages/worker/src/host.ts tests/smoke/baseline-resolver.test.ts tests/smoke/baseline-worker.test.ts
             git commit -m "style: format baseline worker implementation"
-            git push origin "HEAD:refs/heads/${GITHUB_HEAD_REF}"
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
           fi
