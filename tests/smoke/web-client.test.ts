@@ -96,6 +96,7 @@ describe('browser client', () => {
     expect(script.body).toContain("createMapOrder('colonization'");
     expect(script.body).toContain('/orders/confirm');
     expect(script.body).toContain('map-order-summary');
+    expect(script.body).toContain('Подтвердить ход без приказов');
     expect(script.body).not.toContain('countries/mine/buildings');
     expect(script.body).not.toContain('country-action-panel');
     expect(script.body).not.toContain('renderConstructionGrid');
