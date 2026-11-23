@@ -165,11 +165,11 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] Покрыть детерминизм orchestration unit-тестом и автоматически журналировать каждый uniform/weighted RNG draw; weighted сохраняется как integer target в формате random_draws.
 - [ ] Реализовать конкретный ruleset resolver и механики только по нормативно подтверждённым правилам; неподтверждённые параметры не добавлять.
 
-**Текущий статус:** контрактная часть реализована в PR #7; реальная функция resolveTurn и игровой цикл ещё не реализованы.
+**Текущий статус:** чистый Simulation Engine и первый production resolver теперь связаны. В `packages/worker/src/baseline-resolver.ts` реализован ограниченный `baseline-v1`: приказ `demolish_building` (schemaVersion 1), 1 ОД за снос, возврат одного жителя, событие и детерминированный результат. Неизвестные типы приказов отклоняются. Экономика и другие фазы пока не моделируются.
 
 ### 1.8. Закрытие приказов, очередь и Worker
 
-**Статус на 23 ноября 2026 года: закрытие приказов, атомарный Worker и polling lifecycle реализованы; реальные игровые правила внутри resolver и production host остаются следующими задачами.**
+**Статус на 23 ноября 2026 года: закрытие приказов, fenced PostgreSQL Worker, polling lifecycle, production host и первый подтверждённый action resolver реализованы. Остальные игровые фазы остаются будущими задачами.**
 
 - [x] `closeOrders`: первой блокировкой берёт кампанию `FOR UPDATE`; проверяет статус, `orders_locked`, snapshot и актуальный список активных участников.
 - [x] Проверяет подтверждения либо deadline по времени БД `clock_timestamp()`.
@@ -190,8 +190,10 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] В одной PostgreSQL-транзакции сохраняются следующий snapshot, events, random draw log, order results, economic/battle reports, next seed и fenced completion TurnJob.
 - [x] При завершении кампании следующий seed не создаётся, `current_turn` остаётся на завершённом ходе, приём приказов остаётся закрытым, существующие seeds переводятся в `revealed`.
 - [x] `createTurnWorker().run(signal, options)` последовательно опрашивает очередь, сообщает об ошибках через `onError` и завершает polling по `AbortSignal`; текущая обработка хода не прерывается abort-сигналом.
-- [ ] Реализовать конкретный versioned game resolver с подтверждёнными игровыми фазами и механиками; Worker пока исполняет переданный resolver и не придумывает правила самостоятельно.
-- [ ] Добавить production host/entrypoint, который связывает Worker с выбранной версией ruleset и управляет жизненным циклом процесса.
+- [x] Добавить production host/entrypoint `packages/worker/src/host.ts`, который связывает Worker с `baseline-v1` resolver и управляет SIGINT/SIGTERM shutdown.
+- [x] Подключить один подтверждённый action subset: `demolish_building` (schemaVersion 1), 1 ОД, BUILD в текущем resolved turn, освобождение клетки и возврат одного жителя.
+- [x] В одной fenced-транзакции синхронизировать `world_snapshots` с relational `country_cells`/`country_buildings` projection, которую читает карта.
+- [ ] Реализовать остальные подтверждённые механики по мере фиксации точных параметров и конфликтных правил: колонизация, строительство за ОД, армия, дипломатия, экономика и сезонные события.
 
 Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId` и POST `/campaigns/:campaignId/orders/confirm`. Хранение order envelope универсально (type/schemaVersion/JSON payload) и пока не валидирует конкретные игровые команды или их эффекты. PostgreSQL integration tests покрывают CRUD/ownership, withdrawal confirmation, deadline, атомарное закрытие, конкурентные закрытия, leave semantics, lease, retry limit и fencing.
 
