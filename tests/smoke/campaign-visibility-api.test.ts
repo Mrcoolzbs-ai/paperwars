@@ -5,21 +5,13 @@ import {
   createAuthService,
   createCampaignService,
 } from '@paper-wars/auth';
+import { createEmailLoginUser } from '../helpers/auth.js';
 import { createApp } from '@paper-wars/api';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import { createCountrySetupService } from '@paper-wars/world';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
 
 const databaseUrl = process.env['DATABASE_URL'];
-
-async function registerVerified(
-  auth: ReturnType<typeof createAuthService>,
-  email: string,
-  password: string,
-) {
-  const challenge = await auth.register(email, password);
-  return auth.verifyEmail(challenge.verificationToken);
-}
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
   'campaign visibility projections',
@@ -69,17 +61,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         rulesetVersion: 'baseline-v1',
         rngVersion: 'rng-v1',
       });
-      const owner = await registerVerified(
+      const owner = await createEmailLoginUser(
+        pool,
         auth,
         `visibility-owner-${randomUUID()}@example.test`,
         'visibility api owner password',
       );
-      const member = await registerVerified(
+      const member = await createEmailLoginUser(
+        pool,
         auth,
         `visibility-member-${randomUUID()}@example.test`,
         'visibility api member password',
       );
-      const outsider = await registerVerified(
+      const outsider = await createEmailLoginUser(
+        pool,
         auth,
         `visibility-outsider-${randomUUID()}@example.test`,
         'visibility api outsider password',
