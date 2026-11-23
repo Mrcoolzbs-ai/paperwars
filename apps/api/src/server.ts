@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createAuthService,
   createAccessTokenSigner,
+  createAdminService,
   createCampaignService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence } from '@paper-wars/persistence';
@@ -49,9 +50,16 @@ const socialSystemAdminUserIds = (process.env['SOCIAL_SYSTEM_ADMIN_USER_IDS'] ??
   .split(',')
   .map((value) => value.trim())
   .filter((value) => value.length > 0);
+const paperWarsAdminUserIds = (process.env['PAPERWARS_ADMIN_USER_IDS'] ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (socialSystemAdminUserIds.some((userId) => !uuidPattern.test(userId))) {
   throw new Error('SOCIAL_SYSTEM_ADMIN_USER_IDS must be a comma-separated list of UUIDs');
+}
+if (paperWarsAdminUserIds.some((userId) => !uuidPattern.test(userId))) {
+  throw new Error('PAPERWARS_ADMIN_USER_IDS must be a comma-separated list of UUIDs');
 }
 const seedKeyProvider = new EnvironmentSeedKeyProvider(process.env);
 const accessTokens = createAccessTokenSigner({
@@ -94,6 +102,7 @@ try {
     pool: persistence.pool,
     socialSystemAdminUserIds,
   });
+  const adminService = createAdminService({ pool: persistence.pool });
 
   const webEntryPath =
     process.env['NODE_ENV'] === 'production'
@@ -107,6 +116,8 @@ try {
     authService,
     campaignService,
     countrySetupService,
+    adminService,
+    adminUserIds: paperWarsAdminUserIds,
     secureCookies: process.env['NODE_ENV'] === 'production',
     ...(webEntryPath === undefined ? {} : { webEntryPath }),
   });
