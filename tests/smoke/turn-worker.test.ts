@@ -6,7 +6,7 @@ import {
   runMigrations,
 } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
-import { toId, toTurnNumber } from '@paper-wars/shared';
+import { toId } from '@paper-wars/shared';
 import { createTurnWorker } from '@paper-wars/worker';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
