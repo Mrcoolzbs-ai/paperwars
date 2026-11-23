@@ -767,6 +767,53 @@ export function createCountrySetupService(options: {
       };
     },
 
+    async listAccessibleDiscoveries(userId, campaignId) {
+      const member = await options.pool.query<{ country_id: string | null }>(
+        `SELECT country_id
+         FROM campaign_memberships
+         WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+        [campaignId, userId],
+      );
+      const countryId = member.rows[0]?.country_id;
+      if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
+      if (countryId === null || countryId === undefined) return [];
+
+      const result = await options.pool.query<{
+        id: string;
+        discovery_type: 'ruins' | 'gold' | 'empty';
+        x: number;
+        y: number;
+        discovered_at_turn: number;
+      }>(
+        `SELECT discovery.id, discovery.discovery_type, cell.x, cell.y,
+                discovery.discovered_at_turn
+         FROM campaign_memberships AS membership
+         JOIN discovery_access AS access
+           ON access.country_id = membership.country_id
+          AND access.status = 'active'
+         JOIN discovery_records AS discovery
+           ON discovery.id = access.discovery_id
+          AND discovery.campaign_id = membership.campaign_id
+         JOIN cells AS cell
+           ON cell.campaign_id = discovery.campaign_id
+          AND cell.id = discovery.cell_id
+         WHERE membership.campaign_id = $1
+           AND membership.user_id = $2
+           AND membership.status = 'active'
+           AND membership.country_id = $3
+         ORDER BY discovery.discovered_at_turn DESC, cell.y, cell.x, discovery.id`,
+        [campaignId, userId, countryId],
+      );
+
+      return result.rows.map((row) => ({
+        id: row.id,
+        type: row.discovery_type,
+        x: row.x,
+        y: row.y,
+        discoveredAtTurn: row.discovered_at_turn,
+      }));
+    },
+
     async reserveSpawn(userId, campaignId, centerX, centerY) {
       validateInteger(centerX, 'centerX');
       validateInteger(centerY, 'centerY');
