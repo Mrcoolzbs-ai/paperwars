@@ -4,7 +4,7 @@
 
 ## 6. Обработка хода, приказы и worker jobs
 
-Закрытие приказов, TurnJob и Worker ниже пока остаются техническими контрактами будущей реализации. Начальный I/O-free orchestration core Stage 1.7 уже реализован в `@paper-wars/simulation`.
+Начальный инфраструктурный инкремент Stage 1.8 реализован: транзакционные подтверждение и закрытие приказов, создание TurnJob, claim/lease/reaper и fenced completion guard. Полноценный Worker, который вызывает ruleset resolver и атомарно сохраняет рассчитанное состояние мира, ещё не реализован. Начальный I/O-free orchestration core Stage 1.7 реализован в `@paper-wars/simulation`.
 
 ### 6.0. Реализованный pure orchestration core — Stage 1.7 (начальный инкремент)
 
@@ -43,6 +43,13 @@ Ruleset resolver возвращает `TurnSimulationResult` без RNG-журн
 9. Создаёт уникальный TurnJob для пары `(campaign_id, turn_number)`, фиксируя `snapshot_version`.
 
 Закрытие приёма и создание TurnJob атомарны. Если любой шаг завершается ошибкой, вся транзакция откатывается.
+
+### 6.2.1. Реализованный код Stage 1.8
+
+- `confirmCampaignOrders(pool, campaignId, userId)` в `@paper-wars/persistence` начинает транзакцию, берёт `campaigns FOR SHARE`, проверяет активность кампании и открытый приём, затем подтверждает только активное членство.
+- `closeOrders(pool, campaignId)` берёт `campaigns FOR UPDATE` первой блокировкой, затем snapshot и TurnJob, читает актуальных active members с `FOR SHARE`, проверяет подтверждения/deadline по `clock_timestamp()`, обновляет приказы и кампанию и вставляет TurnJob с `generation=0`.
+- `POST /campaigns/:campaignId/orders/confirm` вызывает подтверждение текущего участника и пытается закрыть ход. Ответ содержит `turnQueued: false`, пока ещё не все участники подтвердили и deadline не наступил; последний участник либо истёкший deadline приводят к созданию задания.
+- В этой версии нет CRUD API приказов. Когда операции записи приказов будут добавлены, каждая обязана брать `campaigns FOR SHARE` и проверять `orders_locked` до мутации в той же транзакции.
 
 ### 6.3. Защита операций над приказами и участниками
 
@@ -92,6 +99,12 @@ RETURNING id;
 
 Если вернулось не ровно одно значение, worker устарел. Условие `lease_until > clock_timestamp()` обязательно: уже просроченный worker не может продлить собственный lease.
 
+Реализованные функции:
+- `claimNextTurnJob(pool, workerId)` атомарно забирает не более одного старейшего pending job через CTE с `FOR UPDATE SKIP LOCKED`, переводит его в processing, увеличивает generation и возвращает lease; пустая очередь даёт `null`.
+- `renewTurnJobLease(pool, token)` возвращает новый leaseUntil либо `null`, если token устарел или lease уже истёк.
+- `reapExpiredTurnJobs(pool, batchSize)` обрабатывает ограниченную пачку истёкших заданий через `FOR UPDATE SKIP LOCKED`; по умолчанию batchSize=100, допустимый диапазон 1–1000.
+- `completeTurnJob(transaction, token)` выполняет финальный guarded UPDATE в предоставленном `PoolClient`. Вызывающий Worker обязан держать общую транзакцию записи результата и сделать этот UPDATE последней мутацией. При stale token функция бросает `StaleTurnJobLeaseError`; вся транзакция должна быть отменена.
+
 ### 6.6. retry_count и Reaper
 
 `retry_count` — число переназначений после первой попытки.
@@ -110,7 +123,7 @@ RETURNING id;
 - при истёкшем lease и `retry_count >= 5` переводит в `failed`, очищает worker_id и lease_until, не увеличивая retry_count;
 - не сбрасывает generation.
 
-Условия истечения lease в обеих ветках Reaper используют `lease_until < clock_timestamp()`.
+Условия истечения lease в обеих ветках Reaper используют `lease_until <= clock_timestamp()`.
 
 ### 6.7. Единый порядок блокировки строк
 
@@ -138,7 +151,10 @@ RETURNING id;
 
 ```sql
 UPDATE turn_jobs
-SET status = 'completed', completed_at = NOW()
+SET status = 'completed',
+    completed_at = clock_timestamp(),
+    worker_id = NULL,
+    lease_until = NULL
 WHERE id = :job_id
   AND generation = :expected_generation
   AND worker_id = :worker_id
@@ -148,6 +164,8 @@ RETURNING id;
 ```
 
 Ровно одна строка должна быть возвращена. Иначе выбрасывается StaleWorkerError, и вся транзакция, включая snapshot, события, random log, отчёты и seed, откатывается. Проверка lease только в начале транзакции недостаточна.
+
+Реализованный `completeTurnJob(PoolClient, lease)` проверяет это условие и выбрасывает `StaleTurnJobLeaseError`, если обновлено не ровно одно задание. Функция не открывает и не фиксирует транзакцию самостоятельно: Worker владеет общей транзакцией и обязан вызвать её последней операцией после записи всех игровых данных. Сама фиксация next snapshot/events/reports/seed ещё не реализована.
 
 ### 6.9. Завершение кампании и следующий seed
 
