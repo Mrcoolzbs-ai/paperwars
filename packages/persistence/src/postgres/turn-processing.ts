@@ -595,13 +595,24 @@ export async function createCampaignOrder(
     const result = await client.query<OrderDbRow>(
       `INSERT INTO orders (
          campaign_id, country_id, turn_number, order_type, schema_version, payload, status
-       ) VALUES ($1, $2, $3, $4, $5, $6, 'draft')
+       )
+       SELECT $1, $2, $3, $4, $5, $6, 'draft'
+       FROM campaigns AS campaign
+       WHERE campaign.id = $1
+         AND campaign.status = 'active'
+         AND campaign.orders_locked = FALSE
+         AND (campaign.deadline_at IS NULL OR campaign.deadline_at > clock_timestamp())
        RETURNING id, campaign_id, country_id, turn_number, order_type,
                  schema_version, payload, status, created_at, updated_at`,
       [campaignId, context.countryId, context.turnNumber, type, schemaVersion, payload],
     );
     const row = result.rows[0];
-    if (row === undefined) throw new Error('Order insert did not return a row');
+    if (row === undefined) {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_DEADLINE_PASSED',
+        'The order window closed before the draft could be saved',
+      );
+    }
 
     await client.query('COMMIT');
     transactionOpen = false;
@@ -680,6 +691,13 @@ export async function updateCampaignOrder(
            status = 'draft',
            updated_at = clock_timestamp()
        WHERE id = $1 AND campaign_id = $2 AND country_id = $3 AND turn_number = $4
+         AND EXISTS (
+           SELECT 1 FROM campaigns AS campaign
+           WHERE campaign.id = $2
+             AND campaign.status = 'active'
+             AND campaign.orders_locked = FALSE
+             AND (campaign.deadline_at IS NULL OR campaign.deadline_at > clock_timestamp())
+         )
        RETURNING id, campaign_id, country_id, turn_number, order_type,
                  schema_version, payload, status, created_at, updated_at`,
       [
@@ -693,7 +711,12 @@ export async function updateCampaignOrder(
       ],
     );
     const row = result.rows[0];
-    if (row === undefined) throw new Error('Order update did not return a row');
+    if (row === undefined) {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_DEADLINE_PASSED',
+        'The order window closed before the draft could be updated',
+      );
+    }
 
     await client.query('COMMIT');
     transactionOpen = false;
@@ -749,10 +772,26 @@ export async function deleteCampaignOrder(
       context.countryId,
       context.turnNumber,
     );
-    await client.query('DELETE FROM orders WHERE id = $1 AND campaign_id = $2', [
-      orderId,
-      campaignId,
-    ]);
+    const deleted = await client.query<{ id: string }>(
+      `DELETE FROM orders
+       WHERE id = $1
+         AND campaign_id = $2
+         AND EXISTS (
+           SELECT 1 FROM campaigns AS campaign
+           WHERE campaign.id = $2
+             AND campaign.status = 'active'
+             AND campaign.orders_locked = FALSE
+             AND (campaign.deadline_at IS NULL OR campaign.deadline_at > clock_timestamp())
+         )
+       RETURNING id`,
+      [orderId, campaignId],
+    );
+    if (deleted.rowCount !== 1) {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_DEADLINE_PASSED',
+        'The order window closed before the draft could be deleted',
+      );
+    }
     await client.query('COMMIT');
     transactionOpen = false;
   } catch (error) {
