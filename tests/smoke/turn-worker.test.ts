@@ -256,6 +256,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           version: 1,
           state_schema_version: 1,
         });
+        const draws = await pool.query<{ domain: string; draw_id: string; value: string }>(
+          'SELECT domain, draw_id, value::text AS value FROM random_draws WHERE campaign_id = $1 AND turn_number = 1',
+          [fixture.campaignId],
+        );
 
         expect(snapshot.rows[0]?.state.value).toBe(17 + Number(draws.rows[0]?.value));
 
@@ -295,10 +299,6 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           },
         ]);
 
-        const draws = await pool.query<{ domain: string; draw_id: string; value: string }>(
-          'SELECT domain, draw_id, value::text AS value FROM random_draws WHERE campaign_id = $1 AND turn_number = 1',
-          [fixture.campaignId],
-        );
         expect(draws.rows).toHaveLength(1);
         expect(draws.rows[0]).toMatchObject({ domain: 'worker-test', draw_id: 'turn-roll' });
 
