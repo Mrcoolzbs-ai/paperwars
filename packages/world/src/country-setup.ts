@@ -1583,7 +1583,7 @@ export function createCountrySetupService(options: {
       );
       const country = result.rows[0];
       if (!country) return null;
-      const [population, buildings] = await Promise.all([
+      const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(population), 0)::integer AS resident_count
            FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
@@ -1595,7 +1595,16 @@ export function createCountrySetupService(options: {
            GROUP BY building_type ORDER BY building_type`,
           [campaignId, country.country_id],
         ),
+        options.pool.query<{ report: Record<string, unknown> }>(
+          `SELECT report FROM economic_reports
+           WHERE campaign_id = $1 ORDER BY turn_number DESC LIMIT 1`,
+          [campaignId],
+        ),
       ]);
+      const economy = getCountryEconomyFromReport(
+        latestEconomy.rows[0]?.report,
+        country.country_id,
+      );
       return {
         id: country.country_id,
         campaignId: country.campaign_id,
@@ -1618,6 +1627,7 @@ export function createCountrySetupService(options: {
         },
         buildings: buildings.rows,
         residentCount: population.rows[0]?.resident_count ?? 0,
+        economy,
       } satisfies CountryProfileView;
     },
 
