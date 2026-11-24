@@ -1939,6 +1939,7 @@
       ownedCell &&
       !ownedCell.flooded &&
       ((ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') ||
+        ownedCell.buildingType === 'factory' ||
         ownedCell.buildingType === 'textile_workshop'),
     );
     const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
@@ -2828,11 +2829,13 @@
       ? cells.filter((cell) => !cell.buildingType).length
       : Number(country.residentCount || 0);
     const active = (cell) => cell.flooded !== true || cell.buildingType === 'rice_field';
-    const factories = cells.filter((cell) => cell.buildingType === 'factory');
+    const factories = cells.filter((cell) =>
+      ['factory', 'factory_level_2'].includes(cell.buildingType));
     const gold = cells.filter((cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true).length;
     const buildingUpkeep = cells.reduce((sum, cell) => {
       if (!cell.buildingType) return sum;
-      if (cell.buildingType === 'tower' || cell.buildingType === 'field_level_2') return sum + 2;
+      if (cell.buildingType === 'tower' || cell.buildingType === 'field_level_2' ||
+          cell.buildingType === 'factory_level_2') return sum + 2;
       if (cell.buildingType === 'textile_workshop_level_2') return sum + 3;
       return sum + 1;
     }, 0);
@@ -2862,8 +2865,10 @@
       }
       food += output;
     }
-    const activeFactories = factories.filter(active).length;
-    const goods = activeFactories * 10;
+    const goods = factories.filter(active).reduce(
+      (sum, cell) => sum + (cell.buildingType === 'factory_level_2' ? 15 : 10),
+      0,
+    );
     const activeCotton = cells.filter((cell) =>
       cell.buildingType === 'cotton_field' && active(cell) &&
       (season !== 'winter' || cell.structureType === 'greenhouse')).length;
