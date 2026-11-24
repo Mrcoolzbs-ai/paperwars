@@ -43,6 +43,34 @@ export interface PlayerSocialSystemTemplateView {
   readonly updatedAt: Date;
 }
 
+export interface CountryEconomyView {
+  readonly turnNumber: number;
+  readonly population: number;
+  /** One gold unit per gold mine; treasury income is gold multiplied by population. */
+  readonly gold: number;
+  readonly income: number;
+  readonly initialBuildingUpkeep: number;
+  readonly buildingUpkeep: number;
+  readonly unitCount: number;
+  readonly unitUpkeep: number;
+  readonly expenses: number;
+  readonly unpaidExpenses: number;
+  readonly disabledBuildings: readonly {
+    readonly x: number;
+    readonly y: number;
+    readonly type: string;
+    readonly upkeepSaved: number;
+  }[];
+  readonly food: number;
+  readonly foodDemand: number;
+  readonly foodShortage: boolean;
+  readonly goods: number;
+  readonly goodsDemand: number;
+  readonly goodsShortage: boolean;
+  readonly starvedColonies: number;
+  readonly fledColonies: number;
+}
+
 export interface CountryProfileView {
   readonly id: string;
   readonly campaignId: string;
@@ -65,6 +93,7 @@ export interface CountryProfileView {
   };
   readonly buildings: readonly { readonly type: StartBuildingType; readonly count: number }[];
   readonly residentCount: number;
+  readonly economy: CountryEconomyView | null;
 }
 
 export interface SocialSystemView {
