@@ -2763,7 +2763,7 @@
     const year = Number(state.mapView?.year || Math.floor((turnNumber - 1) / 24) + 1);
     const seasonTurn = Number(state.mapView?.seasonTurn || ((turnNumber - 1) % 6) + 1);
     const population = cells.length
-      ? cells.filter((cell) => !cell.buildingType && mapIsLand(cell.x, cell.y)).length
+      ? cells.filter((cell) => !cell.buildingType).length
       : Number(country.residentCount || 0);
     const active = (cell) => cell.flooded !== true || cell.buildingType === 'rice_field';
     const factories = cells.filter((cell) => cell.buildingType === 'factory');
