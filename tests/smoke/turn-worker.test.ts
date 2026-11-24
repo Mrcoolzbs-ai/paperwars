@@ -447,16 +447,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('atomically persists a colonized land cell, its d100 discovery and RNG journal entry', async () => {
-      const pool = getPool();
-      const fixture = await createFixture(false);
-      const cellId = randomUUID();
-      const territoryEventId = randomUUID();
-      const discoveryEventId = randomUUID();
-      try {
-        const resolver: WorkerResolver = ({ snapshot, random }) => {
-          const d100 = random.uniform('discovery', 'cell:10:10', 1, 100);
-          const discoveryType = d100 === 1 ? 'ruins' : d100 === 100 ? 'gold' : 'empty';
+    it(
+      'atomically persists a colonized land cell, its d100 discovery and RNG journal entry',
+      async () => {
+        const pool = getPool();
+        const fixture = await createFixture(false);
+        const cellId = randomUUID();
+        const territoryEventId = randomUUID();
+        const discoveryEventId = randomUUID();
+        let expectedD100 = 0;
+        let expectedDiscoveryType = '';
+        try {
+          const resolver: WorkerResolver = ({ snapshot, random }) => {
+            expectedD100 = random.uniform('discovery', 'cell:10:10', 1, 100);
+            expectedDiscoveryType =
+              expectedD100 === 1 ? 'ruins' : expectedD100 === 100 ? 'gold' : 'empty';
           const territoryEvent: WorkerEvent = {
             eventId: toId<'EventId'>(territoryEventId),
             campaignId: snapshot.campaignId,
@@ -537,25 +542,36 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
            FROM random_draws WHERE campaign_id = $1 AND turn_number = 1`,
           [fixture.campaignId],
         );
-        const gameEvents = await pool.query<{ visibility: string; recipient_country_id: string | null }>(
-          'SELECT visibility, recipient_country_id FROM game_events WHERE campaign_id = $1 AND turn_number = 1 ORDER BY event_type',
-          [fixture.campaignId],
-        );
+          const gameEvents = await pool.query<{
+            visibility: string;
+            recipient_country_id: string | null;
+          }>(
+            'SELECT visibility, recipient_country_id FROM game_events WHERE campaign_id = $1 AND turn_number = 1 ORDER BY event_type',
+            [fixture.campaignId],
+          );
 
-        expect(ownership.rows[0]?.population).toBe(9);
-        expect(discovery.rows[0]).toMatchObject({
-          discovery_type: 'ruins',
-          discovered_by_country_id: fixture.countryId,
-        });
-        expect(history.rows.map((row) => row.event_type)).toEqual(['discovered']);
-        expect(access.rows).toEqual([{ status: 'active', country_id: fixture.countryId }]);
-        expect(draw.rows).toHaveLength(1);
-        expect(draw.rows[0]).toMatchObject({ domain: 'discovery', draw_id: 'cell:10:10', value: 1 });
-        expect(gameEvents.rows).toContainEqual({ visibility: 'private', recipient_country_id: fixture.countryId });
-      } finally {
-        await removeFixture(fixture);
-      }
-    });
+          expect(ownership.rows[0]?.population).toBe(9);
+          expect(discovery.rows[0]).toMatchObject({
+            discovery_type: expectedDiscoveryType,
+            discovered_by_country_id: fixture.countryId,
+          });
+          expect(history.rows.map((row) => row.event_type)).toEqual(['discovered']);
+          expect(access.rows).toEqual([{ status: 'active', country_id: fixture.countryId }]);
+          expect(draw.rows).toHaveLength(1);
+          expect(draw.rows[0]).toMatchObject({
+            domain: 'discovery',
+            draw_id: 'cell:10:10',
+            value: expectedD100,
+          });
+          expect(gameEvents.rows).toContainEqual({
+            visibility: 'private',
+            recipient_country_id: fixture.countryId,
+          });
+        } finally {
+          await removeFixture(fixture);
+        }
+      },
+    );
 
     it('rolls back every result write when an event conflicts after the next snapshot insert', async () => {
       const pool = getPool();
