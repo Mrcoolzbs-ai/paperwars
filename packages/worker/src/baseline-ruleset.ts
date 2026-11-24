@@ -233,8 +233,10 @@ function getCountrySupply(
   mapWidth = 0,
   mapHeight = mapWidth > 0 ? Math.ceil(terrain.length / mapWidth) : 0,
 ): CountrySupply {
-  const factories = country.cells.filter((cell) =>
-    ['factory', 'factory_level_2'].includes(cell.buildingType));
+  const factories = country.cells.filter(
+    (cell) =>
+      cell.buildingType === 'factory' || cell.buildingType === 'factory_level_2',
+  );
   const active = (cell: BaselineCellState): boolean =>
     !componentIsDisabled(cell, 'building', disabledComponents);
   const activeFactories = factories.filter(active);
@@ -766,7 +768,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             ? {
                 ...candidate,
                 buildingType: null,
-                structureType: removedGreenhouse ? null : candidate.structureType,
+                structureType: removedGreenhouse ? null : (candidate.structureType ?? null),
                 population,
               }
             : candidate,
