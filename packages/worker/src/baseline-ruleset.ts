@@ -363,7 +363,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             colonizedCount: candidates.length,
             colonizedLandCount: landCandidates.length,
             colonizedWaterCount: candidates.length - landCandidates.length,
-            residentsAdded,
+            residentsAdded: 9,
             discoveries: orderDiscoveries,
           },
         });
