@@ -580,16 +580,21 @@
     });
   }
 
+  function mapActionCount() {
+    return state.mapOrders.filter((order) => order.status !== 'discarded').length;
+  }
+
   function renderMapOrderSummary() {
     const summary = $('#map-order-summary');
     const confirm = $('#confirm-map-orders');
     if (!summary || !confirm) return;
-    const draftCount = state.mapOrders.filter((order) => order.status !== 'confirmed').length;
-    const confirmedCount = state.mapOrders.length - draftCount;
+    const activeOrders = state.mapOrders.filter((order) => order.status !== 'discarded');
+    const actionCount = activeOrders.length;
+    const remainingActions = Math.max(0, 3 - actionCount);
+    const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
+    const confirmedCount = actionCount - draftCount;
     summary.hidden = !state.campaign?.countryId;
-    summary.textContent = state.mapOrders.length
-      ? `Приказы: ${state.mapOrders.length} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`
-      : 'Приказов пока нет · ПКМ по клетке, чтобы выбрать действие';
+    summary.textContent = `ОД: ${actionCount}/3 · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
     confirm.disabled =
       state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
@@ -621,6 +626,10 @@
     }
     if (state.turnStatus?.ordersAccepting !== true) {
       showToast('Сейчас приём приказов закрыт.', true);
+      return;
+    }
+    if (mapActionCount() >= 3) {
+      showToast('На этот ход уже использованы все 3 очка действий.', true);
       return;
     }
     const campaignId = state.campaign.id;
@@ -699,7 +708,8 @@
     );
     const isLand = mapIsLand(cell.x, cell.y);
     const existingOrders = mapOrdersAt(cell.x, cell.y);
-    const canIssue = state.turnStatus?.ordersAccepting === true;
+    const actionsRemaining = Math.max(0, 3 - mapActionCount());
+    const canIssue = state.turnStatus?.ordersAccepting === true && actionsRemaining > 0;
     let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
     content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
 
@@ -714,8 +724,10 @@
         escapeHtml(order.id) + '">Снять: ' + escapeHtml(orderTypeLabel(order.type)) + '</button>',
       ).join('');
       content += '</div>';
-    } else if (!canIssue) {
+    } else if (state.turnStatus?.ordersAccepting !== true) {
       content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
+    } else if (actionsRemaining === 0) {
+      content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
     } else if (!isLand) {
       content += '<p class="map-context-note">На воде и реках нельзя размещать постройки или колонии.</p>';
     } else if (ownedCell) {
@@ -734,12 +746,12 @@
       }
     } else if (!anyCountryOwnsCell) {
       content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
-      content += '<small>Выбрана клетка-цель; состав и границы района проверит симуляция.</small>';
+      content += '<small>Выбрана центральная клетка: захватятся все свободные клетки суши в квадрате 3×3. Каждая новая клетка получает отдельный бросок d100.</small>';
     } else {
       content += '<p class="map-context-note">Нельзя отдать приказ на клетку другого государства.</p>';
     }
 
-    if (!canIssue && state.campaign?.countryId && !existingOrders.length) {
+    if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
       content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
     }
     menu.innerHTML = content;
