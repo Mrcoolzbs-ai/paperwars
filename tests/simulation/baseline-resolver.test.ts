@@ -115,9 +115,11 @@ describe('baseline turn resolver', () => {
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'accepted',
-      data: { colonizedCount: 1, residentsAdded: 1 },
+      data: { colonizedCount: 9, colonizedLandCount: 1, colonizedWaterCount: 8, residentsAdded: 1 },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(9);
+    expect(result.nextState.countries[0]?.cells.filter((cell) => cell.population === 1)).toHaveLength(1);
+    expect(result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0)).toHaveLength(8);
     expect(random.calls).toHaveLength(1);
   });
 
@@ -151,8 +153,15 @@ describe('baseline turn resolver', () => {
     );
 
     expect(result.nextState.countries[0]?.cells[0]?.id).toBe(discovery.cellId);
-    expect(result.events.some((event) => event.type === 'discovery.captured')).toBe(true);
+    const capturedEvent = result.events.find((event) => event.type === 'discovery.captured');
+    expect(capturedEvent).toBeDefined();
+    expect(capturedEvent?.visibility).toBe('public');
+    expect(capturedEvent?.payload).not.toHaveProperty('discoveryType');
+    expect(capturedEvent?.payload).not.toHaveProperty('discoveryId');
     expect(result.events.some((event) => event.type === 'discovery.discovered')).toBe(false);
+    expect(result.orderResults[0]?.data?.['discoveries']).toEqual([
+      { x: 2, y: 2, alreadyDiscovered: true },
+    ]);
     expect(random.calls).toHaveLength(0);
   });
 
