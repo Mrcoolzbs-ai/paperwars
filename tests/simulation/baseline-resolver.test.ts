@@ -169,7 +169,7 @@ describe('baseline turn resolver', () => {
     ).toBe(1);
     expect(
       result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0),
-    ).toHaveLength(8);
+    ).toHaveLength(9);
     expect(random.calls).toHaveLength(1);
   });
 

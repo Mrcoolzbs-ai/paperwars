@@ -351,7 +351,12 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
-        const borderOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const;
+        const borderOffsets = [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [0, 1],
+        ] as const;
         let touchesOwnTerritory = false;
         for (const cell of candidates) {
           for (const [dx, dy] of borderOffsets) {
