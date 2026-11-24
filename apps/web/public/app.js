@@ -324,7 +324,8 @@
       const author = document.createElement('strong');
       author.textContent = item.authorLabel || 'Игрок';
       const time = document.createElement('time');
-      time.dateTime = item.createdAt ? new Date(item.createdAt).toISOString() : '';
+      const messageDate = new Date(item.createdAt);
+      time.dateTime = Number.isNaN(messageDate.getTime()) ? '' : messageDate.toISOString();
       time.textContent = formatChatTimestamp(item.createdAt);
       meta.append(author, time);
       const content = document.createElement('div');
