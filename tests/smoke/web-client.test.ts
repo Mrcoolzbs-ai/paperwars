@@ -28,6 +28,11 @@ describe('browser client', () => {
 
     expect(html).toContain('id="auth-screen"');
     expect(html).toContain('src="/app.js"');
+    expect(html).not.toContain('unpkg.com/@vkid/sdk');
+    expect(script).toContain('function loadVkIdSdk');
+    expect(script).toContain('https://unpkg.com/@vkid/sdk@2.6.1/dist-sdk/umd/index.js');
+    expect(script).toContain('https://cdn.jsdelivr.net/npm/@vkid/sdk@2.6.1/dist-sdk/umd/index.js');
+    expect(script).toContain('await loadVkIdSdk()');
     expect(script).toContain('#auth-screen');
     expect(() => new Script(script, { filename: 'apps/web/dist/app.js' })).not.toThrow();
   });
