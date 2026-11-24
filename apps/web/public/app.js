@@ -1066,6 +1066,16 @@
       const details = document.createElement('span');
       details.textContent = 'Правление: ' + (country.government || 'не указано') +
         ' · Культура: ' + ((country.culture || []).join(', ') || 'не указана');
+      const economy = document.createElement('span');
+      if (country.economy) {
+        const report = country.economy;
+        economy.textContent = 'Экономика: доход ' + report.income + ' · содержание ' +
+          report.expenses + ' · еда ' + report.food + '/' + report.foodDemand +
+          ' · товары ' + report.goods + '/' + report.goodsDemand +
+          (report.budgetDeficit ? ' · дефицит бюджета' : '');
+      } else {
+        economy.textContent = 'Экономика: ожидает первого завершённого хода.';
+      }
       const system = document.createElement('div');
       system.className = 'admin-data-card';
       const systemTitle = document.createElement('strong');
@@ -1077,7 +1087,7 @@
         row.textContent = principle.name + ' — ' + (principle.effect || principle.description || '');
         system.append(row);
       }
-      card.append(heading, meta, details, system);
+      card.append(heading, meta, details, economy, system);
       host.append(card);
     }
   }
