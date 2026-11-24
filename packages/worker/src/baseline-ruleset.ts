@@ -609,10 +609,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       }> = [];
       const disableCandidates = buildings.filter((cell) => cell.buildingType !== 'gold_mine');
 
-      while (
-        income < remainingBuildingUpkeep + unitUpkeep &&
-        disableCandidates.length > 0
-      ) {
+      while (income < remainingBuildingUpkeep + unitUpkeep && disableCandidates.length > 0) {
         const drawIndex = random.uniform(
           'economy',
           `${country.id}:disable-building:${snapshot.turnNumber}:${disabledBuildings.length}`,
@@ -655,18 +652,13 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           country.cells = country.cells.filter((cell) => cell.territoryId !== territoryId);
           for (const cell of colonyCells) ownership.delete(coordinateKey(cell.x, cell.y));
-          emit(
-            `economy:${country.id}`,
-            country.id,
-            'colony.removed',
-            {
-              countryId: country.id,
-              territoryId,
-              reason,
-              removedCellCount: colonyCells.length,
-              removedPopulation,
-            },
-          );
+          emit(`economy:${country.id}`, country.id, 'colony.removed', {
+            countryId: country.id,
+            territoryId,
+            reason,
+            removedCellCount: colonyCells.length,
+            removedPopulation,
+          });
         }
       }
 
