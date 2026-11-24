@@ -333,12 +333,14 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
     },
 
     async joinCampaign(userId, campaignId) {
-      if (
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-          campaignId,
-        )
-      ) {
-        throw new AuthValidationError('Campaign ID is invalid');
+      const campaignIdMatch = campaignId.trim().match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+      );
+      const normalizedCampaignId = campaignIdMatch?.[0];
+      if (!normalizedCampaignId) {
+        throw new AuthValidationError(
+          'Введите полный ID кампании (UUID). Можно вставить строку «ID …» из карточки мира.',
+        );
       }
       const client = await options.pool.connect();
       let transactionOpen = false;
@@ -354,33 +356,36 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           map_height: number | null;
         }>(
           'SELECT id, status, current_turn, orders_locked, map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
-          [campaignId],
+          [normalizedCampaignId],
         );
         const target = campaign.rows[0];
+        if (!target) {
+          throw new AuthValidationError('Кампания с таким ID не найдена.');
+        }
         if (
-          target?.status !== 'active' ||
+          target.status !== 'active' ||
           target.current_turn !== 1 ||
           !target.orders_locked ||
           target.map_width === null ||
           target.map_height === null
         ) {
           throw new AuthValidationError(
-            'Campaign is no longer accepting players for the initial setup',
+            'Кампания уже начала первый ход и больше не принимает новых игроков. Подключиться можно до завершения основания государств.',
           );
         }
         const existing = await client.query<{ status: string }>(
           'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
-          [campaignId, userId],
+          [normalizedCampaignId, userId],
         );
         if (existing.rows[0]?.status !== 'active') {
           const playerCount = await client.query<{ count: number }>(
             `SELECT COUNT(*)::int AS count FROM campaign_memberships
              WHERE campaign_id = $1 AND status = 'active'`,
-            [campaignId],
+            [normalizedCampaignId],
           );
           const maxPlayers = Math.floor((target.map_width * target.map_height) / 100);
           if ((playerCount.rows[0]?.count ?? 0) >= maxPlayers) {
-            throw new AuthValidationError('Campaign is full (' + maxPlayers + ' player slots)');
+            throw new AuthValidationError('В кампании закончились свободные места (' + maxPlayers + ').');
           }
         }
         await client.query(
@@ -388,7 +393,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
            VALUES ($1, $2, 'active', FALSE)
            ON CONFLICT (campaign_id, user_id) DO UPDATE
            SET status = 'active', orders_confirmed = FALSE`,
-          [campaignId, userId],
+          [normalizedCampaignId, userId],
         );
         await client.query('COMMIT');
         transactionOpen = false;
