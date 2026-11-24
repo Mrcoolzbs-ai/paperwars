@@ -1,5 +1,8 @@
 name: Format PR 53
 on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
   push:
     branches:
       - fix/country-economy-map-orders
@@ -14,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/country-economy-map-orders
+          ref: ${{ github.event.pull_request.head.ref || 'fix/country-economy-map-orders' }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
@@ -47,5 +50,6 @@ jobs:
               packages/world/src/country-setup.ts \
               tests/simulation/baseline-resolver.test.ts
             git commit -m "style: format PR files"
-            git push origin HEAD:fix/country-economy-map-orders
+            target_branch="${{ github.event.pull_request.head.ref || 'fix/country-economy-map-orders' }}"
+            git push origin HEAD:"$target_branch"
           fi
