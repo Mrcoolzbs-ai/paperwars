@@ -148,10 +148,7 @@ function adjacentToWater(
       if (offsetX === 0 && offsetY === 0) continue;
       const nextX = x + offsetX;
       const nextY = y + offsetY;
-      if (
-        isInsideMap(nextX, nextY, width, height) &&
-        terrain[nextY * width + nextX] !== 'l'
-      ) {
+      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
         return true;
       }
     }
@@ -240,8 +237,7 @@ function getCountrySupply(
   for (const cell of country.cells) {
     if (!cell.buildingType || !active(cell)) continue;
     const factoryNearby = factories.some(
-      (factory) =>
-        Math.abs(factory.x - cell.x) <= 1 && Math.abs(factory.y - cell.y) <= 1,
+      (factory) => Math.abs(factory.x - cell.x) <= 1 && Math.abs(factory.y - cell.y) <= 1,
     );
     const fieldCanWorkInWinter =
       season === 'winter' &&
@@ -258,13 +254,12 @@ function getCountrySupply(
       if (season === 'winter' && !fieldCanWorkInWinter) continue;
       if (cell.buildingType === 'rice_field') {
         if (season === 'winter') continue;
-        output = cell.flooded === true ? 15 : adjacentToWater(
-          cell.x,
-          cell.y,
-          terrain,
-          mapWidth,
-          mapHeight,
-        ) ? 10 : 5;
+        output =
+          cell.flooded === true
+            ? 15
+            : adjacentToWater(cell.x, cell.y, terrain, mapWidth, mapHeight)
+              ? 10
+              : 5;
       } else {
         output = cell.buildingType === 'field_level_2' ? 15 : 10;
       }
@@ -272,13 +267,7 @@ function getCountrySupply(
     } else if (cell.buildingType === 'hunter') {
       output = season === 'spring' ? 15 : 5;
     } else if (cell.buildingType === 'fisher') {
-      const riverCells = adjacentRiverCount(
-        cell.x,
-        cell.y,
-        terrain,
-        mapWidth,
-        mapHeight,
-      );
+      const riverCells = adjacentRiverCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
       output = riverCells * (season === 'spring' ? 10 : 5);
     }
     food += output;
@@ -490,10 +479,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       // Each land cell is rolled at most once per flood; dams block their own cell
       // but do not form an impermeable wall, so the flood can flow around them.
       const floodCoordinates = new Set(guaranteedFloodCoordinates);
-      const checkedOverflow = new Set<string>([
-        ...guaranteedFloodCoordinates,
-        ...damCoordinates,
-      ]);
+      const checkedOverflow = new Set<string>([...guaranteedFloodCoordinates, ...damCoordinates]);
       const floodFrontier = [...guaranteedFloodCoordinates].sort();
 
       while (floodFrontier.length > 0) {
@@ -751,9 +737,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             continue;
           }
           country.cells = country.cells.map((candidate) =>
-            candidate.id === cell.id
-              ? { ...candidate, buildingType }
-              : candidate,
+            candidate.id === cell.id ? { ...candidate, buildingType } : candidate,
           );
           constructions += 1;
           emit(order.id, country.id, 'building.upgraded', {

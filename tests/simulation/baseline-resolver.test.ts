@@ -73,7 +73,10 @@ function createOrder(
   } as const;
 }
 
-function createRandom(values: readonly number[] = [], turnNumber = 1): {
+function createRandom(
+  values: readonly number[] = [],
+  turnNumber = 1,
+): {
   readonly source: RandomSource;
   readonly calls: Array<{ domain: string; drawId: string; min: number; max: number }>;
 } {
@@ -661,7 +664,6 @@ describe('baseline turn resolver', () => {
     expect(result.nextState.countries[0]?.cells).toHaveLength(3);
   });
 
-
   it('maps every six turns to a season and advances the year after 24 turns', () => {
     expect(getBaselineSeasonForTurn(1)).toEqual({ season: 'spring', year: 1, seasonTurn: 1 });
     expect(getBaselineSeasonForTurn(6)).toEqual({ season: 'spring', year: 1, seasonTurn: 6 });
@@ -690,8 +692,12 @@ describe('baseline turn resolver', () => {
       [],
       createRandom([], 7).source,
     );
-    const springCountry = (spring.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
-    const summerCountry = (summer.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+    const springCountry = (
+      spring.economicReport?.['countries'] as Array<Record<string, unknown>>
+    )[0];
+    const summerCountry = (
+      summer.economicReport?.['countries'] as Array<Record<string, unknown>>
+    )[0];
 
     expect(springCountry).toMatchObject({ season: 'spring', food: 35 });
     expect(summerCountry).toMatchObject({ season: 'summer', food: 15 });
@@ -700,7 +706,10 @@ describe('baseline turn resolver', () => {
   it('keeps ordinary fields idle in winter while a greenhouse keeps a normal field and cotton field working', () => {
     const cells = [
       economyCell('gold', 0, 0, 20, 'gold_mine'),
-      { ...economyCell('greenhouse-field', 1, 0, 0, 'field'), structureType: 'greenhouse' as const },
+      {
+        ...economyCell('greenhouse-field', 1, 0, 0, 'field'),
+        structureType: 'greenhouse' as const,
+      },
       economyCell('plain-field', 2, 0, 0, 'field'),
       economyCell('winter-rice', 3, 0, 0, 'rice_field'),
       { ...economyCell('cotton', 4, 0, 0, 'cotton_field'), structureType: 'greenhouse' as const },
@@ -735,7 +744,10 @@ describe('baseline turn resolver', () => {
     const cells = [
       { ...economyCell('dam', 1, 1, 0), structureType: 'dam' as const },
       economyCell('field', 2, 1, 0, 'field'),
-      { ...economyCell('greenhouse-field', 3, 1, 0, 'field'), structureType: 'greenhouse' as const },
+      {
+        ...economyCell('greenhouse-field', 3, 1, 0, 'field'),
+        structureType: 'greenhouse' as const,
+      },
       economyCell('rice', 1, 2, 0, 'rice_field'),
       economyCell('land-3-2', 3, 2, 0),
       economyCell('land-1-3', 1, 3, 0),
@@ -746,10 +758,9 @@ describe('baseline turn resolver', () => {
     const result = resolve(state, [], createRandom([50, 1, 1], 12).source);
     const nextCells = result.nextState.countries[0]?.cells ?? [];
 
-    expect(nextCells.find((cell) => cell.id === 'dam')).toMatchObject({
-      structureType: 'dam',
-      flooded: undefined,
-    });
+    const damCell = nextCells.find((cell) => cell.id === 'dam');
+    expect(damCell?.structureType).toBe('dam');
+    expect(damCell).not.toHaveProperty('flooded');
     expect(nextCells.find((cell) => cell.id === 'field')).toMatchObject({
       flooded: true,
       buildingType: 'field',
@@ -782,7 +793,10 @@ describe('baseline turn resolver', () => {
     const result = resolve(
       createSeasonState(cells, 12, terrain.join(''), 5, false),
       [],
-      createRandom(Array.from({ length: 100 }, () => 1), 12).source,
+      createRandom(
+        Array.from({ length: 100 }, () => 1),
+        12,
+      ).source,
     );
     const nextCells = result.nextState.countries[0]?.cells ?? [];
 
@@ -799,10 +813,14 @@ describe('baseline turn resolver', () => {
       state,
       [
         createOrder('40000000-0000-4000-8000-000000000201', 'construction', {
-          x: 1, y: 0, buildingType: 'greenhouse',
+          x: 1,
+          y: 0,
+          buildingType: 'greenhouse',
         }),
         createOrder('40000000-0000-4000-8000-000000000202', 'construction', {
-          x: 1, y: 0, buildingType: 'dam',
+          x: 1,
+          y: 0,
+          buildingType: 'dam',
         }),
       ],
       createRandom().source,
@@ -829,10 +847,14 @@ describe('baseline turn resolver', () => {
       state,
       [
         createOrder('40000000-0000-4000-8000-000000000203', 'construction', {
-          x: 1, y: 0, buildingType: 'field_level_2',
+          x: 1,
+          y: 0,
+          buildingType: 'field_level_2',
         }),
         createOrder('40000000-0000-4000-8000-000000000204', 'construction', {
-          x: 2, y: 0, buildingType: 'textile_workshop_level_2',
+          x: 2,
+          y: 0,
+          buildingType: 'textile_workshop_level_2',
         }),
       ],
       createRandom().source,
@@ -853,8 +875,6 @@ describe('baseline turn resolver', () => {
     const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
     expect(economy).toMatchObject({ initialBuildingUpkeep: 6, expenses: 6 });
   });
-
-
 
   it('adds only one flood surcharge to a cell that has both a field and a greenhouse', () => {
     const cells = [
@@ -888,12 +908,9 @@ describe('baseline turn resolver', () => {
     expect(economy).toMatchObject({ food: 7.5, goods: 10 });
   });
 
-
   it('recedes autumn flood water after the sixth autumn turn', () => {
     const terrain = 'l'.repeat(25);
-    const cells = [
-      { ...economyCell('flooded-field', 1, 1, 0, 'field'), flooded: true },
-    ];
+    const cells = [{ ...economyCell('flooded-field', 1, 1, 0, 'field'), flooded: true }];
     const result = resolve(
       createSeasonState(cells, 18, terrain, 5, false),
       [],
@@ -902,9 +919,7 @@ describe('baseline turn resolver', () => {
 
     expect(result.nextState.turnNumber).toBe(19);
     expect(result.nextState.countries[0]?.cells[0]?.flooded).toBe(false);
-    expect(result.events).toContainEqual(
-      expect.objectContaining({ type: 'cell.flood.receded' }),
-    );
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'cell.flood.receded' }));
   });
 
   it('limits each cotton field to one textile workshop', () => {

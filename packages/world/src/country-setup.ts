@@ -2277,6 +2277,11 @@ export function createCountrySetupService(options: {
       const allowedBuildings = new Set<AdditionalBuildingType>([
         'factory',
         'field',
+        'rice_field',
+        'cotton_field',
+        'textile_workshop',
+        'hunter',
+        'fisher',
         'religious_building',
         'science',
         'barracks',

@@ -114,6 +114,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           migration_name: '0016_admin_mode_toggle.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
+        {
+          migration_name: '0017_seasonal_buildings.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
       ]);
     });
 

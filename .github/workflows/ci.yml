@@ -55,10 +55,6 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
-      - name: Temporary formatting diff
-        run: |
-          pnpm exec prettier --write packages/worker/src/baseline-ruleset.ts packages/world/src/country-setup.ts tests/simulation/baseline-resolver.test.ts
-          git diff -- packages/worker/src/baseline-ruleset.ts packages/world/src/country-setup.ts tests/simulation/baseline-resolver.test.ts
       - name: Build
         run: pnpm build
       - name: Typecheck
