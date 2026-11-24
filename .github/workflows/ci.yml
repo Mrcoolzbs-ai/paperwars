@@ -61,6 +61,10 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Print Prettier diff (temporary diagnostic)
+        run: |
+          pnpm exec prettier --write packages/worker/src/worker.ts tests/smoke/turn-processing.test.ts
+          git diff -- packages/worker/src/worker.ts tests/smoke/turn-processing.test.ts
       - name: Format check
         run: pnpm format:check
       - name: Tests
