@@ -959,6 +959,16 @@
     $('#profile-current-password').value = '';
     $('#profile-new-password').value = '';
     $('#profile-confirm-password').value = '';
+    state.adminModeEnabled = profile.adminModeEnabled === true;
+    $('#admin-code-panel').classList.toggle('hidden', profile.isAdmin === true);
+    $('#admin-tools-panel').classList.toggle('hidden', profile.isAdmin !== true);
+    $('#admin-mode-toggle').textContent = state.adminModeEnabled
+      ? 'Выключить инструменты администратора'
+      : 'Включить инструменты администратора';
+    $('#admin-tools-content').classList.toggle('hidden', !state.adminModeEnabled);
+    if (profile.isAdmin && state.adminModeEnabled && state.activeScreen === 'profile') {
+      void refreshAdminTools();
+    }
   }
 
   async function loadProfile() {
@@ -971,6 +981,284 @@
     };
     $('#user-label').textContent = state.user.displayName || state.user.email || '';
     renderProfile();
+  }
+
+  function isAdminMode() {
+    return state.profile?.isAdmin === true && state.adminModeEnabled === true;
+  }
+
+  function adminSelectedCampaignId() {
+    return $('#admin-campaign-select')?.value || state.campaign?.id || '';
+  }
+
+  function renderAdminDiscoveries(discoveries) {
+    const host = $('#admin-discoveries-list');
+    if (!host) return;
+    host.replaceChildren();
+    if (!discoveries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'chat-room-empty';
+      empty.textContent = 'Для этой кампании пока нет результатов колонизации.';
+      host.append(empty);
+      return;
+    }
+    for (const item of discoveries) {
+      const card = document.createElement('article');
+      card.className = 'admin-data-card';
+      const title = document.createElement('strong');
+      const roll = item.d100 === null || item.d100 === undefined ? 'бросок не записан' : 'd100: ' + item.d100;
+      title.textContent = roll + ' · ' + (item.type === 'gold' ? 'Золото' : item.type === 'ruins' ? 'Руины' : 'Обычная клетка');
+      const detail = document.createElement('span');
+      detail.textContent = 'Координаты ' + item.x + ', ' + item.y + ' · ход ' + item.discoveredAtTurn;
+      card.append(title, detail);
+      host.append(card);
+    }
+  }
+
+  async function loadAdminDiscoveries() {
+    const campaignId = adminSelectedCampaignId();
+    const host = $('#admin-discoveries-list');
+    if (!host) return;
+    if (!campaignId) {
+      host.textContent = 'Сначала выбери кампанию.';
+      return;
+    }
+    host.textContent = 'Загрузка результатов…';
+    try {
+      const data = await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/discoveries');
+      state.adminCampaignDiscoveries = Array.isArray(data.discoveries) ? data.discoveries : [];
+      renderAdminDiscoveries(state.adminCampaignDiscoveries);
+    } catch (error) {
+      host.textContent = userErrorMessage(error);
+    }
+  }
+
+  function renderAdminCountryCard(country) {
+    const host = $('#admin-country-card');
+    if (!host) return;
+    host.replaceChildren();
+    if (!country) {
+      host.textContent = 'Государство не найдено.';
+      return;
+    }
+    const title = document.createElement('strong');
+    title.textContent = country.name;
+    const meta = document.createElement('span');
+    meta.textContent = 'Население: ' + country.residentCount + ' · Построек: ' +
+      (country.buildings || []).reduce((total, item) => total + Number(item.count || 0), 0);
+    const system = document.createElement('div');
+    system.className = 'admin-data-card';
+    const systemTitle = document.createElement('strong');
+    systemTitle.textContent = (country.officialSystem?.type === 'religion' ? 'Религия: ' : 'Идеология: ') +
+      (country.officialSystem?.name || 'не указана');
+    system.append(systemTitle);
+    for (const principle of country.officialSystem?.principles || []) {
+      const row = document.createElement('span');
+      row.textContent = principle.name + ' — ' + (principle.effect || principle.description || '');
+      system.append(row);
+    }
+    host.append(title, meta, system);
+  }
+
+  async function loadAdminCountryCard(countryId) {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId || !countryId) return;
+    const host = $('#admin-country-card');
+    host.textContent = 'Загрузка карточки государства…';
+    try {
+      const data = await request(
+        '/admin/campaigns/' + encodeURIComponent(campaignId) +
+        '/countries/' + encodeURIComponent(countryId),
+      );
+      state.adminSelectedCountry = data.country || null;
+      renderAdminCountryCard(state.adminSelectedCountry);
+      showToast(data.country ? 'Карточка государства открыта.' : 'Государство не найдено.');
+    } catch (error) {
+      host.textContent = userErrorMessage(error);
+    }
+  }
+
+  function renderAdminUsers(users) {
+    const host = $('#admin-users-list');
+    if (!host) return;
+    host.replaceChildren();
+    if (!users.length) {
+      host.textContent = 'Игроков пока нет.';
+      return;
+    }
+    for (const user of users) {
+      const row = document.createElement('div');
+      row.className = 'admin-user-row';
+      const identity = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = user.displayName;
+      const email = document.createElement('small');
+      email.textContent = user.email || 'Без email';
+      identity.append(name, email);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 32;
+      input.value = user.displayName;
+      input.setAttribute('aria-label', 'Новый никнейм игрока ' + user.displayName);
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'button button-outline button-small';
+      rename.textContent = 'Переименовать';
+      rename.addEventListener('click', async () => {
+        rename.disabled = true;
+        try {
+          await request('/admin/users/' + encodeURIComponent(user.id), {
+            method: 'PATCH',
+            body: JSON.stringify({ displayName: input.value }),
+          });
+          showToast('Никнейм игрока изменён.');
+          await loadAdminUsers();
+        } catch (error) {
+          showToast(userErrorMessage(error), true);
+        } finally {
+          rename.disabled = false;
+        }
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'button button-outline button-small';
+      remove.textContent = 'Удалить аккаунт';
+      const protectedUser = user.isAdmin || user.id === state.user?.id || user.status !== 'active';
+      remove.disabled = protectedUser;
+      remove.title = protectedUser ? 'Аккаунт администратора защищён' : 'Деактивировать аккаунт игрока';
+      remove.addEventListener('click', async () => {
+        if (!window.confirm('Деактивировать аккаунт игрока «' + user.displayName + '»? Доступ будет закрыт, а никнейм заменён на «Удалённый игрок».')) return;
+        remove.disabled = true;
+        try {
+          await request('/admin/users/' + encodeURIComponent(user.id), { method: 'DELETE' });
+          showToast('Аккаунт игрока деактивирован.');
+          await loadAdminUsers();
+        } catch (error) {
+          showToast(userErrorMessage(error), true);
+        } finally {
+          remove.disabled = false;
+        }
+      });
+      row.append(identity, input, rename, remove);
+      host.append(row);
+    }
+  }
+
+  async function loadAdminUsers() {
+    const host = $('#admin-users-list');
+    if (!host) return;
+    host.textContent = 'Загрузка списка игроков…';
+    try {
+      const data = await request('/admin/users');
+      state.adminUsers = Array.isArray(data.users) ? data.users : [];
+      renderAdminUsers(state.adminUsers);
+    } catch (error) {
+      host.textContent = userErrorMessage(error);
+    }
+  }
+
+  async function refreshAdminTools() {
+    if (!isAdminMode()) return;
+    const select = $('#admin-campaign-select');
+    const previous = select.value || state.campaign?.id || '';
+    select.replaceChildren();
+    for (const campaign of state.campaigns || []) {
+      const option = document.createElement('option');
+      option.value = campaign.id;
+      option.textContent = campaign.name + ' · ход ' + campaign.currentTurn;
+      select.append(option);
+    }
+    if (previous && [...select.options].some((option) => option.value === previous)) {
+      select.value = previous;
+    }
+    await Promise.all([loadAdminUsers(), loadAdminDiscoveries()]);
+  }
+
+  async function toggleAdminMode() {
+    if (!state.profile?.isAdmin) return;
+    const enabled = !state.adminModeEnabled;
+    const button = $('#admin-mode-toggle');
+    button.disabled = true;
+    try {
+      await request('/auth/admin-mode', {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      });
+      await loadProfile();
+      showToast(enabled ? 'Административный режим включён.' : 'Административный режим выключен.');
+    } catch (error) {
+      setMessage('#admin-tools-message', userErrorMessage(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function submitAdminCode(event) {
+    event.preventDefault();
+    const input = $('#admin-code-input');
+    const button = $('#admin-code-submit');
+    const code = input.value;
+    if (!code) return;
+    button.disabled = true;
+    setMessage('#admin-code-message', '');
+    try {
+      await request('/auth/admin-code', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      input.value = '';
+      await loadProfile();
+      setMessage('#admin-code-message', 'Права администратора получены. Инструменты включены.', true);
+      showToast('Права администратора активированы.');
+    } catch (error) {
+      setMessage('#admin-code-message', userErrorMessage(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function adminForceEndTurn() {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId) return;
+    if (!window.confirm('Принудительно завершить приём приказов и отправить текущий ход на обработку?')) return;
+    const button = $('#admin-force-end-turn');
+    button.disabled = true;
+    try {
+      await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/force-end-turn', {
+        method: 'POST',
+      });
+      showToast('Ход принудительно закрыт и отправлен на обработку.');
+      await loadCampaigns();
+      await loadTurnRoom();
+      await loadMapOrders();
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function adminRollbackTurn() {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId) return;
+    if (!window.confirm('Откатить последний завершённый ход? Это удалит его результаты и вернёт мир к предыдущему состоянию.')) return;
+    const button = $('#admin-rollback-turn');
+    button.disabled = true;
+    try {
+      const data = await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/rollback', {
+        method: 'POST',
+      });
+      showToast('Ход ' + data.turnNumber + ' отменён. Приказы можно отправить заново.');
+      await loadCampaigns();
+      await loadCampaignMap();
+      await loadTurnRoom();
+      await loadMapOrders();
+      await loadAdminDiscoveries();
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function openProfile() {
