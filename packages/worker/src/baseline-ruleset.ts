@@ -473,26 +473,6 @@ export function createBaselineTurnResolver(): TurnResolver<
       events.push(event);
     };
 
-    for (const country of countries) {
-      country.cells = country.cells.map((cell) => {
-        const expectedPopulation = cell.buildingType ? 0 : 1;
-        if (cell.population === expectedPopulation) return cell;
-        emit(
-          `population-sync:${country.id}:${cell.id}`,
-          country.id,
-          'population.synchronized',
-          {
-            countryId: country.id,
-            cellId: cell.id,
-            x: cell.x,
-            y: cell.y,
-            population: expectedPopulation,
-          },
-        );
-        return { ...cell, population: expectedPopulation };
-      });
-    }
-
     const applyNextSeasonEnvironment = (nextTurnNumber: number): void => {
       const nextSeason = getBaselineSeasonForTurn(nextTurnNumber).season;
       const currentSeason = seasonInfo.season;
@@ -1139,7 +1119,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           const supply = getCountrySupply(
             country,
-            currentPopulation + candidates.length,
+            currentPopulation + landCandidates.length,
             new Set(),
             seasonInfo.season,
             terrain,
@@ -1187,7 +1167,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           const cellId =
             previousDiscovery?.cellId ??
             stableUuid(`paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`);
-          const population = 1;
+          const population = isLand ? 1 : 0;
           country.cells = [
             ...country.cells,
             {
@@ -1202,7 +1182,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           ];
           ownership.set(key, country.id);
           colonizedCells += 1;
-          residentsAdded += population;
+          if (isLand) residentsAdded += population;
 
           emit(order.id, country.id, 'territory.colonized', {
             orderId: order.id,
