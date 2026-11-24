@@ -86,6 +86,8 @@ describe('browser client', () => {
       ),
     );
     expect(mapRenderer).toContain("ctx.fillText('З'");
+    expect(mapRenderer).toContain("ctx.strokeStyle = '#238344'");
+    expect(mapRenderer).toContain('drawDamWaterBoundary');
     expect(mapRenderer).not.toContain('strokeRect');
     expect(mapRenderer).not.toContain("'#302700'");
     expect(script.body).toContain('countryLabelX');
@@ -101,7 +103,8 @@ describe('browser client', () => {
     expect(script.body).toContain('Building symbols are rendered after country labels');
     expect(script.body).toContain("ctx.fillText('З'");
     expect(script.body).toContain('Эффект: ');
-    expect(countryCardRenderer).toContain('Приказы через глобальную карту');
+    expect(countryCardRenderer).not.toContain('Приказы через глобальную карту');
+    expect(countryCardRenderer).not.toContain('Территория 5 × 5 · центр');
     expect(script.body).toContain("addEventListener('contextmenu'");
     expect(script.body).toContain("createMapOrder('construction'");
     expect(script.body).toContain("createMapOrder('colonization'");

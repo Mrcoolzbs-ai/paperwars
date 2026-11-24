@@ -257,7 +257,9 @@
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = '#238344';
       ctx.lineWidth = Math.max(1.2, size * 0.075);
-      ctx.strokeRect(left + 1, top + 1, Math.max(0, inner - 2), Math.max(0, inner - 2));
+      ctx.beginPath();
+      ctx.rect(left + 1, top + 1, Math.max(0, inner - 2), Math.max(0, inner - 2));
+      ctx.stroke();
     }
     ctx.restore();
   }
