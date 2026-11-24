@@ -738,6 +738,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const pool = getPool();
       const fixture = await createFixture(1);
       try {
+        // Recover a first-turn window left locked without a deadline after all
+        // active members have already registered their countries.
+        await pool.query(
+          'UPDATE campaigns SET orders_locked = TRUE, deadline_at = NULL WHERE id = $1',
+          [fixture.campaignId],
+        );
         const status = await getCampaignTurnStatus(pool, fixture.campaignId, fixture.userIds[0]!);
         expect(status).toMatchObject({
           campaignId: fixture.campaignId,
@@ -745,6 +751,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           currentTurn: 1,
           ordersLocked: false,
           ordersAccepting: true,
+          pendingCountryCount: 0,
           turnDurationHours: 24,
           countryId: fixture.countryIds[0],
           ordersConfirmed: false,

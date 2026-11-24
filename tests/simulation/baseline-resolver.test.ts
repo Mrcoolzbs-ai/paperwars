@@ -804,11 +804,36 @@ describe('baseline turn resolver', () => {
     expect(nextCells.find((cell) => cell.id === 'downstream-cell')?.flooded).toBe(true);
   });
 
+  it('requires science before installing a greenhouse', () => {
+    const result = resolve(
+      createEconomyState([
+        economyCell('gold', 0, 0, 100, 'gold_mine'),
+        economyCell('field', 1, 0, 0, 'field'),
+      ]),
+      [createOrder('40000000-0000-4000-8000-000000000312', 'construction', {
+        x: 1, y: 0, buildingType: 'greenhouse',
+      })],
+      createRandom().source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'RESEARCH_REQUIRED',
+    });
+  });
+
   it('allows greenhouse and dam overlays on cells but prevents installing both on one cell', () => {
-    const state = createEconomyState([
-      economyCell('gold', 0, 0, 10, 'gold_mine'),
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 1] = 'w';
+    const state = createSeasonState([
+      economyCell('gold', 0, 0, 20, 'gold_mine'),
       economyCell('field', 1, 0, 1, 'field'),
-    ]);
+      ...[
+        [0, 1], [2, 1], [3, 1], [4, 1], [5, 1],
+        [6, 1], [7, 1], [8, 1], [0, 2], [1, 2],
+      ].map(([x, y], index) =>
+        economyCell('science-' + index, x!, y!, 0, 'science'),
+      ),
+    ], 1, terrain.join(''), 9);
     const result = resolve(
       state,
       [
@@ -842,6 +867,9 @@ describe('baseline turn resolver', () => {
       economyCell('gold', 0, 0, 30, 'gold_mine'),
       economyCell('field', 1, 0, 1, 'field'),
       economyCell('workshop', 2, 0, 1, 'textile_workshop'),
+      ...Array.from({ length: 15 }, (_, index) =>
+        economyCell('science-' + index, index % 9, 1 + Math.floor(index / 9), 0, 'science'),
+      ),
     ]);
     const result = resolve(
       state,
@@ -873,7 +901,194 @@ describe('baseline turn resolver', () => {
       Record<string, number> | undefined;
     expect(actionPointsUsed?.[countryId] ?? 0).toBe(0);
     const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
-    expect(economy).toMatchObject({ initialBuildingUpkeep: 6, expenses: 6 });
+    expect(economy).toMatchObject({ initialBuildingUpkeep: 21, expenses: 21 });
+  });
+
+  it('requires two science buildings for rice fields and ten for field upgrades', () => {
+    const noScience = createEconomyState([
+      economyCell('gold', 0, 0, 100, 'gold_mine'),
+      economyCell('rice-target', 1, 0, 1),
+    ]);
+    const riceLocked = resolve(
+      noScience,
+      [createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
+        x: 1, y: 0, buildingType: 'rice_field',
+      })],
+      createRandom().source,
+    );
+    expect(riceLocked.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'RESEARCH_REQUIRED',
+    });
+
+    const twoScience = createEconomyState([
+      economyCell('gold', 0, 0, 100, 'gold_mine'),
+      economyCell('lab-1', 3, 0, 0, 'science'),
+      economyCell('lab-2', 4, 0, 0, 'science'),
+      economyCell('rice-target', 1, 0, 1),
+    ]);
+    const riceUnlocked = resolve(
+      twoScience,
+      [createOrder('40000000-0000-4000-8000-000000000302', 'construction', {
+        x: 1, y: 0, buildingType: 'rice_field',
+      })],
+      createRandom().source,
+    );
+    expect(riceUnlocked.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'BUILDING_CONSTRUCTED',
+    });
+
+    const nineScience = createEconomyState([
+      economyCell('gold', 0, 0, 100, 'gold_mine'),
+      economyCell('upgrade-target', 1, 0, 1, 'field'),
+      ...Array.from({ length: 9 }, (_, index) =>
+        economyCell('lab-' + index, index, 1, 0, 'science'),
+      ),
+    ]);
+    const fieldLocked = resolve(
+      nineScience,
+      [createOrder('40000000-0000-4000-8000-000000000303', 'construction', {
+        x: 1, y: 0, buildingType: 'field_level_2',
+      })],
+      createRandom().source,
+    );
+    expect(fieldLocked.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'RESEARCH_REQUIRED',
+    });
+  });
+
+  it('requires fifteen science for the improved textile workshop', () => {
+    const cells = [
+      economyCell('gold', 0, 0, 100, 'gold_mine'),
+      economyCell('workshop', 1, 0, 1, 'textile_workshop'),
+      ...Array.from({ length: 14 }, (_, index) =>
+        economyCell('lab-' + index, index, 1, 0, 'science'),
+      ),
+    ];
+    const result = resolve(
+      createEconomyState(cells),
+      [createOrder('40000000-0000-4000-8000-000000000304', 'construction', {
+        x: 1, y: 0, buildingType: 'textile_workshop_level_2',
+      })],
+      createRandom().source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'RESEARCH_REQUIRED',
+    });
+  });
+
+  it('only allows fishers beside water, including diagonal neighbours', () => {
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 3] = 'w';
+    const state = createSeasonState([
+      economyCell('gold', 0, 0, 100, 'gold_mine'),
+      economyCell('fisher-target', 2, 0, 1),
+    ], 1, terrain.join(''), 9);
+    const diagonal = resolve(
+      state,
+      [createOrder('40000000-0000-4000-8000-000000000305', 'construction', {
+        x: 2, y: 0, buildingType: 'fisher',
+      })],
+      createRandom().source,
+    );
+    expect(diagonal.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'BUILDING_CONSTRUCTED',
+    });
+
+    const dry = resolve(
+      createEconomyState([
+        economyCell('gold', 0, 0, 100, 'gold_mine'),
+        economyCell('fisher-target', 2, 0, 1),
+      ]),
+      [createOrder('40000000-0000-4000-8000-000000000306', 'construction', {
+        x: 2, y: 0, buildingType: 'fisher',
+      })],
+      createRandom().source,
+    );
+    expect(dry.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'FISHER_REQUIRES_WATER',
+    });
+  });
+
+  it('requires a dam to share a side with water or a river', () => {
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 2] = 'w';
+    const sciencePositions = [
+      [0, 1], [3, 1], [4, 1], [5, 1], [6, 1],
+      [7, 1], [8, 1], [0, 2], [1, 2], [2, 2],
+    ];
+    const state = createSeasonState([
+      economyCell('gold', 0, 0, 100, 'gold_mine'),
+      ...sciencePositions.map(([x, y], index) =>
+        economyCell('lab-' + index, x!, y!, 0, 'science'),
+      ),
+      economyCell('dam-target', 1, 0, 1),
+    ], 1, terrain.join(''), 9);
+    const diagonalOnlyWater = resolve(
+      state,
+      [createOrder('40000000-0000-4000-8000-000000000307', 'construction', {
+        x: 1, y: 0, buildingType: 'dam',
+      })],
+      createRandom().source,
+    );
+    expect(diagonalOnlyWater.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'DAM_REQUIRES_WATER_EDGE',
+    });
+  });
+
+  it('demolishes ordinary buildings for one action point and restores one resident', () => {
+    const result = resolve(
+      createEconomyState([
+        economyCell('gold', 0, 0, 100, 'gold_mine'),
+        economyCell('factory', 1, 0, 0, 'factory'),
+        economyCell('capital', 2, 0, 0, 'capital'),
+      ]),
+      [
+        createOrder('40000000-0000-4000-8000-000000000308', 'demolition', { x: 1, y: 0 }),
+        createOrder('40000000-0000-4000-8000-000000000309', 'demolition', { x: 0, y: 0 }),
+        createOrder('40000000-0000-4000-8000-000000000310', 'demolition', { x: 2, y: 0 }),
+      ],
+      createRandom().source,
+    );
+    const cells = result.nextState.countries[0]?.cells ?? [];
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'BUILDING_DEMOLISHED',
+      'PROTECTED_BUILDING',
+      'PROTECTED_BUILDING',
+    ]);
+    expect(cells.find((cell) => cell.id === 'factory')).toMatchObject({
+      buildingType: null,
+      population: 1,
+    });
+    const actionPointsUsed = result.economicReport?.['actionPointsUsed'] as
+      Record<string, number> | undefined;
+    expect(actionPointsUsed?.[countryId] ?? 0).toBe(3);
+  });
+
+  it('removes a greenhouse overlay when its field is demolished', () => {
+    const result = resolve(
+      createEconomyState([
+        economyCell('gold', 0, 0, 100, 'gold_mine'),
+        {
+          ...economyCell('greenhouse-field', 1, 0, 0, 'field'),
+          structureType: 'greenhouse' as const,
+        },
+      ]),
+      [createOrder('40000000-0000-4000-8000-000000000311', 'demolition', { x: 1, y: 0 })],
+      createRandom().source,
+    );
+    expect(result.nextState.countries[0]?.cells.find((cell) => cell.id === 'greenhouse-field')).toMatchObject({
+      buildingType: null,
+      structureType: null,
+      population: 1,
+    });
+    expect(result.events.some((event) => event.type === 'structure.destroyed')).toBe(true);
   });
 
   it('adds only one flood surcharge to a cell that has both a field and a greenhouse', () => {

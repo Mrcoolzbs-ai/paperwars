@@ -57,6 +57,8 @@ export interface CountryEconomyView {
   readonly seasonTurn?: number;
   readonly movementMultiplier?: number;
   readonly population: number;
+  /** True when values are projected from the live map before the first completed turn. */
+  readonly isPreview?: boolean;
   /** One gold unit per gold mine; treasury income is gold multiplied by population. */
   readonly gold: number;
   readonly income: number;

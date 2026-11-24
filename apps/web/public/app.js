@@ -146,13 +146,13 @@
     science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg'},
     barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg'},
     tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg'},
-    rice_field:{label:'Рисовое поле',code:'Р',required:1},
-    field_level_2:{label:'Поле II уровня',code:'П²',required:2},
-    cotton_field:{label:'Хлопковое поле',code:'Х',required:1},
-    textile_workshop:{label:'Ткацкая мастерская',code:'ТМ',required:1},
-    textile_workshop_level_2:{label:'Ткацкая мастерская II уровня',code:'ТМ²',required:3},
-    hunter:{label:'Охотники',code:'О',required:1},
-    fisher:{label:'Рыбаки',code:'Р',required:1},
+    rice_field:{label:'Рисовое поле',code:'Р',required:1,asset:'/assets/buildings/rice-field.svg'},
+    field_level_2:{label:'Поле II уровня',code:'П²',required:2,asset:'/assets/buildings/field-level-2.svg'},
+    cotton_field:{label:'Хлопковое поле',code:'Х',required:1,asset:'/assets/buildings/cotton-field.svg'},
+    textile_workshop:{label:'Швейная мастерская',code:'ТМ',required:1,asset:'/assets/buildings/textile-workshop.svg'},
+    textile_workshop_level_2:{label:'Швейная мастерская II уровня',code:'ТМ²',required:3,asset:'/assets/buildings/textile-workshop-level-2.svg'},
+    hunter:{label:'Охотники',code:'О',required:1,asset:'/assets/buildings/hunter.svg'},
+    fisher:{label:'Рыбаки',code:'Р',required:1,asset:'/assets/buildings/fisher.svg'},
     greenhouse:{label:'Теплица',code:'Т',required:1},
     dam:{label:'Дамба',code:'Д',required:1},
   };
@@ -162,7 +162,7 @@
     if(meta.asset)return '<img class="building-icon-img '+extraClass+'" data-building-type="'+type+'" src="'+meta.asset+'" alt="'+escapeHtml(meta.label)+'" draggable="false">';
     return '<svg class="building-icon-svg '+extraClass+'" viewBox="0 0 100 100" aria-label="'+escapeHtml(meta.label)+'" fill="none" stroke="#111" stroke-width="6" stroke-linecap="round"><circle cx="50" cy="50" r="17"/><path d="M50 4v24M50 72v24M4 50h24M72 50h24M17 17l17 17M66 66l17 17M83 17 66 34M34 66 17 83"/></svg>';
   }
-  function drawBuildingMapIcon(ctx, type, x, y, size) {
+  function drawBuildingMapIcon(ctx, type, x, y, size, structureType = null) {
     const meta = buildingMeta[type];
     if (!meta || size < 1.5) return;
 
@@ -252,6 +252,12 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(marker, x + size / 2, y + size / 2 + 0.3);
+    }
+    if (structureType === 'greenhouse' && (type === 'field' || type === 'cotton_field')) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = '#238344';
+      ctx.lineWidth = Math.max(1.2, size * 0.075);
+      ctx.strokeRect(left + 1, top + 1, Math.max(0, inner - 2), Math.max(0, inner - 2));
     }
     ctx.restore();
   }
@@ -1638,19 +1644,73 @@
     return terrainCodeAt(x, y) === 'l';
   }
 
+  function mapHasAdjacentWater(x, y) {
+    if (!state.mapView) return false;
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+      for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        if (offsetX === 0 && offsetY === 0) continue;
+        const nextX = x + offsetX;
+        const nextY = y + offsetY;
+        if (
+          nextX >= 0 &&
+          nextY >= 0 &&
+          nextX < state.mapView.width &&
+          nextY < state.mapView.height &&
+          terrainCodeAt(nextX, nextY) !== 'l'
+        ) return true;
+      }
+    }
+    return false;
+  }
+
+  function mapHasWaterEdge(x, y) {
+    return (x > 0 && terrainCodeAt(x - 1, y) !== 'l') ||
+      (x + 1 < state.mapView.width && terrainCodeAt(x + 1, y) !== 'l') ||
+      (y > 0 && terrainCodeAt(x, y - 1) !== 'l') ||
+      (y + 1 < state.mapView.height && terrainCodeAt(x, y + 1) !== 'l');
+  }
+
+  function drawDamWaterBoundary(ctx, x, y, size) {
+    if (!state.mapView) return;
+    const edges = [];
+    if (x > 0 && terrainCodeAt(x - 1, y) !== 'l') edges.push([0, 0, 0, size]);
+    if (x + 1 < state.mapView.width && terrainCodeAt(x + 1, y) !== 'l') edges.push([size, 0, size, size]);
+    if (y > 0 && terrainCodeAt(x, y - 1) !== 'l') edges.push([0, 0, size, 0]);
+    if (y + 1 < state.mapView.height && terrainCodeAt(x, y + 1) !== 'l') edges.push([0, size, size, size]);
+    if (!edges.length) return;
+    ctx.save();
+    ctx.strokeStyle = '#1686c7';
+    ctx.lineWidth = Math.max(2, size * 0.13);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const [x1, y1, x2, y2] of edges) {
+      ctx.moveTo(x + x1, y + y1);
+      ctx.lineTo(x + x2, y + y2);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   const mapBuildingOptions = [
-    ['factory', 'Фабрика'],
-    ['field', 'Поле'],
-    ['rice_field', 'Рисовое поле'],
-    ['cotton_field', 'Хлопковое поле'],
-    ['textile_workshop', 'Ткацкая мастерская'],
-    ['hunter', 'Охотники'],
-    ['fisher', 'Рыбаки'],
-    ['science', 'Научный центр'],
-    ['religious_building', 'Храм'],
-    ['barracks', 'Казармы'],
-    ['tower', 'Башня'],
+    ['factory', 'Фабрика', 0],
+    ['field', 'Поле', 0],
+    ['rice_field', 'Рисовое поле', 2],
+    ['cotton_field', 'Хлопковое поле', 0],
+    ['textile_workshop', 'Швейная мастерская', 0],
+    ['hunter', 'Охотники', 0],
+    ['fisher', 'Рыбаки', 0, 'water'],
+    ['science', 'Научный центр', 0],
+    ['religious_building', 'Храм', 0],
+    ['barracks', 'Казармы', 0],
+    ['tower', 'Башня', 0],
   ];
+
+  const mapResearchRequirements = {
+    field_level_2: 10,
+    textile_workshop_level_2: 15,
+    greenhouse: 10,
+    dam: 10,
+  };
 
   function isFreeUpgradeOrder(order) {
     return order?.type === 'construction' &&
@@ -1779,7 +1839,10 @@
       return;
     }
     if (state.turnStatus?.ordersAccepting !== true) {
-      showToast('Сейчас приём приказов закрыт.', true);
+      const pending = Number(state.turnStatus?.pendingCountryCount || 0);
+      showToast(pending > 0
+        ? 'Приказы откроются после регистрации государств: осталось ' + pending + '.'
+        : 'Окно приёма приказов сейчас закрыто.', true);
       return;
     }
     if (!isAdminMode() && mapActionCount() >= 3) {
@@ -1805,7 +1868,9 @@
       drawMapCanvas($('#map-canvas'), false);
       showToast(type === 'colonization'
         ? 'Приказ колонизации добавлен в список.'
-        : 'Приказ строительства добавлен в список.');
+        : type === 'demolition'
+          ? 'Приказ на снос здания добавлен в список.'
+          : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -1902,6 +1967,7 @@
     const canColonizeRegion = colonizationAvailability.allowed;
     const adminMode = isAdminMode();
     const actionsRemaining = adminMode ? Infinity : Math.max(0, 3 - mapActionCount());
+    const currentScience = ownCountry?.cells.filter((item) => item.buildingType === 'science').length || 0;
     const countryAtCell = (state.mapView.countries || []).find((country) =>
       country.cells.some((item) => item.x === cell.x && item.y === cell.y),
     );
@@ -1911,8 +1977,11 @@
     const canFreeUpgrade = Boolean(
       ownedCell &&
       !ownedCell.flooded &&
-      ((ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') ||
-        ownedCell.buildingType === 'textile_workshop'),
+      ((ownedCell.buildingType === 'field' &&
+        ownedCell.structureType !== 'greenhouse' &&
+        currentScience >= mapResearchRequirements.field_level_2) ||
+        (ownedCell.buildingType === 'textile_workshop' &&
+          currentScience >= mapResearchRequirements.textile_workshop_level_2)),
     );
     const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
       if (territory.type !== 'colony') return false;
@@ -1940,17 +2009,29 @@
       ).join('');
       content += '</div>';
     } else if (state.turnStatus?.ordersAccepting !== true) {
-      content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
+      const pending = Number(state.turnStatus?.pendingCountryCount || 0);
+      content += '<p class="map-context-note">' +
+        (pending > 0
+          ? 'Первый ход откроется после регистрации всех государств. Осталось зарегистрировать: ' + pending + '.'
+          : 'Окно приёма приказов сейчас закрыто.') +
+        '</p>';
     } else if (actionsRemaining === 0 && !canFreeUpgrade) {
       content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
     } else if (ownedCell) {
       const canBuild = actionsRemaining > 0 && isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
       if (canBuild) {
         content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
-        content += mapBuildingOptions.map(([type, label]) =>
-          '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
-          type + '">' + label + '</button>',
-        ).join('');
+        content += mapBuildingOptions.map(([type, label, requiredScience, condition]) => {
+          const needsWater = condition === 'water';
+          const lockedByScience = currentScience < requiredScience;
+          const lockedByWater = needsWater && !mapHasAdjacentWater(cell.x, cell.y);
+          const disabled = lockedByScience || lockedByWater;
+          const suffix = lockedByScience
+            ? ' · нужна наука ' + requiredScience
+            : lockedByWater ? ' · нужна вода рядом' : '';
+          return '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
+            type + '"' + (disabled ? ' disabled' : '') + '>' + label + suffix + '</button>';
+        }).join('');
         content += '</div>';
       } else {
         content += '<p class="map-context-note">' +
@@ -1960,22 +2041,43 @@
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
-          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу · 1 ОД</button>';
+          const greenhouseLocked = currentScience < mapResearchRequirements.greenhouse;
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse"' +
+            (greenhouseLocked ? ' disabled' : '') + '>Построить теплицу' +
+            (greenhouseLocked ? ' · нужна наука ' + mapResearchRequirements.greenhouse : '') + '</button>';
         }
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam">Построить дамбу · 1 ОД</button>';
+        const damLocked = currentScience < mapResearchRequirements.dam;
+        const damWaterMissing = !mapHasWaterEdge(cell.x, cell.y);
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam"' +
+          (damLocked || damWaterMissing ? ' disabled' : '') + '>Построить дамбу' +
+          (damLocked ? ' · нужна наука ' + mapResearchRequirements.dam :
+            damWaterMissing ? ' · нужна граница с водой' : '') + '</button>';
         content += '</div>';
       } else if (ownedCell.structureType) {
         content += '<small>На клетке уже установлена защита: теплица или дамба.</small>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') {
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2">Улучшить поле до II уровня · бесплатно</button>';
+        const fieldUpgradeLocked = currentScience < mapResearchRequirements.field_level_2;
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2"' +
+          (fieldUpgradeLocked ? ' disabled' : '') + '>' +
+          (fieldUpgradeLocked ? 'Нужна наука ' + mapResearchRequirements.field_level_2 : 'Улучшить поле до II уровня') + '</button>';
         content += '</div>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'textile_workshop') {
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2">Улучшить мастерскую · бесплатно</button>';
+        const workshopUpgradeLocked = currentScience < mapResearchRequirements.textile_workshop_level_2;
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2"' +
+          (workshopUpgradeLocked ? ' disabled' : '') + '>' +
+          (workshopUpgradeLocked ? 'Нужна наука ' + mapResearchRequirements.textile_workshop_level_2 : 'Улучшить мастерскую') + '</button>';
         content += '</div>';
+      }
+      if (
+        ownedCell.buildingType &&
+        !['capital', 'gold_mine'].includes(ownedCell.buildingType) &&
+        actionsRemaining > 0
+      ) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="demolition">Снести здание</button>';
       }
       if (actionsRemaining > 0 && canColonizeRegion) {
         content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
@@ -1990,9 +2092,6 @@
       content += '<p class="map-context-note">' + mapColonizationMessage(colonizationAvailability.reason) + '</p>';
     }
 
-    if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
-      content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
-    }
     if (adminMode) {
       content += '<div class="map-context-group"><span>АДМИНИСТРАТОР</span>';
       if (countryAtCell) {
@@ -2031,6 +2130,8 @@
           });
         } else if (action === 'colonization') {
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
+        } else if (action === 'demolition') {
+          await createMapOrder('demolition', { x: cell.x, y: cell.y });
         } else if (action === 'remove-order') {
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
@@ -2122,21 +2223,37 @@
         const py = top + cell.y * cellSize;
         ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
-        if (!miniature && cell.flooded) {
-          ctx.fillStyle = 'rgba(22, 132, 190, 0.38)';
-          ctx.fillRect(px, py, cellSize, cellSize);
-          ctx.strokeStyle = 'rgba(10, 92, 150, 0.9)';
-          ctx.lineWidth = Math.max(1, cellSize * 0.08);
-          ctx.beginPath();
-          ctx.moveTo(px, py + cellSize * 0.25);
-          ctx.lineTo(px + cellSize, py + cellSize * 0.75);
-          ctx.moveTo(px, py + cellSize * 0.65);
-          ctx.lineTo(px + cellSize, py + cellSize * 0.15);
-          ctx.stroke();
-        }
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
+        if (!miniature && cell.flooded) {
+          const dropSize = Math.max(3, cellSize * 0.28);
+          ctx.save();
+          ctx.fillStyle = '#1788c5';
+          ctx.strokeStyle = '#075c91';
+          ctx.lineWidth = Math.max(0.6, cellSize * 0.025);
+          ctx.beginPath();
+          ctx.moveTo(px + dropSize * 0.52, py + dropSize * 0.05);
+          ctx.bezierCurveTo(
+            px + dropSize * 0.42, py + dropSize * 0.28,
+            px + dropSize * 0.08, py + dropSize * 0.58,
+            px + dropSize * 0.1, py + dropSize * 0.72,
+          );
+          ctx.bezierCurveTo(
+            px + dropSize * 0.1, py + dropSize * 1.08,
+            px + dropSize * 0.92, py + dropSize * 1.08,
+            px + dropSize * 0.92, py + dropSize * 0.72,
+          );
+          ctx.bezierCurveTo(
+            px + dropSize * 0.92, py + dropSize * 0.55,
+            px + dropSize * 0.62, py + dropSize * 0.25,
+            px + dropSize * 0.52, py + dropSize * 0.05,
+          );
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
       }
       for (const territory of country.territories || []) {
         const minX = territory.centerX - Math.floor(territory.width / 2);
@@ -2170,20 +2287,10 @@
           const px = left + cell.x * cellSize;
           const py = top + cell.y * cellSize;
           if (cell.buildingType) {
-            drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
+            drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize, cell.structureType);
           }
-          if (cell.structureType) {
-            ctx.save();
-            ctx.fillStyle = cell.structureType === 'dam' ? '#146a8a' : '#397b42';
-            const markerSize = Math.max(3, cellSize * 0.34);
-            ctx.fillRect(px + cellSize - markerSize - 1, py + 1, markerSize, markerSize);
-            ctx.fillStyle = '#fff';
-            ctx.font = '900 ' + Math.max(4, markerSize * 0.82) + 'px Arial,sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(cell.structureType === 'dam' ? 'Д' : 'Т',
-              px + cellSize - markerSize / 2 - 1, py + markerSize / 2 + 1);
-            ctx.restore();
+          if (cell.structureType === 'dam') {
+            drawDamWaterBoundary(ctx, cell.x, cell.y, cellSize);
           }
         }
       }
@@ -2532,6 +2639,7 @@
       research: 'Исследование',
       diplomacy: 'Дипломатия',
       battle: 'Боевой приказ',
+      demolition: 'Снос здания',
     };
     return labels[type] || type || 'Приказ';
   }
@@ -2572,9 +2680,16 @@
       const campaignState = status.status === 'completed'
         ? { label: 'Кампания завершена', tone: 'complete' }
         : { label: 'Кампания активна', tone: 'active' };
+      const pendingCountryCount = Number(status.pendingCountryCount || 0);
+      const firstTurnWait = status.currentTurn === 1 && pendingCountryCount > 0;
       const intakeState = status.ordersAccepting
         ? { label: 'Приём приказов открыт', tone: 'open' }
-        : { label: status.ordersLocked ? 'Приём приказов закрыт' : 'Приём приказов приостановлен', tone: 'closed' };
+        : {
+            label: firstTurnWait
+              ? 'Ожидается регистрация государств'
+              : status.ordersLocked ? 'Приём приказов закрыт' : 'Приём приказов приостановлен',
+            tone: 'closed',
+          };
       const ownConfirmation = !status.countryId
         ? 'Государство не основано'
         : (status.ordersConfirmed ? 'Приказы подтверждены' : 'Ожидает подтверждения');
@@ -2586,7 +2701,9 @@
             <span class="turn-state-pill ${campaignState.tone}">${campaignState.label}</span>
           </div>
           <div class="turn-number">ХОД <strong>${escapeHtml(turnLabel)}</strong></div>
-          <p>${intakeState.label}. Длительность цикла — ${escapeHtml(status.turnDurationHours)} ч.</p>
+${firstTurnWait
+            ? '<p>Первый ход откроется после регистрации всех участников. Не зарегистрировано государств: ' + pendingCountryCount + '.</p>'
+            : '<p>' + intakeState.label + '. Длительность цикла — ' + escapeHtml(status.turnDurationHours) + ' ч.</p>'}
           <div class="turn-status-foot">
             <span class="turn-state-pill ${intakeState.tone}">${intakeState.label}</span>
             <span class="turn-state-pill ${status.ordersConfirmed ? 'confirmed' : 'waiting'}">${escapeHtml(ownConfirmation)}</span>
@@ -2709,9 +2826,10 @@
     const economy = country.economy || null;
     const economyIncome = economy ? String(economy.income) : '—';
     const economyExpenses = economy ? String(economy.expenses) : '—';
+    const economyNet = economy ? String(economy.income - economy.expenses) : '—';
     const economyStatus = economy
-      ? (economy.unpaidExpenses > 0 ? 'Есть неоплаченные расходы' : 'Содержание оплачено')
-      : 'Расчёт появится после первого завершённого хода';
+      ? (economy.isPreview ? 'Прогноз текущего хода' : 'Расчёт за ход ' + economy.turnNumber)
+      : 'Данные экономики пока недоступны';
     const disabledBuildingsLabel = economy?.disabledBuildings?.map((building) =>
       (buildingMeta[building.type]?.label || building.type) + ' (' + building.x + ', ' + building.y + ')',
     ).join(', ') || '';
@@ -2798,7 +2916,7 @@
         '<div class="country-doc-economy">' +
           '<div><b class="country-doc-income">☀</b><span>Текущий сезон</span><strong>' +
             escapeHtml(seasonLabel) + '</strong><small>' +
-            (economy ? 'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' : 'Ожидается первый расчёт') +
+            (economy ? 'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' : 'Нет данных') +
           '</small></div>' +
           '<div><b class="country-doc-income">❄</b><span>Тёплая одежда</span><strong>' +
             (economy && economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
@@ -2817,9 +2935,9 @@
           '<div><b class="country-doc-gold">З</b><span>Золото · доход</span><strong>' +
             (economy ? String(economy.gold) + ' × ' + String(economy.population) : String(counts.get('gold_mine') || 0)) +
             '</strong><small>Доход: ' + escapeHtml(economyIncome) + ' монет за ход</small></div>' +
-          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>' +
-            escapeHtml(economyIncome) + ' / ' + escapeHtml(economyExpenses) + '</strong>' +
-            '<small>' + escapeHtml(economyStatus) + '</small></div>' +
+          '<div><b class="country-doc-income">↗</b><span>Прибавка − расход</span><strong>' +
+            escapeHtml(economyIncome) + ' − ' + escapeHtml(economyExpenses) + '</strong>' +
+            '<small>Итого: ' + escapeHtml(economyNet) + ' монет за ход · ' + escapeHtml(economyStatus) + '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ПОЛИТИКА</h3>' +
         '<div class="country-doc-government"><b>♜</b><span>' +
@@ -2829,11 +2947,11 @@
           '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
             String(counts.get('factory') || 0) + ' фабрики</span><small>' +
             (economy ? String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
-              (economy.goodsShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+              (economy.goodsShortage ? 'дефицит' : 'достаточно') : '—') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
             String((counts.get('field') || 0) + (counts.get('field_level_2') || 0) + (counts.get('rice_field') || 0)) + ' поля</span><small>' +
             (economy ? String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
-              (economy.foodShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+              (economy.foodShortage ? 'дефицит' : 'достаточно') : '—') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">♧</b><strong>Тёплая одежда</strong><span>' +
             String((counts.get('textile_workshop') || 0) + (counts.get('textile_workshop_level_2') || 0)) + ' мастерских · ' +
             String(counts.get('cotton_field') || 0) + ' хлопковых полей</span><small>' +
@@ -2869,13 +2987,6 @@
               ? 'Не обеспечено тёплой одеждой жителей: ' + escapeHtml(economy.unclothedPopulation || 0) + '.'
               : '') + '</p></section>'
           : '') +
-        '<section class="country-doc-inactive-actions" aria-live="polite">' +
-          '<strong>Приказы через глобальную карту</strong>' +
-          '<p>Строительство и колонизация задаются на большой карте: открой её, выбери клетку и вызови контекстное меню.</p>' +
-        '</section>' +
-        '<footer class="country-doc-footer">Территория 5 × 5 · центр ' +
-          (country.territory.centerX ?? '—') + ', ' + (country.territory.centerY ?? '—') +
-        '</footer>' +
       '</article>';
   }
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
