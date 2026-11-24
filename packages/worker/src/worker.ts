@@ -247,7 +247,24 @@ async function loadTurnInput<
     if (campaign.map_seed === null) {
       throw new TurnWorkerInvariantError('A configured world map must have a deterministic seed');
     }
-    const generatedMap = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
+    const stateMap = isRecord(snapshot.state['map']) ? snapshot.state['map'] : {};
+    const snapshotTerrain = stateMap['terrain'];
+    let terrain: string;
+    if (snapshotTerrain === undefined) {
+      terrain = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height).terrain;
+    } else {
+      if (
+        typeof snapshotTerrain !== 'string' ||
+        snapshotTerrain.length !== campaign.map_width * campaign.map_height ||
+        /[^lwr]/.test(snapshotTerrain)
+      ) {
+        throw new TurnWorkerInvariantError('The persisted world terrain does not match the campaign map dimensions');
+      }
+      if (stateMap['seed'] !== undefined && stateMap['seed'] !== campaign.map_seed) {
+        throw new TurnWorkerInvariantError('The persisted world terrain seed does not match the campaign seed');
+      }
+      terrain = snapshotTerrain;
+    }
     const discoveryResult = await config.pool.query<{
       readonly id: string;
       readonly cell_id: string;
@@ -265,7 +282,6 @@ async function loadTurnInput<
        ORDER BY cell.y, cell.x`,
       [job.campaignId],
     );
-    const stateMap = isRecord(snapshot.state['map']) ? snapshot.state['map'] : {};
     const hydratedState = {
       ...snapshot.state,
       map: {
@@ -273,7 +289,7 @@ async function loadTurnInput<
         width: campaign.map_width,
         height: campaign.map_height,
         seed: campaign.map_seed,
-        terrain: generatedMap.terrain,
+        terrain,
       },
       discoveredCells: discoveryResult.rows.map((row) => ({
         id: row.id,
