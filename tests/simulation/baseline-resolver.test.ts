@@ -463,7 +463,9 @@ describe('baseline turn resolver', () => {
     ]);
   });
 
-  it('calculates gold income as gold mines multiplied by population and applies building upkeep', () => {
+  it(
+    'calculates gold income as gold mines multiplied by population and applies building upkeep',
+    () => {
     const state = createEconomyState([
       economyCell('gold', 0, 0, 8, 'gold_mine'),
       economyCell('capital', 1, 0, 0, 'capital'),
@@ -473,7 +475,10 @@ describe('baseline turn resolver', () => {
       economyCell('field-clear', 4, 4, 0, 'field'),
     ]);
     const result = resolve(state, [], createRandom().source);
-    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>> | undefined)?.[0];
+    const countryReports = result.economicReport?.['countries'] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const economy = countryReports?.[0];
 
     expect(economy).toMatchObject({
       population: 8,
@@ -503,7 +508,10 @@ describe('baseline turn resolver', () => {
       economyCell('diagonal-factory', 2, 2, 0, 'factory'),
     ]);
     const result = resolve(state, [], createRandom().source);
-    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>> | undefined)?.[0];
+    const countryReports = result.economicReport?.['countries'] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const economy = countryReports?.[0];
 
     expect(economy).toMatchObject({
       population: 5,
@@ -524,7 +532,10 @@ describe('baseline turn resolver', () => {
     ]);
     const random = createRandom();
     const result = resolve(state, [], random.source);
-    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>> | undefined)?.[0];
+    const countryReports = result.economicReport?.['countries'] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const economy = countryReports?.[0];
 
     expect(economy).toMatchObject({
       income: 0,
@@ -549,7 +560,10 @@ describe('baseline turn resolver', () => {
       [createOrder('40000000-0000-4000-8000-000000000103')],
       createRandom().source,
     );
-    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>> | undefined)?.[0];
+    const countryReports = result.economicReport?.['countries'] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const economy = countryReports?.[0];
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'accepted',
@@ -616,7 +630,10 @@ describe('baseline turn resolver', () => {
       economyCell('colony-c', 2, 3, 1, null, 'colony', 'colony-one'),
     ]);
     const result = resolve(state, [], createRandom().source);
-    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>> | undefined)?.[0];
+    const countryReports = result.economicReport?.['countries'] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const economy = countryReports?.[0];
 
     expect(result.nextState.countries[0]?.cells.map((cell) => cell.id)).toEqual(['gold']);
     expect(result.events).toContainEqual(
@@ -645,7 +662,10 @@ describe('baseline turn resolver', () => {
       economyCell('colony-c', 2, 3, 1, null, 'colony', 'colony-two'),
     ]);
     const result = resolve(state, [], createRandom().source);
-    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>> | undefined)?.[0];
+    const countryReports = result.economicReport?.['countries'] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const economy = countryReports?.[0];
 
     expect(result.nextState.countries[0]?.cells.map((cell) => cell.id)).toEqual(['gold', 'field']);
     expect(result.events).toContainEqual(
@@ -665,5 +685,4 @@ describe('baseline turn resolver', () => {
       fledColonies: 1,
     });
   });
-
 });
