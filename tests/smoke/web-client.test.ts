@@ -62,7 +62,9 @@ describe('browser client', () => {
     expect(script.body).toContain('/campaigns');
     expect(script.body).toContain('function loadVkIdSdk');
     expect(script.body).toContain('https://unpkg.com/@vkid/sdk@2.6.1/dist-sdk/umd/index.js');
-    expect(script.body).toContain('https://cdn.jsdelivr.net/npm/@vkid/sdk@2.6.1/dist-sdk/umd/index.js');
+    expect(script.body).toContain(
+      'https://cdn.jsdelivr.net/npm/@vkid/sdk@2.6.1/dist-sdk/umd/index.js',
+    );
     expect(script.body).toContain('await loadVkIdSdk()');
     const mapRenderer = script.body.slice(
       script.body.indexOf('function drawBuildingMapIcon'),
