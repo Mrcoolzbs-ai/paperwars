@@ -435,14 +435,21 @@
           <button id="chat-close-button" class="chat-dock-close" type="button" aria-label="Скрыть список чатов">×</button>
         </header>
         <nav id="chat-room-list" class="chat-room-list" aria-label="Список чатов">
-          <div class="chat-room-section-label">ОБЩИЙ КАНАЛ</div>
-          <button class="chat-room-button active" type="button" data-chat-room-scope="world" aria-current="true">
-            <span class="chat-room-icon">◎</span>
-            <span><strong>Мировой чат</strong><small>Все игроки Paper Wars</small></span>
-          </button>
-          <div class="chat-room-section-label">ТВОИ КАМПАНИИ</div>
-          <div class="chat-room-empty">Загрузка списка кампаний…</div>
+          <div class="chat-room-section"><div class="chat-room-section-label">ОБЩИЙ КАНАЛ</div>
+            <button class="chat-room-button active" type="button" data-chat-room-scope="world" aria-current="true">
+              <span class="chat-room-icon">◎</span>
+              <span><strong>Мировой чат</strong><small>Все игроки Paper Wars</small></span>
+            </button>
+          </div>
+          <div class="chat-room-section">
+            <div class="chat-room-section-label">ТВОИ КАМПАНИИ</div>
+            <div class="chat-room-empty">Загрузка списка кампаний…</div>
+          </div>
         </nav>
+        <div class="chat-search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="chat-search" type="search" placeholder="Поиск" autocomplete="off" aria-label="Поиск чатов">
+        </div>
         <div id="chat-list-status" class="chat-dock-status" role="status" aria-live="polite"></div>
       </section>
       <section id="chat-conversation-view" class="chat-dock-view chat-dock-conversation hidden">
