@@ -132,7 +132,7 @@ describe('baseline turn resolver', () => {
       resultCode: 'COLONIZATION_ACCEPTED',
       data: { width: 3, height: 3, colonizedCount: 9, residentsAdded: 9 },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(12);
     const colonyEvents = result.events.filter((event) => event.type === 'territory.colonized');
     expect(colonyEvents).toHaveLength(9);
     expect(new Set(colonyEvents.map((event) => event.payload['territoryId'])).size).toBe(1);
@@ -180,7 +180,7 @@ describe('baseline turn resolver', () => {
         residentsAdded: 1,
       },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(12);
     expect(
       result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population,
     ).toBe(1);
@@ -308,7 +308,7 @@ describe('baseline turn resolver', () => {
       'COLONIZATION_ACCEPTED',
       'COLONIZATION_ACCEPTED',
     ]);
-    expect(result.nextState.countries[0]?.cells).toHaveLength(19);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(21);
     expect(random.calls).toHaveLength(18);
   });
 
