@@ -123,6 +123,23 @@ describe('baseline turn resolver', () => {
     expect(random.calls).toHaveLength(1);
   });
 
+  it('distributes nine colony residents across captured land cells deterministically', () => {
+    const terrain = Array.from({ length: 25 }, () => 'w');
+    for (const [x, y] of [[1, 1], [2, 1], [1, 2], [2, 2]]) terrain[y! * 5 + x!] = 'l';
+    const result = resolve(
+      createState(terrain.join('')),
+      [createOrder('40000000-0000-4000-8000-000000000015')],
+      createRandom().source,
+    );
+    const landCells = result.nextState.countries[0]?.cells
+      .filter((cell) => terrain[cell.y * 5 + cell.x] === 'l')
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+
+    expect(landCells?.map((cell) => cell.population)).toEqual([3, 2, 2, 2]);
+    expect(landCells?.reduce((sum, cell) => sum + cell.population, 0)).toBe(9);
+    expect(result.orderResults[0]?.data?.['residentsAdded']).toBe(9);
+  });
+
   it('rejects a colony box that would extend beyond the map edge', () => {
     const random = createRandom();
     const result = resolve(
