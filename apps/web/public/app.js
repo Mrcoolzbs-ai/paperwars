@@ -2617,6 +2617,12 @@
     $('#country-card-host').classList.remove('hidden');
 
     const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
+    const economy = country.economy || null;
+    const economyIncome = economy ? String(economy.income) : '—';
+    const economyExpenses = economy ? String(economy.expenses) : '—';
+    const economyStatus = economy
+      ? (economy.unpaidExpenses > 0 ? 'Есть неоплаченные расходы' : 'Содержание оплачено')
+      : 'Расчёт появится после первого завершённого хода';
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -2696,10 +2702,12 @@
         '</div>' +
         '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
         '<div class="country-doc-economy">' +
-          '<div><b class="country-doc-gold">З</b><span>Золотые шахты</span><strong>' +
-            String(counts.get('gold_mine') || 0) + '</strong></div>' +
-          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>—</strong>' +
-            '<small>Экономические расчёты ещё не подключены.</small></div>' +
+          '<div><b class="country-doc-gold">З</b><span>Золото · доход</span><strong>' +
+            (economy ? String(economy.gold) + ' × ' + String(economy.population) : String(counts.get('gold_mine') || 0)) +
+            '</strong><small>Доход: ' + escapeHtml(economyIncome) + ' монет за ход</small></div>' +
+          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>' +
+            escapeHtml(economyIncome) + ' / ' + escapeHtml(economyExpenses) + '</strong>' +
+            '<small>' + escapeHtml(economyStatus) + '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ПОЛИТИКА</h3>' +
         '<div class="country-doc-government"><b>♜</b><span>' +
@@ -2707,9 +2715,13 @@
         '</span></div>' +
         '<div class="country-doc-bottom">' +
           '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
-            String(counts.get('factory') || 0) + ' фабрики</span><small>Производство: пока не рассчитывается</small></section>' +
+            String(counts.get('factory') || 0) + ' фабрики</span><small>' +
+            (economy ? String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
+              (economy.goodsShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
-            String(counts.get('field') || 0) + ' поля</span><small>Производство: пока не рассчитывается</small></section>' +
+            String(counts.get('field') || 0) + ' поля</span><small>' +
+            (economy ? String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
+              (economy.foodShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
           '<section class="country-doc-faith">' +
             (system.emblemDataUrl
               ? '<img src="' + escapeHtml(system.emblemDataUrl) + '" alt="">'
@@ -2720,6 +2732,18 @@
             '<div class="culture-symbols">' + cultureSymbols(country.culture || []) + '</div>' +
           '</section>' +
         '</div>' +
+        (economy && (economy.disabledBuildings.length || economy.starvedColonies || economy.fledColonies)
+          ? '<section class="country-doc-inactive-actions" aria-live="polite"><strong>Экономические последствия этого хода</strong><p>' +
+            (economy.disabledBuildings.length
+              ? 'Отключено построек: ' + escapeHtml(economy.disabledBuildings.length) + '. '
+              : '') +
+            (economy.starvedColonies
+              ? 'Вымерло колоний: ' + escapeHtml(economy.starvedColonies) + '. '
+              : '') +
+            (economy.fledColonies
+              ? 'Покинуто колоний из-за нехватки товаров: ' + escapeHtml(economy.fledColonies) + '.'
+              : '') + '</p></section>'
+          : '') +
         '<section class="country-doc-inactive-actions" aria-live="polite">' +
           '<strong>Приказы через глобальную карту</strong>' +
           '<p>Строительство и колонизация задаются на большой карте: открой её, выбери клетку и вызови контекстное меню.</p>' +
