@@ -12,7 +12,7 @@ on:
         stage-1.5-domain-ruleset-contracts,
       ]
   pull_request:
-    branches: [main]
+    branches: [main, feat/global-map-orders]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
