@@ -597,6 +597,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         (sum, cell) => sum + buildingUpkeep(cell.buildingType),
         0,
       );
+      const budgetDeficit = income < initialBuildingUpkeep + unitUpkeep;
       let remainingBuildingUpkeep = initialBuildingUpkeep;
       const disabledCellIds = new Set<string>();
       const disabledBuildings: Array<{ x: number; y: number; type: string; upkeepSaved: number }> = [];
@@ -673,6 +674,8 @@ export function createBaselineTurnResolver(): TurnResolver<
         initialBuildingUpkeep,
         unitCount,
         unitUpkeep,
+        budgetDeficit,
+        unitMovementAllowed: !budgetDeficit,
         expenses: remainingBuildingUpkeep + unitUpkeep,
         unpaidExpenses: Math.max(0, remainingBuildingUpkeep + unitUpkeep - income),
         disabledBuildings,
