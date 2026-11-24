@@ -606,9 +606,7 @@ async function persistWorldProjectionEvent(
     const cellId = projectionString(payload, 'cellId');
     const buildingType = projectionString(payload, 'buildingType');
     const population =
-      typeof payload['population'] === 'number'
-        ? projectionInteger(payload, 'population')
-        : null;
+      typeof payload['population'] === 'number' ? projectionInteger(payload, 'population') : null;
     const updatedPopulation = await client.query(
       `UPDATE country_cells
        SET population = COALESCE($4::integer, population + 1)
