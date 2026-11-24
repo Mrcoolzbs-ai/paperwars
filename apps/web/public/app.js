@@ -1670,13 +1670,13 @@
       (y + 1 < state.mapView.height && terrainCodeAt(x, y + 1) !== 'l');
   }
 
-  function drawDamWaterBoundary(ctx, x, y, size) {
+  function drawDamWaterBoundary(ctx, mapX, mapY, pixelX, pixelY, size) {
     if (!state.mapView) return;
     const edges = [];
-    if (x > 0 && terrainCodeAt(x - 1, y) !== 'l') edges.push([0, 0, 0, size]);
-    if (x + 1 < state.mapView.width && terrainCodeAt(x + 1, y) !== 'l') edges.push([size, 0, size, size]);
-    if (y > 0 && terrainCodeAt(x, y - 1) !== 'l') edges.push([0, 0, size, 0]);
-    if (y + 1 < state.mapView.height && terrainCodeAt(x, y + 1) !== 'l') edges.push([0, size, size, size]);
+    if (mapX > 0 && terrainCodeAt(mapX - 1, mapY) !== 'l') edges.push([0, 0, 0, size]);
+    if (mapX + 1 < state.mapView.width && terrainCodeAt(mapX + 1, mapY) !== 'l') edges.push([size, 0, size, size]);
+    if (mapY > 0 && terrainCodeAt(mapX, mapY - 1) !== 'l') edges.push([0, 0, size, 0]);
+    if (mapY + 1 < state.mapView.height && terrainCodeAt(mapX, mapY + 1) !== 'l') edges.push([0, size, size, size]);
     if (!edges.length) return;
     ctx.save();
     ctx.strokeStyle = '#1686c7';
@@ -1684,8 +1684,8 @@
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const [x1, y1, x2, y2] of edges) {
-      ctx.moveTo(x + x1, y + y1);
-      ctx.lineTo(x + x2, y + y2);
+      ctx.moveTo(pixelX + x1, pixelY + y1);
+      ctx.lineTo(pixelX + x2, pixelY + y2);
     }
     ctx.stroke();
     ctx.restore();
@@ -2290,7 +2290,7 @@
             drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize, cell.structureType);
           }
           if (cell.structureType === 'dam') {
-            drawDamWaterBoundary(ctx, cell.x, cell.y, cellSize);
+            drawDamWaterBoundary(ctx, cell.x, cell.y, px, py, cellSize);
           }
         }
       }
