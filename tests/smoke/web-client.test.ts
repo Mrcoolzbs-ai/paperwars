@@ -103,6 +103,12 @@ describe('browser client', () => {
     expect(script.body).toContain('function renderChatRooms');
     expect(script.body).toContain('function openChatModal');
     expect(script.body).toContain('setInterval');
+    const chatRenderer = script.body.slice(
+      script.body.indexOf('function renderChatMessages'),
+      script.body.indexOf('function updateChatRoomHeader'),
+    );
+    expect(chatRenderer).toContain('content.textContent = item.message');
+    expect(chatRenderer).not.toContain('innerHTML');
     expect(script.body).not.toContain('countries/mine/buildings');
     expect(script.body).not.toContain('country-action-panel');
     expect(script.body).not.toContain('renderConstructionGrid');
