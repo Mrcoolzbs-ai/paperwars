@@ -34,7 +34,7 @@ export interface BaselineCountryState {
   readonly officialSystem: Readonly<Record<string, unknown>>;
   /** Enabled by worker hydration for real campaign states; omitted in legacy unit fixtures. */
   readonly economyEnabled?: boolean;
-  /** Future unit state; each unit reserves one coin per turn until a detailed unit system exists. */
+  /** Future unit state; each unit reserves one coin per turn until upkeep rates are defined. */
   readonly units?: readonly unknown[];
   readonly cells: readonly BaselineCellState[];
 }
@@ -444,11 +444,12 @@ export function createBaselineTurnResolver(): TurnResolver<
               orderId: order.id,
               status: 'rejected',
               resultCode: 'COLONIZATION_ECONOMY_SHORTAGE',
-              message: foodShortage && goodsShortage
-                ? 'Колонизация недоступна: не хватает продовольствия и товаров.'
-                : foodShortage
-                  ? 'Колонизация недоступна: не хватает продовольствия.'
-                  : 'Колонизация недоступна: не хватает товаров.',
+              message:
+                foodShortage && goodsShortage
+                  ? 'Колонизация недоступна: не хватает продовольствия и товаров.'
+                  : foodShortage
+                    ? 'Колонизация недоступна: не хватает продовольствия.'
+                    : 'Колонизация недоступна: не хватает товаров.',
               data: {
                 population: supply.population,
                 food: supply.food,
@@ -600,7 +601,12 @@ export function createBaselineTurnResolver(): TurnResolver<
       const budgetDeficit = income < initialBuildingUpkeep + unitUpkeep;
       let remainingBuildingUpkeep = initialBuildingUpkeep;
       const disabledCellIds = new Set<string>();
-      const disabledBuildings: Array<{ x: number; y: number; type: string; upkeepSaved: number }> = [];
+      const disabledBuildings: Array<{
+        x: number;
+        y: number;
+        type: string;
+        upkeepSaved: number;
+      }> = [];
       const disableCandidates = buildings.filter((cell) => cell.buildingType !== 'gold_mine');
 
       while (
