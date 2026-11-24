@@ -57,7 +57,11 @@ function createRandom(values: readonly number[] = []): {
       index += 1;
       return Math.max(min, Math.min(max, value));
     },
-    weighted<T>(_domain, _drawId, outcomes) {
+    weighted<T>(
+      _domain: string,
+      _drawId: string,
+      outcomes: readonly { readonly id: string; readonly weight: number; readonly value: T }[],
+    ) {
       const first = outcomes[0];
       if (first === undefined) throw new Error('A weighted draw requires at least one outcome');
       return first.value;
