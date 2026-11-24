@@ -26,6 +26,7 @@ export {
   listCampaignOrders,
   listCampaignOrderResults,
   closeOrders,
+  rollbackCampaignTurn,
   completeTurnJob,
   StaleTurnJobLeaseError,
   claimNextTurnJob,
