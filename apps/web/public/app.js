@@ -581,7 +581,8 @@
   }
 
   function mapFreeLandCellsInBox(centerX, centerY) {
-    if (!state.mapView) return [];
+    if (!state.mapView || centerX < 1 || centerY < 1 ||
+        centerX >= state.mapView.width - 1 || centerY >= state.mapView.height - 1) return [];
     const ownedCoordinates = new Set();
     for (const country of state.mapView.countries || []) {
       for (const cell of country.cells) ownedCoordinates.add(cell.x + ',' + cell.y);
@@ -766,9 +767,9 @@
       content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
       content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
     } else if (anyCountryOwnsCell) {
-      content += '<p class="map-context-note">В квадрате 3×3 нет свободной клетки суши для колонизации чужой территории.</p>';
+      content += '<p class="map-context-note">Квадрат 3×3 должен целиком помещаться на карте и содержать свободную клетку суши.</p>';
     } else {
-      content += '<p class="map-context-note">В квадрате 3×3 нет свободной клетки суши для колонизации.</p>';
+      content += '<p class="map-context-note">Квадрат 3×3 должен целиком помещаться на карте и содержать свободную клетку суши.</p>';
     }
 
     if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
