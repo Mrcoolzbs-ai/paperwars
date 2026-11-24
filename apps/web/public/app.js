@@ -1607,6 +1607,17 @@
     return terrainCodeAt(x, y) === 'l';
   }
 
+  function mapAdjacentWaterCount(x, y) {
+    let count = 0;
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+      for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        if (offsetX === 0 && offsetY === 0) continue;
+        if (terrainCodeAt(x + offsetX, y + offsetY) !== 'l') count += 1;
+      }
+    }
+    return count;
+  }
+
   const mapBuildingOptions = [
     ['factory', 'Фабрика'],
     ['field', 'Поле'],
@@ -1716,16 +1727,23 @@
     const remainingActions = unlimitedActions ? '∞' : Math.max(0, 3 - actionCount);
     const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
     const confirmedCount = activeOrders.length - draftCount;
+    const status = state.turnStatus;
+    const canConfirm = Boolean(status && status.ordersLocked !== true &&
+      status.ordersConfirmed !== true &&
+      !['pending', 'processing'].includes(status.turnJobStatus));
+    const deadlinePassed = Boolean(status?.deadlineAt &&
+      Date.now() >= new Date(status.deadlineAt).getTime());
     summary.hidden = !state.campaign?.countryId;
     summary.textContent = `ОД: ${actionCount}/${unlimitedActions ? '∞' : '3'} · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
-    confirm.disabled =
-      state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
-    confirm.textContent = state.turnStatus?.ordersConfirmed
+    confirm.disabled = !canConfirm;
+    confirm.textContent = status?.ordersConfirmed
       ? 'Приказы подтверждены'
-      : draftCount > 0
-        ? `Подтвердить приказы (${draftCount})`
-        : 'Подтвердить ход без приказов';
+      : deadlinePassed
+        ? 'Закрыть ход'
+        : draftCount > 0
+          ? `Подтвердить приказы (${draftCount})`
+          : 'Подтвердить ход без приказов';
   }
 
   async function loadMapOrders() {
@@ -1748,7 +1766,11 @@
       return;
     }
     if (state.turnStatus?.ordersAccepting !== true) {
-      showToast('Сейчас приём приказов закрыт.', true);
+      const deadlinePassed = Boolean(state.turnStatus?.deadlineAt &&
+        Date.now() >= new Date(state.turnStatus.deadlineAt).getTime());
+      showToast(deadlinePassed
+        ? 'Срок приёма приказов истёк. Подтверди ход, чтобы отправить его на обработку.'
+        : 'Приём приказов закрыт. ' + (state.turnRoomError || 'Проверь, завершили ли все участники основание государств.'), true);
       return;
     }
     if (!isAdminMode() && mapActionCount() >= 3) {
@@ -1774,7 +1796,9 @@
       drawMapCanvas($('#map-canvas'), false);
       showToast(type === 'colonization'
         ? 'Приказ колонизации добавлен в список.'
-        : 'Приказ строительства добавлен в список.');
+        : type === 'demolition'
+          ? 'Приказ на снос добавлен в список.'
+          : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -1827,7 +1851,10 @@
   }
 
   async function confirmMapOrders() {
-    if (!state.campaign || state.turnStatus?.ordersAccepting !== true) return;
+    if (!state.campaign || !state.turnStatus ||
+        state.turnStatus.ordersLocked === true ||
+        state.turnStatus.ordersConfirmed === true ||
+        ['pending', 'processing'].includes(state.turnStatus.turnJobStatus)) return;
     const button = $('#confirm-map-orders');
     button.disabled = true;
     try {
@@ -1909,17 +1936,31 @@
       ).join('');
       content += '</div>';
     } else if (state.turnStatus?.ordersAccepting !== true) {
-      content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
+      const status = state.turnStatus;
+      const deadlinePassed = Boolean(status?.deadlineAt &&
+        Date.now() >= new Date(status.deadlineAt).getTime());
+      const waitingForSetup = status?.ordersLocked === true &&
+        Number(status?.currentTurn || 1) === 1 && !status?.deadlineAt;
+      const intakeMessage = waitingForSetup
+        ? 'Ожидаем, пока все участники основают государства.'
+        : deadlinePassed
+          ? 'Срок приёма приказов истёк. Подтверди приказы, чтобы запустить обработку хода.'
+          : status?.turnJobStatus === 'pending' || status?.turnJobStatus === 'processing'
+            ? 'Ход уже обрабатывается.'
+            : 'Приём приказов сейчас закрыт.';
+      content += '<p class="map-context-note">' + intakeMessage + '</p>';
     } else if (actionsRemaining === 0 && !canFreeUpgrade) {
       content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
     } else if (ownedCell) {
       const canBuild = actionsRemaining > 0 && isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
       if (canBuild) {
         content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
-        content += mapBuildingOptions.map(([type, label]) =>
-          '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
-          type + '">' + label + '</button>',
-        ).join('');
+        content += mapBuildingOptions
+          .filter(([type]) => type !== 'fisher' || mapAdjacentWaterCount(cell.x, cell.y) > 0)
+          .map(([type, label]) =>
+            '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
+            type + '">' + label + '</button>',
+          ).join('');
         content += '</div>';
       } else {
         content += '<p class="map-context-note">' +
@@ -1929,12 +1970,19 @@
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
-          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу · 1 ОД</button>';
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу</button>';
         }
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam">Построить дамбу · 1 ОД</button>';
+        if (mapAdjacentWaterCount(cell.x, cell.y) > 0) {
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam">Построить дамбу</button>';
+        }
         content += '</div>';
       } else if (ownedCell.structureType) {
         content += '<small>На клетке уже установлена защита: теплица или дамба.</small>';
+      }
+      if (actionsRemaining > 0 && ownedCell.buildingType &&
+          !['capital', 'gold_mine'].includes(ownedCell.buildingType)) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="demolition">Снести: ' +
+          escapeHtml(buildingMeta[ownedCell.buildingType]?.label || 'здание') + '</button>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') {
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
@@ -1959,9 +2007,6 @@
       content += '<p class="map-context-note">' + mapColonizationMessage(colonizationAvailability.reason) + '</p>';
     }
 
-    if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
-      content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
-    }
     if (adminMode) {
       content += '<div class="map-context-group"><span>АДМИНИСТРАТОР</span>';
       if (countryAtCell) {
@@ -2000,6 +2045,8 @@
           });
         } else if (action === 'colonization') {
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
+        } else if (action === 'demolition') {
+          await createMapOrder('demolition', { x: cell.x, y: cell.y });
         } else if (action === 'remove-order') {
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
@@ -2092,16 +2139,34 @@
         ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
         if (!miniature && cell.flooded) {
-          ctx.fillStyle = 'rgba(22, 132, 190, 0.38)';
-          ctx.fillRect(px, py, cellSize, cellSize);
-          ctx.strokeStyle = 'rgba(10, 92, 150, 0.9)';
-          ctx.lineWidth = Math.max(1, cellSize * 0.08);
+          const dropSize = Math.max(2.5, cellSize * 0.22);
+          const dropX = px + cellSize * 0.14;
+          const dropY = py + cellSize * 0.14;
+          ctx.save();
           ctx.beginPath();
-          ctx.moveTo(px, py + cellSize * 0.25);
-          ctx.lineTo(px + cellSize, py + cellSize * 0.75);
-          ctx.moveTo(px, py + cellSize * 0.65);
-          ctx.lineTo(px + cellSize, py + cellSize * 0.15);
+          ctx.moveTo(dropX + dropSize * 0.5, dropY);
+          ctx.bezierCurveTo(
+            dropX + dropSize * 0.3, dropY + dropSize * 0.33,
+            dropX, dropY + dropSize * 0.62,
+            dropX + dropSize * 0.08, dropY + dropSize * 0.78,
+          );
+          ctx.bezierCurveTo(
+            dropX + dropSize * 0.17, dropY + dropSize * 1.12,
+            dropX + dropSize * 0.83, dropY + dropSize * 1.12,
+            dropX + dropSize * 0.92, dropY + dropSize * 0.78,
+          );
+          ctx.bezierCurveTo(
+            dropX + dropSize, dropY + dropSize * 0.62,
+            dropX + dropSize * 0.7, dropY + dropSize * 0.33,
+            dropX + dropSize * 0.5, dropY,
+          );
+          ctx.closePath();
+          ctx.fillStyle = '#138bc2';
+          ctx.strokeStyle = '#f3fbff';
+          ctx.lineWidth = Math.max(0.55, cellSize * 0.025);
+          ctx.fill();
           ctx.stroke();
+          ctx.restore();
         }
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
@@ -2141,17 +2206,33 @@
           if (cell.buildingType) {
             drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
           }
-          if (cell.structureType) {
+          if (cell.structureType === 'greenhouse' &&
+              ['field', 'cotton_field'].includes(cell.buildingType)) {
             ctx.save();
-            ctx.fillStyle = cell.structureType === 'dam' ? '#146a8a' : '#397b42';
-            const markerSize = Math.max(3, cellSize * 0.34);
-            ctx.fillRect(px + cellSize - markerSize - 1, py + 1, markerSize, markerSize);
-            ctx.fillStyle = '#fff';
-            ctx.font = '900 ' + Math.max(4, markerSize * 0.82) + 'px Arial,sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(cell.structureType === 'dam' ? 'Д' : 'Т',
-              px + cellSize - markerSize / 2 - 1, py + markerSize / 2 + 1);
+            ctx.strokeStyle = '#2a9b4a';
+            ctx.lineWidth = Math.max(1.5, cellSize * 0.075);
+            ctx.strokeRect(px + cellSize * 0.16, py + cellSize * 0.16,
+              cellSize * 0.68, cellSize * 0.68);
+            ctx.restore();
+          } else if (cell.structureType === 'dam') {
+            const edges = [
+              { dx: 0, dy: -1, x1: px, y1: py, x2: px + cellSize, y2: py },
+              { dx: 1, dy: 0, x1: px + cellSize, y1: py, x2: px + cellSize, y2: py + cellSize },
+              { dx: 0, dy: 1, x1: px, y1: py + cellSize, x2: px + cellSize, y2: py + cellSize },
+              { dx: -1, dy: 0, x1: px, y1: py, x2: px, y2: py + cellSize },
+            ];
+            ctx.save();
+            ctx.strokeStyle = '#147ec1';
+            ctx.lineWidth = Math.max(2, cellSize * 0.11);
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            for (const edge of edges) {
+              if (!mapIsLand(cell.x + edge.dx, cell.y + edge.dy)) {
+                ctx.moveTo(edge.x1, edge.y1);
+                ctx.lineTo(edge.x2, edge.y2);
+              }
+            }
+            ctx.stroke();
             ctx.restore();
           }
         }
@@ -2176,14 +2257,24 @@
           ctx.restore();
           continue;
         }
-        if (order.type !== 'construction') continue;
+        if (order.type !== 'construction' && order.type !== 'demolition') continue;
         const buildingType = order.payload?.buildingType;
-        if (!buildingMeta[buildingType]) continue;
         const px = left + point.x * cellSize;
         const py = top + point.y * cellSize;
         ctx.save();
         ctx.globalAlpha = order.status === 'confirmed' ? 0.58 : 0.34;
-        drawBuildingMapIcon(ctx, buildingType, px, py, cellSize);
+        if (order.type === 'demolition') {
+          const target = (state.mapView.countries || [])
+            .flatMap((item) => item.cells || [])
+            .find((item) => item.x === point.x && item.y === point.y);
+          if (target?.buildingType) drawBuildingMapIcon(ctx, target.buildingType, px, py, cellSize);
+          ctx.strokeStyle = '#c0392b';
+          ctx.lineWidth = Math.max(1.5, cellSize * 0.1);
+          ctx.setLineDash([Math.max(2, cellSize * 0.2), Math.max(1, cellSize * 0.12)]);
+          ctx.strokeRect(px + cellSize * 0.12, py + cellSize * 0.12, cellSize * 0.76, cellSize * 0.76);
+        } else if (buildingMeta[buildingType]) {
+          drawBuildingMapIcon(ctx, buildingType, px, py, cellSize);
+        }
         ctx.restore();
       }
     }
