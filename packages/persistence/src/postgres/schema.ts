@@ -341,12 +341,52 @@ export const cells = pgTable(
   ],
 );
 
+export const countryTerritories = pgTable(
+  'country_territories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id').notNull(),
+    countryId: uuid('country_id').notNull(),
+    territoryType: text('territory_type').notNull(),
+    sourceOrderId: uuid('source_order_id'),
+    centerX: integer('center_x').notNull(),
+    centerY: integer('center_y').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('country_territories_campaign_country_id_unique').on(
+      table.campaignId,
+      table.countryId,
+      table.id,
+    ),
+    uniqueIndex('country_territories_source_order_unique')
+      .on(table.campaignId, table.countryId, table.sourceOrderId)
+      .where(sql`${table.sourceOrderId} is not null`),
+    foreignKey({
+      name: 'country_territories_country_fk',
+      columns: [table.campaignId, table.countryId],
+      foreignColumns: [countries.campaignId, countries.id],
+    }).onDelete('cascade'),
+    check(
+      'country_territories_dimensions_check',
+      sql`
+        (${table.territoryType} = 'core' and ${table.width} = 5 and ${table.height} = 5 and ${table.sourceOrderId} is null)
+        or
+        (${table.territoryType} = 'colony' and ${table.width} = 3 and ${table.height} = 3 and ${table.sourceOrderId} is not null)
+      `,
+    ),
+  ],
+);
+
 export const countryCells = pgTable(
   'country_cells',
   {
     campaignId: uuid('campaign_id').notNull(),
     countryId: uuid('country_id').notNull(),
     cellId: uuid('cell_id').notNull(),
+    territoryId: uuid('territory_id').notNull(),
     population: integer('population').notNull().default(0),
   },
   (table) => [
@@ -361,6 +401,15 @@ export const countryCells = pgTable(
       name: 'country_cells_cell_fk',
       columns: [table.campaignId, table.cellId],
       foreignColumns: [cells.campaignId, cells.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'country_cells_territory_fk',
+      columns: [table.campaignId, table.countryId, table.territoryId],
+      foreignColumns: [
+        countryTerritories.campaignId,
+        countryTerritories.countryId,
+        countryTerritories.id,
+      ],
     }).onDelete('cascade'),
     check('country_cells_population_nonnegative', sql`${table.population} >= 0`),
   ],

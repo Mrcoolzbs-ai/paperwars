@@ -838,6 +838,12 @@ export function createCountrySetupService(options: {
         name: string;
         is_mine: boolean;
         flag_data_url: string | null;
+        territory_id: string;
+        territory_type: 'core' | 'colony';
+        center_x: number;
+        center_y: number;
+        territory_width: number;
+        territory_height: number;
         x: number;
         y: number;
         population: number;
@@ -845,14 +851,21 @@ export function createCountrySetupService(options: {
       }>(
         `SELECT country.id AS country_id, country.name,
                 (country.owner_user_id = $2) AS is_mine,
-                country.flag_data_url, cell.x, cell.y, owned.population, building.building_type
+                country.flag_data_url, territory.id AS territory_id,
+                territory.territory_type, territory.center_x, territory.center_y,
+                territory.width AS territory_width, territory.height AS territory_height,
+                cell.x, cell.y, owned.population, building.building_type
          FROM countries AS country
          JOIN country_cells AS owned ON owned.campaign_id = country.campaign_id AND owned.country_id = country.id
+         JOIN country_territories AS territory
+           ON territory.campaign_id = owned.campaign_id
+          AND territory.country_id = owned.country_id
+          AND territory.id = owned.territory_id
          JOIN cells AS cell ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
          LEFT JOIN country_buildings AS building ON building.campaign_id = owned.campaign_id
            AND building.country_id = owned.country_id AND building.cell_id = owned.cell_id
          WHERE country.campaign_id = $1 AND country.setup_completed = TRUE
-         ORDER BY country.name, cell.y, cell.x`,
+         ORDER BY country.name, territory.territory_type, territory.id, cell.y, cell.x`,
         [campaignId, userId],
       );
       const groups = new Map<
@@ -862,6 +875,14 @@ export function createCountrySetupService(options: {
           name: string;
           isMine: boolean;
           flagDataUrl: string | null;
+          territories: Array<{
+            id: string;
+            type: 'core' | 'colony';
+            centerX: number;
+            centerY: number;
+            width: number;
+            height: number;
+          }>;
           cells: Array<{
             x: number;
             y: number;
@@ -878,9 +899,20 @@ export function createCountrySetupService(options: {
             name: row.name,
             isMine: row.is_mine,
             flagDataUrl: row.flag_data_url,
+            territories: [],
             cells: [],
           };
           groups.set(row.country_id, country);
+        }
+        if (!country.territories.some((territory) => territory.id === row.territory_id)) {
+          country.territories.push({
+            id: row.territory_id,
+            type: row.territory_type,
+            centerX: row.center_x,
+            centerY: row.center_y,
+            width: row.territory_width,
+            height: row.territory_height,
+          });
         }
         country.cells.push({
           x: row.x,
@@ -1593,6 +1625,18 @@ export function createCountrySetupService(options: {
           };
         });
 
+        const coreTerritoryResult = await client.query<{ id: string }>(
+          `INSERT INTO country_territories (
+             campaign_id, country_id, territory_type, center_x, center_y, width, height
+           ) VALUES ($1, $2, 'core', $3, $4, $5, $6)
+           RETURNING id`,
+          [campaignId, countryId, input.spawnX, input.spawnY, TERRITORY_SIDE, TERRITORY_SIDE],
+        );
+        const coreTerritoryId = coreTerritoryResult.rows[0]?.id;
+        if (coreTerritoryId === undefined) {
+          throw new Error('Не удалось сохранить основную территорию государства.');
+        }
+
         const cellValues = territory.map((cell) => [campaignId, cell.x, cell.y] as const);
         const cellInsert = makeValues(cellValues);
         const cellsResult = await client.query<CellRow>(
@@ -1620,12 +1664,18 @@ export function createCountrySetupService(options: {
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
           const isDryLand = spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
-          return [campaignId, countryId, cellId, isDryLand && !hasBuilding ? 1 : 0] as const;
+          return [
+            campaignId,
+            countryId,
+            cellId,
+            isDryLand && !hasBuilding ? 1 : 0,
+            coreTerritoryId,
+          ] as const;
         });
         const initialResidentCount = countryCellValues.reduce((sum, row) => sum + row[3], 0);
         const countryCellsInsert = makeValues(countryCellValues);
         await client.query(
-          `INSERT INTO country_cells (campaign_id, country_id, cell_id, population)
+          `INSERT INTO country_cells (campaign_id, country_id, cell_id, population, territory_id)
            VALUES ${countryCellsInsert.placeholders}`,
           countryCellsInsert.values,
         );

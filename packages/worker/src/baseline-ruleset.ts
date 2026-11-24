@@ -379,6 +379,9 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
+        const territoryId = stableUuid(
+          `paperwars:territory:${snapshot.campaignId}:${country.id}:${order.id}`,
+        );
         const orderDiscoveries: Array<{
           x: number;
           y: number;
@@ -404,6 +407,11 @@ export function createBaselineTurnResolver(): TurnResolver<
           emit(order.id, country.id, 'territory.colonized', {
             orderId: order.id,
             countryId: country.id,
+            territoryId,
+            centerX: x,
+            centerY: y,
+            width: radius * 2 + 1,
+            height: radius * 2 + 1,
             cellId,
             x: cell.x,
             y: cell.y,

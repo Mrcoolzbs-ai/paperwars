@@ -229,6 +229,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const expectedFirstResidents = firstLandCount - RELIGION_BUILDINGS.length;
       const firstMapCountry = firstMap.countries.find((country) => country.id === firstCountry.id);
       expect(firstMapCountry).toBeDefined();
+
+      expect(firstMapCountry!.territories).toEqual([
+        expect.objectContaining({
+          type: 'core',
+          centerX: firstSpawn.x,
+          centerY: firstSpawn.y,
+          width: 5,
+          height: 5,
+        }),
+      ]);
+
       for (const cell of firstMapCountry!.cells) {
         const isDryLand = firstMap.terrain[cell.y * firstMap.width + cell.x] === 'l';
         expect(cell.population).toBe(isDryLand && cell.buildingType === null ? 1 : 0);

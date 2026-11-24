@@ -405,6 +405,11 @@ async function persistWorldProjectionEvent(
   if (event.type === 'territory.colonized') {
     const cellId = projectionString(payload, 'cellId');
     const countryId = projectionString(payload, 'countryId');
+    const orderId = projectionString(payload, 'orderId');
+    const territoryId =
+      typeof payload['territoryId'] === 'string'
+        ? projectionString(payload, 'territoryId')
+        : orderId;
     const x = projectionInteger(payload, 'x');
     const y = projectionInteger(payload, 'y');
     const population = projectionInteger(payload, 'population');
@@ -416,6 +421,51 @@ async function persistWorldProjectionEvent(
       throw new TurnWorkerInvariantError(
         'Population must be positive on land and zero on water or rivers',
       );
+    }
+
+    let centerX =
+      typeof payload['centerX'] === 'number' ? projectionInteger(payload, 'centerX') : undefined;
+    let centerY =
+      typeof payload['centerY'] === 'number' ? projectionInteger(payload, 'centerY') : undefined;
+    if (centerX === undefined || centerY === undefined) {
+      const orderGeometry = await client.query<{ center_x: number; center_y: number }>(
+        `SELECT (payload->>'x')::integer AS center_x, (payload->>'y')::integer AS center_y
+         FROM orders
+         WHERE campaign_id = $1 AND country_id = $2 AND id = $3
+           AND order_type = 'colonization'`,
+        [campaignId, countryId, orderId],
+      );
+      centerX ??= orderGeometry.rows[0]?.center_x;
+      centerY ??= orderGeometry.rows[0]?.center_y;
+    }
+    const width = typeof payload['width'] === 'number' ? projectionInteger(payload, 'width') : 3;
+    const height = typeof payload['height'] === 'number' ? projectionInteger(payload, 'height') : 3;
+    if (centerX === undefined || centerY === undefined) {
+      throw new TurnWorkerInvariantError('A colonized cell has no valid colony center');
+    }
+
+    const insertedTerritory = await client.query<{ id: string }>(
+      `INSERT INTO country_territories (
+         id, campaign_id, country_id, territory_type, source_order_id,
+         center_x, center_y, width, height
+       ) VALUES ($1, $2, $3, 'colony', $4, $5, $6, $7, $8)
+       ON CONFLICT (campaign_id, country_id, source_order_id)
+         WHERE source_order_id IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [territoryId, campaignId, countryId, orderId, centerX, centerY, width, height],
+    );
+    let storedTerritoryId = insertedTerritory.rows[0]?.id;
+    if (storedTerritoryId === undefined) {
+      const existingTerritory = await client.query<{ id: string }>(
+        `SELECT id FROM country_territories
+         WHERE campaign_id = $1 AND country_id = $2 AND source_order_id = $3
+         FOR UPDATE`,
+        [campaignId, countryId, orderId],
+      );
+      storedTerritoryId = existingTerritory.rows[0]?.id;
+    }
+    if (storedTerritoryId === undefined) {
+      throw new TurnWorkerInvariantError('A colonized cell has no stored colony territory');
     }
 
     const insertedCell = await client.query<{ id: string }>(
@@ -440,10 +490,10 @@ async function persistWorldProjectionEvent(
     }
 
     const insertedOwnership = await client.query(
-      `INSERT INTO country_cells (campaign_id, country_id, cell_id, population)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO country_cells (campaign_id, country_id, cell_id, population, territory_id)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (campaign_id, cell_id) DO NOTHING`,
-      [campaignId, countryId, cellId, population],
+      [campaignId, countryId, cellId, population, storedTerritoryId],
     );
     if (insertedOwnership.rowCount !== 1) {
       throw new TurnWorkerInvariantError(

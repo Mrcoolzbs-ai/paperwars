@@ -102,6 +102,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           migration_name: '0013_vk_first_profiles.sql',
           checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
+        {
+          migration_name: '0014_country_territories.sql',
+          checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
       ]);
     });
 

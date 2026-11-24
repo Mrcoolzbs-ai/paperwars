@@ -451,6 +451,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const pool = getPool();
       const fixture = await createFixture(false);
       const cellId = randomUUID();
+      const orderId = randomUUID();
+      const territoryId = randomUUID();
       const territoryEventId = randomUUID();
       const discoveryEventId = randomUUID();
       let expectedD100 = 0;
@@ -468,6 +470,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             schemaVersion: 1,
             payload: {
               countryId: fixture.countryId,
+              orderId,
+              territoryId,
+              centerX: 10,
+              centerY: 10,
+              width: 3,
+              height: 3,
               cellId,
               x: 10,
               y: 10,
@@ -515,9 +523,21 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
         await expect(worker.processNext()).resolves.toMatchObject({ status: 'completed' });
 
-        const ownership = await pool.query<{ population: number }>(
-          'SELECT population FROM country_cells WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
+        const ownership = await pool.query<{ population: number; territory_id: string }>(
+          'SELECT population, territory_id FROM country_cells WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
           [fixture.campaignId, fixture.countryId, cellId],
+        );
+        const territory = await pool.query<{
+          territory_type: string;
+          center_x: number;
+          center_y: number;
+          width: number;
+          height: number;
+        }>(
+          `SELECT territory_type, center_x, center_y, width, height
+           FROM country_territories
+           WHERE campaign_id = $1 AND country_id = $2 AND id = $3`,
+          [fixture.campaignId, fixture.countryId, territoryId],
         );
         const discovery = await pool.query<{
           id: string;
@@ -548,7 +568,17 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [fixture.campaignId],
         );
 
-        expect(ownership.rows[0]?.population).toBe(9);
+        expect(ownership.rows[0]).toEqual({
+          population: 9,
+          territory_id: territoryId,
+        });
+        expect(territory.rows[0]).toEqual({
+          territory_type: 'colony',
+          center_x: 10,
+          center_y: 10,
+          width: 3,
+          height: 3,
+        });
         expect(discovery.rows[0]).toMatchObject({
           discovery_type: expectedDiscoveryType,
           discovered_by_country_id: fixture.countryId,

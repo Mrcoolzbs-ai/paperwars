@@ -105,6 +105,12 @@ describe('browser client', () => {
     expect(script.body).toContain("addEventListener('contextmenu'");
     expect(script.body).toContain("createMapOrder('construction'");
     expect(script.body).toContain("createMapOrder('colonization'");
+    expect(script.body).toContain('data-map-action="return-order-to-draft"');
+    expect(script.body).toContain('function returnMapOrderToDraft');
+    expect(script.body).toContain("method: 'PATCH'");
+    expect(script.body).toContain("ctx.globalAlpha = order.status === 'confirmed' ? 0.58 : 0.34");
+    expect(script.body).toContain('country.territories || []');
+    expect(script.body).toContain('territory.centerX');
     expect(script.body).toContain('/orders/confirm');
     expect(script.body).toContain('map-order-summary');
     expect(script.body).toContain('Подтвердить ход без приказов');
