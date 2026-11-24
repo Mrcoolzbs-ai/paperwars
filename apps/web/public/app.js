@@ -2753,6 +2753,84 @@
     if(!values?.length)return '<span class="country-culture-empty">Культура не задана</span>';
     return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
   }
+  function estimateCountryEconomy(country) {
+    const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
+    const cells = mapCountry?.cells || [];
+    const turnNumber = Math.max(1, Number(state.mapView?.turnNumber || state.turnStatus?.currentTurn || 1));
+    const seasonNames = ['spring', 'summer', 'autumn', 'winter'];
+    const season = state.mapView?.season || seasonNames[Math.floor(((turnNumber - 1) % 24) / 6)];
+    const year = Number(state.mapView?.year || Math.floor((turnNumber - 1) / 24) + 1);
+    const seasonTurn = Number(state.mapView?.seasonTurn || ((turnNumber - 1) % 6) + 1);
+    const population = cells.length
+      ? cells.filter((cell) => !cell.buildingType && mapIsLand(cell.x, cell.y)).length
+      : Number(country.residentCount || 0);
+    const active = (cell) => cell.flooded !== true || cell.buildingType === 'rice_field';
+    const factories = cells.filter((cell) => cell.buildingType === 'factory');
+    const gold = cells.filter((cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true).length;
+    const buildingUpkeep = cells.reduce((sum, cell) => {
+      if (!cell.buildingType) return sum;
+      if (cell.buildingType === 'tower' || cell.buildingType === 'field_level_2') return sum + 2;
+      if (cell.buildingType === 'textile_workshop_level_2') return sum + 3;
+      return sum + 1;
+    }, 0);
+    const structureUpkeep = cells.filter((cell) => cell.structureType).length;
+    const floodSurcharge = cells.filter((cell) => cell.flooded && cell.buildingType !== 'rice_field').length;
+    const expenses = buildingUpkeep + structureUpkeep + floodSurcharge;
+    const income = gold * population;
+    let food = 0;
+    for (const cell of cells) {
+      if (!cell.buildingType || !active(cell)) continue;
+      const factoryNearby = factories.some((factory) =>
+        Math.abs(factory.x - cell.x) <= 1 && Math.abs(factory.y - cell.y) <= 1);
+      let output = 0;
+      if (cell.buildingType === 'field' || cell.buildingType === 'field_level_2') {
+        if (season === 'winter' &&
+            !(cell.buildingType === 'field' && cell.structureType === 'greenhouse')) continue;
+        output = cell.buildingType === 'field_level_2' ? 15 : 10;
+        if (factoryNearby) output /= 2;
+      } else if (cell.buildingType === 'rice_field') {
+        if (season === 'winter') continue;
+        output = cell.flooded ? 15 : mapAdjacentWaterCount(cell.x, cell.y) > 0 ? 10 : 5;
+        if (factoryNearby) output /= 2;
+      } else if (cell.buildingType === 'hunter') {
+        output = season === 'spring' ? 15 : 5;
+      } else if (cell.buildingType === 'fisher') {
+        output = mapAdjacentWaterCount(cell.x, cell.y) * (season === 'spring' ? 10 : 5);
+      }
+      food += output;
+    }
+    const activeFactories = factories.filter(active).length;
+    const goods = activeFactories * 10;
+    const activeCotton = cells.filter((cell) =>
+      cell.buildingType === 'cotton_field' && active(cell) &&
+      (season !== 'winter' || cell.structureType === 'greenhouse')).length;
+    let cottonSlots = season === 'winter' ? activeCotton : 0;
+    let clothing = 0;
+    const workshops = cells.filter((cell) =>
+      ['textile_workshop', 'textile_workshop_level_2'].includes(cell.buildingType) && active(cell));
+    for (const workshop of workshops) {
+      if (cottonSlots < 1) continue;
+      cottonSlots -= 1;
+      clothing += workshop.buildingType === 'textile_workshop_level_2' ? 20 : 10;
+    }
+    const floodedCells = cells.filter((cell) => cell.flooded).length;
+    return {
+      turnNumber, season, year, seasonTurn,
+      movementMultiplier: season === 'winter' ? 0.5 : 1,
+      population, gold, income, initialBuildingUpkeep: expenses, buildingUpkeep: expenses,
+      unitCount: 0, unitUpkeep: 0, budgetDeficit: income < expenses,
+      unitMovementAllowed: income >= expenses, expenses,
+      unpaidExpenses: Math.max(0, expenses - income), disabledBuildings: [],
+      food, foodDemand: population, foodShortage: food < population,
+      goods, goodsDemand: population, goodsShortage: goods < population,
+      clothing, clothingDemand: season === 'winter' ? population : 0,
+      clothingShortage: season === 'winter' && clothing < population,
+      unclothedPopulation: season === 'winter' ? Math.max(0, population - clothing) : 0,
+      cottonFields: activeCotton, textileWorkshops: workshops.length, floodedCells,
+      starvedColonies: 0, fledColonies: 0,
+    };
+  }
+
   function renderFoundedCards(country) {
     const faithType = country.officialSystem.type;
     const system = country.officialSystem;
@@ -2766,17 +2844,25 @@
     $('#country-card-host').classList.remove('hidden');
 
     const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
-    const economy = country.economy || null;
-    const economyIncome = economy ? String(economy.income) : '—';
-    const economyExpenses = economy ? String(economy.expenses) : '—';
-    const economyStatus = economy
-      ? (economy.unpaidExpenses > 0 ? 'Есть неоплаченные расходы' : 'Содержание оплачено')
-      : 'Расчёт появится после первого завершённого хода';
+    const economy = estimateCountryEconomy(country);
+    const reportedEconomy = country.economy || null;
+    if (reportedEconomy) {
+      economy.disabledBuildings = reportedEconomy.disabledBuildings || [];
+      economy.starvedColonies = reportedEconomy.starvedColonies || 0;
+      economy.fledColonies = reportedEconomy.fledColonies || 0;
+    }
+    const economyIncome = String(economy.income);
+    const economyExpenses = String(economy.expenses);
+    const economyNet = economy.income - economy.expenses;
+    const economyStatus = economyNet >= 0
+      ? 'Положительный баланс за ход'
+      : 'Расходы превышают прибавку';
     const disabledBuildingsLabel = economy?.disabledBuildings?.map((building) =>
       (buildingMeta[building.type]?.label || building.type) + ' (' + building.x + ', ' + building.y + ')',
     ).join(', ') || '';
     const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
-    const seasonLabel = economy?.season ? seasonLabels[economy.season] || economy.season : '—';
+    const seasonLabel = seasonLabels[economy.season] || economy.season || '—';
+    const populationForCard = economy.population ?? country.residentCount ?? 0;
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -2827,7 +2913,7 @@
       '</article>';
 
     const countryStats = [
-      ['♟', 'Люди', String(country.residentCount)],
+      ['♟', 'Люди', String(populationForCard)],
       ['⚛', 'Наука', String(counts.get('science') || 0)],
       ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
       ['♛', 'Правитель', 'Не назначен'],
@@ -2858,28 +2944,29 @@
         '<div class="country-doc-economy">' +
           '<div><b class="country-doc-income">☀</b><span>Текущий сезон</span><strong>' +
             escapeHtml(seasonLabel) + '</strong><small>' +
-            (economy ? 'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' : 'Ожидается первый расчёт') +
+            'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' +
           '</small></div>' +
           '<div><b class="country-doc-income">❄</b><span>Тёплая одежда</span><strong>' +
-            (economy && economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
+            (economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
           '</strong><small>' +
-            (economy && economy.season === 'winter'
+            (economy.season === 'winter'
               ? (economy.clothingShortage ? 'Не хватает одежды для ' + String(economy.unclothedPopulation || 0) + ' жителей' : 'Все жители обеспечены')
               : 'Одежда не накапливается') +
           '</small></div>' +
           '<div><b class="country-doc-income">≈</b><span>Затопленные клетки</span><strong>' +
-            String(economy?.floodedCells || 0) + '</strong><small>' +
-            (economy?.movementMultiplier === 0.5 ? 'Зимой скорость войск ×0,5' : 'Обычная скорость передвижения') +
+            String(economy.floodedCells || 0) + '</strong><small>' +
+            (economy.movementMultiplier === 0.5 ? 'Зимой скорость войск ×0,5' : 'Обычная скорость передвижения') +
           '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
-        '<div class="country-doc-economy">' +
-          '<div><b class="country-doc-gold">З</b><span>Золото · доход</span><strong>' +
-            (economy ? String(economy.gold) + ' × ' + String(economy.population) : String(counts.get('gold_mine') || 0)) +
-            '</strong><small>Доход: ' + escapeHtml(economyIncome) + ' монет за ход</small></div>' +
-          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>' +
-            escapeHtml(economyIncome) + ' / ' + escapeHtml(economyExpenses) + '</strong>' +
-            '<small>' + escapeHtml(economyStatus) + '</small></div>' +
+        '<div class="country-doc-economy country-doc-finance">' +
+          '<div><b class="country-doc-income">↗</b><span>Прибавка</span><strong>+' +
+            escapeHtml(economyIncome) + '</strong><small>Золото за ход</small></div>' +
+          '<div><b class="country-doc-gold">−</b><span>Расход</span><strong>' +
+            escapeHtml(economyExpenses) + '</strong><small>Содержание зданий и сооружений</small></div>' +
+          '<div><b class="country-doc-income">Σ</b><span>Итого</span><strong>' +
+            (economyNet >= 0 ? '+' : '−') + escapeHtml(String(Math.abs(economyNet))) +
+            '</strong><small>' + escapeHtml(economyStatus) + '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ПОЛИТИКА</h3>' +
         '<div class="country-doc-government"><b>♜</b><span>' +
@@ -2888,16 +2975,16 @@
         '<div class="country-doc-bottom">' +
           '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
             String(counts.get('factory') || 0) + ' фабрики</span><small>' +
-            (economy ? String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
-              (economy.goodsShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+            String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
+              (economy.goodsShortage ? 'дефицит' : 'достаточно') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
             String((counts.get('field') || 0) + (counts.get('field_level_2') || 0) + (counts.get('rice_field') || 0)) + ' поля</span><small>' +
-            (economy ? String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
-              (economy.foodShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+            String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
+              (economy.foodShortage ? 'дефицит' : 'достаточно') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">♧</b><strong>Тёплая одежда</strong><span>' +
             String((counts.get('textile_workshop') || 0) + (counts.get('textile_workshop_level_2') || 0)) + ' мастерских · ' +
             String(counts.get('cotton_field') || 0) + ' хлопковых полей</span><small>' +
-            (economy && economy.season === 'winter'
+            (economy.season === 'winter'
               ? String(economy.clothing || 0) + ' из ' + String(economy.clothingDemand || economy.population) + ' жителей · ' +
                 (economy.clothingShortage ? 'не хватает ' + String(economy.unclothedPopulation || 0) : 'достаточно')
               : 'Производство не накапливается; спрос зимой') + '</small></section>' +
@@ -2929,13 +3016,7 @@
               ? 'Не обеспечено тёплой одеждой жителей: ' + escapeHtml(economy.unclothedPopulation || 0) + '.'
               : '') + '</p></section>'
           : '') +
-        '<section class="country-doc-inactive-actions" aria-live="polite">' +
-          '<strong>Приказы через глобальную карту</strong>' +
-          '<p>Строительство и колонизация задаются на большой карте: открой её, выбери клетку и вызови контекстное меню.</p>' +
-        '</section>' +
-        '<footer class="country-doc-footer">Территория 5 × 5 · центр ' +
-          (country.territory.centerX ?? '—') + ', ' + (country.territory.centerY ?? '—') +
-        '</footer>' +
+
       '</article>';
   }
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
