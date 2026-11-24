@@ -2218,8 +2218,8 @@
             ctx.save();
             ctx.strokeStyle = '#2a9b4a';
             ctx.lineWidth = Math.max(1.5, cellSize * 0.075);
-            ctx.strokeRect(px + cellSize * 0.16, py + cellSize * 0.16,
-              cellSize * 0.68, cellSize * 0.68);
+            ctx.strokeRect(px + cellSize * 0.08, py + cellSize * 0.08,
+              cellSize * 0.84, cellSize * 0.84);
             ctx.restore();
           } else if (cell.structureType === 'dam') {
             const edges = [
