@@ -600,6 +600,41 @@ async function persistWorldProjectionEvent(
     return;
   }
 
+  if (event.type === 'building.destroyed') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const buildingType = projectionString(payload, 'buildingType');
+    const deleted = await client.query(
+      `DELETE FROM country_buildings
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = $4`,
+      [campaignId, countryId, cellId, buildingType],
+    );
+    if (deleted.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A building destruction event references a building that does not exist',
+      );
+    }
+    return;
+  }
+
+  if (event.type === 'building.upgraded') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const previousBuildingType = projectionString(payload, 'previousBuildingType');
+    const buildingType = projectionString(payload, 'buildingType');
+    const updated = await client.query(
+      `UPDATE country_buildings SET building_type = $5
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = $4`,
+      [campaignId, countryId, cellId, previousBuildingType, buildingType],
+    );
+    if (updated.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A building upgrade event references a building that does not match its previous type',
+      );
+    }
+    return;
+  }
+
   if (event.type === 'discovery.discovered') {
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');

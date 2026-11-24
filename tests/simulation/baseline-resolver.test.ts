@@ -3,6 +3,7 @@ import { toId } from '@paper-wars/shared';
 import {
   createBaselineRuleset,
   createBaselineTurnResolver,
+  getBaselineSeasonForTurn,
   type BaselineWorldState,
 } from '@paper-wars/worker';
 import { describe, expect, it } from 'vitest';
@@ -72,14 +73,14 @@ function createOrder(
   } as const;
 }
 
-function createRandom(values: readonly number[] = []): {
+function createRandom(values: readonly number[] = [], turnNumber = 1): {
   readonly source: RandomSource;
   readonly calls: Array<{ domain: string; drawId: string; min: number; max: number }>;
 } {
   let index = 0;
   const calls: Array<{ domain: string; drawId: string; min: number; max: number }> = [];
   const source: RandomSource = {
-    context: { campaignId, turnNumber: 1, rngVersion: 'rng-v1' },
+    context: { campaignId, turnNumber, rngVersion: 'rng-v1' },
     uniform(domain, drawId, min, max) {
       calls.push({ domain, drawId, min, max });
       const value = values[index] ?? 50;
@@ -106,7 +107,7 @@ function resolve(
 ) {
   const snapshot = {
     campaignId: toId<'CampaignId'>(campaignId),
-    turnNumber: 1,
+    turnNumber: state.turnNumber,
     version: 1,
     stateSchemaVersion: 1,
     rulesetVersion: 'baseline-v1',
@@ -144,6 +145,25 @@ function economyCell(
   territoryId = 'core-territory',
 ) {
   return { id, x, y, population, buildingType, territoryType, territoryId };
+}
+
+function createSeasonState(
+  cells: BaselineWorldState['countries'][number]['cells'],
+  turnNumber: number,
+  terrain: string,
+  width: number,
+  economyEnabled = true,
+): BaselineWorldState {
+  const base = createState(terrain, [], width, false);
+  return {
+    ...base,
+    turnNumber,
+    countries: base.countries.map((country) => ({
+      ...country,
+      economyEnabled,
+      cells: [...cells],
+    })),
+  };
 }
 
 describe('baseline turn resolver', () => {
@@ -639,6 +659,276 @@ describe('baseline turn resolver', () => {
       data: { foodShortage: false, goodsShortage: true },
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(3);
+  });
+
+
+  it('maps every six turns to a season and advances the year after 24 turns', () => {
+    expect(getBaselineSeasonForTurn(1)).toEqual({ season: 'spring', year: 1, seasonTurn: 1 });
+    expect(getBaselineSeasonForTurn(6)).toEqual({ season: 'spring', year: 1, seasonTurn: 6 });
+    expect(getBaselineSeasonForTurn(7)).toEqual({ season: 'summer', year: 1, seasonTurn: 1 });
+    expect(getBaselineSeasonForTurn(13)).toEqual({ season: 'autumn', year: 1, seasonTurn: 1 });
+    expect(getBaselineSeasonForTurn(19)).toEqual({ season: 'winter', year: 1, seasonTurn: 1 });
+    expect(getBaselineSeasonForTurn(25)).toEqual({ season: 'spring', year: 2, seasonTurn: 1 });
+  });
+
+  it('increases hunter and fisher food production in spring', () => {
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[0 * 9 + 3] = 'r';
+    terrain[1 * 9 + 2] = 'r';
+    const cells = [
+      economyCell('gold', 0, 0, 20, 'gold_mine'),
+      economyCell('hunter', 1, 0, 0, 'hunter'),
+      economyCell('fisher', 2, 0, 0, 'fisher'),
+    ];
+    const spring = resolve(
+      createSeasonState(cells, 1, terrain.join(''), 9),
+      [],
+      createRandom([], 1).source,
+    );
+    const summer = resolve(
+      createSeasonState(cells, 7, terrain.join(''), 9),
+      [],
+      createRandom([], 7).source,
+    );
+    const springCountry = (spring.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+    const summerCountry = (summer.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(springCountry).toMatchObject({ season: 'spring', food: 35 });
+    expect(summerCountry).toMatchObject({ season: 'summer', food: 15 });
+  });
+
+  it('keeps ordinary fields idle in winter while a greenhouse keeps a normal field and cotton field working', () => {
+    const cells = [
+      economyCell('gold', 0, 0, 20, 'gold_mine'),
+      { ...economyCell('greenhouse-field', 1, 0, 0, 'field'), structureType: 'greenhouse' as const },
+      economyCell('plain-field', 2, 0, 0, 'field'),
+      economyCell('winter-rice', 3, 0, 0, 'rice_field'),
+      { ...economyCell('cotton', 4, 0, 0, 'cotton_field'), structureType: 'greenhouse' as const },
+      economyCell('workshop', 5, 0, 0, 'textile_workshop'),
+    ];
+    const result = resolve(
+      createSeasonState(cells, 19, 'l'.repeat(45), 9),
+      [],
+      createRandom([], 19).source,
+    );
+    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({
+      season: 'winter',
+      food: 10,
+      clothing: 10,
+      clothingDemand: 20,
+      clothingShortage: true,
+      unclothedPopulation: 10,
+      movementMultiplier: 0.5,
+    });
+  });
+
+  it('floods all water-adjacent land including diagonals, spares a dam and rice paddies, and rolls greenhouse then field destruction', () => {
+    const terrain = Array.from({ length: 25 }, () => 'w');
+    terrain[2 * 5 + 2] = 'r';
+    for (let y = 1; y <= 3; y += 1) {
+      for (let x = 1; x <= 3; x += 1) {
+        if (x !== 2 || y !== 2) terrain[y * 5 + x] = 'l';
+      }
+    }
+    const cells = [
+      { ...economyCell('dam', 1, 1, 0), structureType: 'dam' as const },
+      economyCell('field', 2, 1, 0, 'field'),
+      { ...economyCell('greenhouse-field', 3, 1, 0, 'field'), structureType: 'greenhouse' as const },
+      economyCell('rice', 1, 2, 0, 'rice_field'),
+      economyCell('land-3-2', 3, 2, 0),
+      economyCell('land-1-3', 1, 3, 0),
+      economyCell('land-2-3', 2, 3, 0),
+      economyCell('land-3-3', 3, 3, 0),
+    ];
+    const state = createSeasonState(cells, 12, terrain.join(''), 5, false);
+    const result = resolve(state, [], createRandom([50, 1, 1], 12).source);
+    const nextCells = result.nextState.countries[0]?.cells ?? [];
+
+    expect(nextCells.find((cell) => cell.id === 'dam')).toMatchObject({
+      structureType: 'dam',
+      flooded: undefined,
+    });
+    expect(nextCells.find((cell) => cell.id === 'field')).toMatchObject({
+      flooded: true,
+      buildingType: 'field',
+    });
+    expect(nextCells.find((cell) => cell.id === 'greenhouse-field')).toMatchObject({
+      flooded: true,
+      structureType: null,
+      buildingType: null,
+    });
+    expect(nextCells.find((cell) => cell.id === 'rice')).toMatchObject({
+      flooded: true,
+      buildingType: 'rice_field',
+    });
+    expect(nextCells.filter((cell) => cell.flooded === true)).toHaveLength(7);
+    expect(result.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['cell.flooded', 'structure.destroyed', 'building.destroyed']),
+    );
+  });
+
+  it('allows flood water to spread around a dam into a downstream cell', () => {
+    const terrain = Array.from({ length: 25 }, () => 'w');
+    for (let y = 1; y <= 3; y += 1) {
+      for (let x = 0; x <= 2; x += 1) terrain[y * 5 + x] = 'l';
+    }
+    terrain[2 * 5 + 2] = 'r';
+    const cells = [
+      { ...economyCell('dam', 1, 2, 0), structureType: 'dam' as const },
+      economyCell('downstream-cell', 0, 2, 0),
+    ];
+    const result = resolve(
+      createSeasonState(cells, 12, terrain.join(''), 5, false),
+      [],
+      createRandom(Array.from({ length: 100 }, () => 1), 12).source,
+    );
+    const nextCells = result.nextState.countries[0]?.cells ?? [];
+
+    expect(nextCells.find((cell) => cell.id === 'dam')?.flooded).not.toBe(true);
+    expect(nextCells.find((cell) => cell.id === 'downstream-cell')?.flooded).toBe(true);
+  });
+
+  it('allows greenhouse and dam overlays on cells but prevents installing both on one cell', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 10, 'gold_mine'),
+      economyCell('field', 1, 0, 1, 'field'),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000201', 'construction', {
+          x: 1, y: 0, buildingType: 'greenhouse',
+        }),
+        createOrder('40000000-0000-4000-8000-000000000202', 'construction', {
+          x: 1, y: 0, buildingType: 'dam',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'STRUCTURE_CONSTRUCTED',
+      'CELL_ALREADY_HAS_STRUCTURE',
+    ]);
+    expect(result.nextState.countries[0]?.cells.find((cell) => cell.id === 'field')).toMatchObject({
+      structureType: 'greenhouse',
+      buildingType: 'field',
+      population: 1,
+    });
+  });
+
+  it('upgrades fields and textile workshops without consuming action points', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 30, 'gold_mine'),
+      economyCell('field', 1, 0, 1, 'field'),
+      economyCell('workshop', 2, 0, 1, 'textile_workshop'),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000203', 'construction', {
+          x: 1, y: 0, buildingType: 'field_level_2',
+        }),
+        createOrder('40000000-0000-4000-8000-000000000204', 'construction', {
+          x: 2, y: 0, buildingType: 'textile_workshop_level_2',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'BUILDING_UPGRADED',
+      'BUILDING_UPGRADED',
+    ]);
+    expect(result.nextState.countries[0]?.cells.map((cell) => cell.buildingType)).toEqual([
+      'gold_mine',
+      'field_level_2',
+      'textile_workshop_level_2',
+    ]);
+    const actionPointsUsed = result.economicReport?.['actionPointsUsed'] as
+      Record<string, number> | undefined;
+    expect(actionPointsUsed?.[countryId] ?? 0).toBe(0);
+    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+    expect(economy).toMatchObject({ initialBuildingUpkeep: 6, expenses: 6 });
+  });
+
+
+
+  it('adds only one flood surcharge to a cell that has both a field and a greenhouse', () => {
+    const cells = [
+      economyCell('gold', 0, 0, 10, 'gold_mine'),
+      {
+        ...economyCell('flooded-field', 1, 0, 0, 'field'),
+        structureType: 'greenhouse' as const,
+        flooded: true,
+      },
+    ];
+    const result = resolve(createEconomyState(cells), [], createRandom().source);
+    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({
+      income: 10,
+      initialBuildingUpkeep: 3,
+      buildingUpkeep: 3,
+      unpaidExpenses: 0,
+    });
+  });
+
+  it('halves upgraded field output exactly when a factory is adjacent', () => {
+    const cells = [
+      economyCell('gold', 0, 0, 20, 'gold_mine'),
+      economyCell('field-two', 1, 1, 0, 'field_level_2'),
+      economyCell('factory', 2, 2, 0, 'factory'),
+    ];
+    const result = resolve(createEconomyState(cells), [], createRandom().source);
+    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({ food: 7.5, goods: 10 });
+  });
+
+
+  it('recedes autumn flood water after the sixth autumn turn', () => {
+    const terrain = 'l'.repeat(25);
+    const cells = [
+      { ...economyCell('flooded-field', 1, 1, 0, 'field'), flooded: true },
+    ];
+    const result = resolve(
+      createSeasonState(cells, 18, terrain, 5, false),
+      [],
+      createRandom([], 18).source,
+    );
+
+    expect(result.nextState.turnNumber).toBe(19);
+    expect(result.nextState.countries[0]?.cells[0]?.flooded).toBe(false);
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ type: 'cell.flood.receded' }),
+    );
+  });
+
+  it('limits each cotton field to one textile workshop', () => {
+    const cells = [
+      economyCell('gold', 0, 0, 25, 'gold_mine'),
+      { ...economyCell('cotton', 1, 0, 0, 'cotton_field'), structureType: 'greenhouse' as const },
+      economyCell('workshop-one', 2, 0, 0, 'textile_workshop'),
+      economyCell('workshop-two', 3, 0, 0, 'textile_workshop'),
+    ];
+    const result = resolve(
+      createSeasonState(cells, 19, 'l'.repeat(45), 9),
+      [],
+      createRandom([], 19).source,
+    );
+    const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({
+      cottonFields: 1,
+      textileWorkshops: 2,
+      clothing: 10,
+      clothingDemand: 25,
+      clothingShortage: true,
+      unclothedPopulation: 15,
+    });
   });
 
   it('removes existing colonies when there is not enough food', () => {

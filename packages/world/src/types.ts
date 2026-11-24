@@ -7,6 +7,13 @@ export type SocialSystemReviewDecision = 'approve' | 'reject';
 export type StartBuildingType =
   | 'factory'
   | 'field'
+  | 'rice_field'
+  | 'field_level_2'
+  | 'cotton_field'
+  | 'textile_workshop'
+  | 'textile_workshop_level_2'
+  | 'hunter'
+  | 'fisher'
   | 'gold_mine'
   | 'capital'
   | 'religious_building'
@@ -45,6 +52,10 @@ export interface PlayerSocialSystemTemplateView {
 
 export interface CountryEconomyView {
   readonly turnNumber: number;
+  readonly season?: 'spring' | 'summer' | 'autumn' | 'winter';
+  readonly year?: number;
+  readonly seasonTurn?: number;
+  readonly movementMultiplier?: number;
   readonly population: number;
   /** One gold unit per gold mine; treasury income is gold multiplied by population. */
   readonly gold: number;
@@ -61,6 +72,7 @@ export interface CountryEconomyView {
     readonly x: number;
     readonly y: number;
     readonly type: string;
+    readonly component?: 'building' | 'structure';
     readonly upkeepSaved: number;
   }[];
   readonly food: number;
@@ -69,6 +81,13 @@ export interface CountryEconomyView {
   readonly goods: number;
   readonly goodsDemand: number;
   readonly goodsShortage: boolean;
+  readonly clothing?: number;
+  readonly clothingDemand?: number;
+  readonly clothingShortage?: boolean;
+  readonly unclothedPopulation?: number;
+  readonly cottonFields?: number;
+  readonly textileWorkshops?: number;
+  readonly floodedCells?: number;
   readonly starvedColonies: number;
   readonly fledColonies: number;
 }
@@ -119,7 +138,19 @@ export interface StartBuildingPlacement {
 }
 
 export type AdditionalBuildingType =
-  'factory' | 'field' | 'religious_building' | 'science' | 'barracks' | 'tower';
+  | 'factory'
+  | 'field'
+  | 'rice_field'
+  | 'field_level_2'
+  | 'cotton_field'
+  | 'textile_workshop'
+  | 'textile_workshop_level_2'
+  | 'hunter'
+  | 'fisher'
+  | 'religious_building'
+  | 'science'
+  | 'barracks'
+  | 'tower';
 
 export interface BuildBuildingInput {
   readonly buildingType: unknown;
@@ -182,6 +213,8 @@ export interface CampaignMapCountry {
     readonly y: number;
     readonly population: number;
     readonly buildingType: StartBuildingType | null;
+    readonly structureType?: 'greenhouse' | 'dam' | null;
+    readonly flooded?: boolean;
   }>;
 }
 
@@ -205,6 +238,10 @@ export interface CampaignMapView {
   readonly width: number;
   readonly height: number;
   readonly seed: string;
+  readonly turnNumber?: number;
+  readonly season?: 'spring' | 'summer' | 'autumn' | 'winter';
+  readonly year?: number;
+  readonly seasonTurn?: number;
   /** Row-major l/w/r terrain encoding produced by the shared seeded generator. */
   readonly terrain: string;
   readonly countries: readonly CampaignMapCountry[];
