@@ -155,7 +155,7 @@ try {
   const chatService = createChatService({ pool: persistence.pool });
   const adminService = createAdminService({
     pool: persistence.pool,
-    adminCode: process.env['ADMIN_CODE'],
+    adminCode: process.env['ADMIN_CODE'] ?? '',
   });
   const countrySetupService = createCountrySetupService({
     pool: persistence.pool,
