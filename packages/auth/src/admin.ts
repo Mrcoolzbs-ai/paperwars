@@ -370,6 +370,7 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         ]);
         await client.query('DELETE FROM chat_messages WHERE user_id = $1', [targetUserId]);
         await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [targetUserId]);
+        await client.query('DELETE FROM auth_identities WHERE user_id = $1', [targetUserId]);
         await client.query('DELETE FROM player_social_system_library WHERE owner_user_id = $1', [
           targetUserId,
         ]);
