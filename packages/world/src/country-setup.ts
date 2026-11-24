@@ -718,7 +718,6 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
         continue;
       }
 
-      const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
       const cells = await client.query<{
         readonly country_id: string;
         readonly cell_id: string;
