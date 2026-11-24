@@ -239,12 +239,12 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         created_at: Date;
       }>(
         `UPDATE users AS user_account
-         SET display_name = $3, updated_at = clock_timestamp()
+         SET display_name = $2, updated_at = clock_timestamp()
          WHERE user_account.id = $1 AND user_account.status = 'active'
          RETURNING user_account.id, user_account.display_name, user_account.email,
                    user_account.status, user_account.created_at,
                    EXISTS (SELECT 1 FROM user_admins admin WHERE admin.user_id = user_account.id) AS is_admin`,
-        [targetUserId, adminUserId, displayName],
+        [targetUserId, displayName],
       );
       const row = updated.rows[0];
       if (!row) throw new AdminServiceError('ADMIN_USER_NOT_FOUND', 'Активный пользователь не найден.');
