@@ -917,7 +917,10 @@ export async function createCampaignOrder(
     transactionOpen = true;
     const context = await lockWritableOrderContext(client, campaignId, userId);
     const adminRole = await client.query(
-      'SELECT 1 FROM user_admins WHERE user_id = $1',
+      `SELECT 1 FROM user_admins AS admin
+       JOIN user_admin_settings AS setting
+         ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+       WHERE admin.user_id = $1`,
       [userId],
     );
     if (adminRole.rows.length === 0) {
