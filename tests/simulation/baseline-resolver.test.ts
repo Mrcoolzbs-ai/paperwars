@@ -153,7 +153,7 @@ describe('baseline turn resolver', () => {
       random.source,
     );
 
-    expect(result.nextState.countries[0]?.cells[0]?.id).toBe(discovery.cellId);
+    expect(result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.id).toBe(discovery.cellId);
     const capturedEvent = result.events.find((event) => event.type === 'discovery.captured');
     expect(capturedEvent).toBeDefined();
     expect(capturedEvent?.visibility).toBe('private');
