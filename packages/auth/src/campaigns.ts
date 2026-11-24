@@ -362,6 +362,15 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         if (!target) {
           throw new AuthValidationError('Кампания с таким ID не найдена.');
         }
+        const existing = await client.query<{ status: string }>(
+          'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
+          [normalizedCampaignId, userId],
+        );
+        if (existing.rows[0]?.status === 'active') {
+          await client.query('COMMIT');
+          transactionOpen = false;
+          return;
+        }
         if (
           target.status !== 'active' ||
           target.current_turn !== 1 ||
@@ -373,10 +382,6 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
             'Кампания уже начала первый ход и больше не принимает новых игроков. Подключиться можно до завершения основания государств.',
           );
         }
-        const existing = await client.query<{ status: string }>(
-          'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 FOR UPDATE',
-          [normalizedCampaignId, userId],
-        );
         if (existing.rows[0]?.status !== 'active') {
           const playerCount = await client.query<{ count: number }>(
             `SELECT COUNT(*)::int AS count FROM campaign_memberships
