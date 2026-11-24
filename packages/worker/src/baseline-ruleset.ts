@@ -608,7 +608,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       ) {
         const drawIndex = random.uniform(
           'economy',
-          `${country.id:disable-building:${snapshot.turnNumber:${disabledBuildings.length}"}`,
+          `${country.id}:disable-building:${snapshot.turnNumber}:${disabledBuildings.length}`,
           0,
           disableCandidates.length - 1,
         );
@@ -649,7 +649,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           country.cells = country.cells.filter((cell) => cell.territoryId !== territoryId);
           for (const cell of colonyCells) ownership.delete(coordinateKey(cell.x, cell.y));
           emit(
-            `economy:${country.id`,
+            `economy:${country.id}`,
             country.id,
             'colony.removed',
             {
