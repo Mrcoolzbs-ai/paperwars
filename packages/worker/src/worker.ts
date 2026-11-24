@@ -230,7 +230,7 @@ async function loadTurnInput<
     `SELECT id, campaign_id, country_id, turn_number, order_type, schema_version, status, payload
      FROM orders
      WHERE campaign_id = $1 AND turn_number = $2 AND status = 'finalized'
-     ORDER BY id`,
+     ORDER BY created_at, id`,
     [job.campaignId, job.turnNumber],
   );
 
