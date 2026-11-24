@@ -601,6 +601,24 @@ async function persistWorldProjectionEvent(
     return;
   }
 
+  if (event.type === 'population.synchronized') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const population = projectionInteger(payload, 'population');
+    const updated = await client.query(
+      `UPDATE country_cells
+       SET population = $4
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+      [campaignId, countryId, cellId, population],
+    );
+    if (updated.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A population synchronization event references a cell not owned by its country',
+      );
+    }
+    return;
+  }
+
   if (event.type === 'building.destroyed') {
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');
