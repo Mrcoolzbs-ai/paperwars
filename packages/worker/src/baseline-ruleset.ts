@@ -96,6 +96,7 @@ const ADDITIONAL_BUILDING_TYPES = new Set([
  */
 const SCIENCE_REQUIRED_BY_BUILDING: Readonly<Record<string, number>> = {
   rice_field: 2,
+  greenhouse: 2,
   dam: 3,
   field_level_2: 10,
   factory_level_2: 10,
