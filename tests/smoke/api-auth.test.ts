@@ -18,13 +18,14 @@ async function createBackupAccount(
   pool: ReturnType<typeof createPostgresPersistence>['pool'],
   email: string,
   password: string,
-): Promise<void> {
+): Promise<string> {
   const id = randomUUID();
   await pool.query(
     `INSERT INTO users (id, email, password_hash, display_name)
      VALUES ($1, $2, $3, $4)`,
     [id, email.toLowerCase(), await hashPassword(password), `API-${id.slice(0, 8)}`],
   );
+  return id;
 }
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
@@ -474,6 +475,60 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       });
       expect(enabled.statusCode).toBe(200);
       expect(enabled.json()).toEqual({ enabled: true });
+
+      const targetEmail = `deactivate-target-${randomUUID()}@example.test`;
+      const targetUserId = await createBackupAccount(
+        persistence!.pool,
+        targetEmail,
+        password,
+      );
+      const vkSubject = `vk-test-${randomUUID()}`;
+      await persistence!.pool.query(
+        `INSERT INTO auth_identities (user_id, provider, provider_user_id)
+         VALUES ($1, 'vk', $2)`,
+        [targetUserId, vkSubject],
+      );
+      const targetLogin = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: targetEmail, password },
+      });
+      expect(targetLogin.statusCode).toBe(200);
+      const targetSession = targetLogin.json<{ accessToken: string }>();
+      const deleted = await app.inject({
+        method: 'DELETE',
+        url: '/admin/users/' + targetUserId,
+        headers,
+      });
+      expect(deleted.statusCode).toBe(204);
+
+      const deactivated = await persistence!.pool.query<{
+        status: string;
+        email: string | null;
+        display_name: string;
+      }>('SELECT status, email, display_name FROM users WHERE id = $1', [targetUserId]);
+      expect(deactivated.rows[0]).toEqual({
+        status: 'disabled',
+        email: null,
+        display_name: 'Удалённый игрок',
+      });
+      const remainingIdentity = await persistence!.pool.query(
+        'SELECT 1 FROM auth_identities WHERE provider = $1 AND provider_user_id = $2',
+        ['vk', vkSubject],
+      );
+      expect(remainingIdentity.rows).toHaveLength(0);
+      const revokedTokens = await persistence!.pool.query(
+        'SELECT 1 FROM refresh_tokens WHERE user_id = $1',
+        [targetUserId],
+      );
+      expect(revokedTokens.rows).toHaveLength(0);
+
+      const disabledSession = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { authorization: `Bearer ${targetSession.accessToken}` },
+      });
+      expect(disabledSession.statusCode).toBe(401);
     });
 
     it('rate limits failed super-code attempts per user account', async () => {
