@@ -1227,3 +1227,24 @@ body.chat-modal-open {
 @media(prefers-reduced-motion:reduce) {
   .chat-new-message-alert { animation: none; }
 }
+
+
+.admin-map-country-card {
+  position: absolute;
+  z-index: 12;
+  top: 78px;
+  right: 18px;
+  width: min(390px, calc(100% - 36px));
+  max-height: min(55vh, 560px);
+  overflow: auto;
+  border: 1px solid #8c7652;
+  background: rgba(13, 22, 17, .97);
+  box-shadow: 0 12px 40px #0009;
+}
+.admin-map-country-card .admin-data-card { border: 0; background: transparent; }
+.admin-country-card-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.admin-country-card-heading strong { font: 600 18px "Playfair Display", serif; }
+.admin-map-country-card .admin-country-card-heading .button { flex: 0 0 auto; }
+@media(max-width:650px) {
+  .admin-map-country-card { top: 68px; right: 8px; width: calc(100% - 16px); max-height: 46vh; }
+}

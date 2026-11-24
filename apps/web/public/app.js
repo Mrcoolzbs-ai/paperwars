@@ -1037,37 +1037,59 @@
   }
 
   function renderAdminCountryCard(country) {
-    const host = $('#admin-country-card');
-    if (!host) return;
-    host.replaceChildren();
-    if (!country) {
-      host.textContent = 'Государство не найдено.';
-      return;
+    const hosts = [$('#admin-country-card'), $('#admin-map-country-card')].filter(Boolean);
+    for (const host of hosts) {
+      host.replaceChildren();
+      host.classList.toggle('hidden', !country);
+      if (!country) {
+        host.textContent = 'Государство не найдено.';
+        continue;
+      }
+      const card = document.createElement('article');
+      card.className = 'admin-data-card';
+      const heading = document.createElement('div');
+      heading.className = 'admin-country-card-heading';
+      const title = document.createElement('strong');
+      title.textContent = country.name;
+      heading.append(title);
+      if (host.id === 'admin-map-country-card') {
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'button button-quiet button-small';
+        close.textContent = 'Закрыть';
+        close.addEventListener('click', () => host.classList.add('hidden'));
+        heading.append(close);
+      }
+      const meta = document.createElement('span');
+      meta.textContent = 'Население: ' + country.residentCount + ' · Построек: ' +
+        (country.buildings || []).reduce((total, item) => total + Number(item.count || 0), 0);
+      const details = document.createElement('span');
+      details.textContent = 'Правление: ' + (country.government || 'не указано') +
+        ' · Культура: ' + ((country.culture || []).join(', ') || 'не указана');
+      const system = document.createElement('div');
+      system.className = 'admin-data-card';
+      const systemTitle = document.createElement('strong');
+      systemTitle.textContent = (country.officialSystem?.type === 'religion' ? 'Официальная религия: ' : 'Официальная идеология: ') +
+        (country.officialSystem?.name || 'не указана');
+      system.append(systemTitle);
+      for (const principle of country.officialSystem?.principles || []) {
+        const row = document.createElement('span');
+        row.textContent = principle.name + ' — ' + (principle.effect || principle.description || '');
+        system.append(row);
+      }
+      card.append(heading, meta, details, system);
+      host.append(card);
     }
-    const title = document.createElement('strong');
-    title.textContent = country.name;
-    const meta = document.createElement('span');
-    meta.textContent = 'Население: ' + country.residentCount + ' · Построек: ' +
-      (country.buildings || []).reduce((total, item) => total + Number(item.count || 0), 0);
-    const system = document.createElement('div');
-    system.className = 'admin-data-card';
-    const systemTitle = document.createElement('strong');
-    systemTitle.textContent = (country.officialSystem?.type === 'religion' ? 'Религия: ' : 'Идеология: ') +
-      (country.officialSystem?.name || 'не указана');
-    system.append(systemTitle);
-    for (const principle of country.officialSystem?.principles || []) {
-      const row = document.createElement('span');
-      row.textContent = principle.name + ' — ' + (principle.effect || principle.description || '');
-      system.append(row);
-    }
-    host.append(title, meta, system);
   }
 
   async function loadAdminCountryCard(countryId) {
     const campaignId = state.campaign?.id;
     if (!campaignId || !countryId) return;
-    const host = $('#admin-country-card');
-    host.textContent = 'Загрузка карточки государства…';
+    const hosts = [$('#admin-country-card'), $('#admin-map-country-card')].filter(Boolean);
+    for (const host of hosts) {
+      host.classList.remove('hidden');
+      host.textContent = 'Загрузка карточки государства…';
+    }
     try {
       const data = await request(
         '/admin/campaigns/' + encodeURIComponent(campaignId) +
@@ -1075,9 +1097,9 @@
       );
       state.adminSelectedCountry = data.country || null;
       renderAdminCountryCard(state.adminSelectedCountry);
-      showToast(data.country ? 'Карточка государства открыта.' : 'Государство не найдено.');
+      if (!data.country) showToast('Государство не найдено.', true);
     } catch (error) {
-      host.textContent = userErrorMessage(error);
+      for (const host of hosts) host.textContent = userErrorMessage(error);
     }
   }
 
