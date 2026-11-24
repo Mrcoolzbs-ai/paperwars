@@ -498,6 +498,31 @@ describe('baseline turn resolver', () => {
     });
   });
 
+  it('can disable a gold mine and reduce income for the same turn', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 1, 'gold_mine'),
+      economyCell('tower', 1, 0, 0, 'tower'),
+    ]);
+    const result = resolve(state, [], createRandom([0, 0]).source);
+    const countryReports = result.economicReport?.['countries'] as
+      Array<Record<string, unknown>> | undefined;
+    const economy = countryReports?.[0];
+
+    expect(economy).toMatchObject({
+      gold: 0,
+      income: 0,
+      initialBuildingUpkeep: 3,
+      buildingUpkeep: 0,
+      expenses: 0,
+      budgetDeficit: true,
+      unitMovementAllowed: false,
+    });
+    expect(economy?.['disabledBuildings']).toEqual([
+      expect.objectContaining({ type: 'gold_mine' }),
+      expect.objectContaining({ type: 'tower' }),
+    ]);
+  });
+
   it('halves field output when a factory is diagonally adjacent', () => {
     const state = createEconomyState([
       economyCell('gold', 0, 0, 5, 'gold_mine'),
