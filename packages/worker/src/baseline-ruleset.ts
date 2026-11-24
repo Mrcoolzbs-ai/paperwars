@@ -156,26 +156,28 @@ function adjacentToWater(
   return false;
 }
 
-function adjacentRiverCount(
+function adjacentWaterCount(
   x: number,
   y: number,
   terrain: string,
   width: number,
   height: number,
 ): number {
-  const adjacent = [
-    [x - 1, y],
-    [x + 1, y],
-    [x, y - 1],
-    [x, y + 1],
-  ];
-  return adjacent.filter(
-    ([nextX, nextY]) =>
-      nextX !== undefined &&
-      nextY !== undefined &&
-      isInsideMap(nextX, nextY, width, height) &&
-      terrain[nextY * width + nextX] === 'r',
-  ).length;
+  let count = 0;
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (
+        isInsideMap(nextX, nextY, width, height) &&
+        terrain[nextY * width + nextX] !== 'l'
+      ) {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
 
 function componentIsDisabled(
@@ -267,8 +269,14 @@ function getCountrySupply(
     } else if (cell.buildingType === 'hunter') {
       output = season === 'spring' ? 15 : 5;
     } else if (cell.buildingType === 'fisher') {
-      const riverCells = adjacentRiverCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
-      output = riverCells * (season === 'spring' ? 10 : 5);
+      const adjacentWaterCells = adjacentWaterCount(
+        cell.x,
+        cell.y,
+        terrain,
+        mapWidth,
+        mapHeight,
+      );
+      output = adjacentWaterCells * (season === 'spring' ? 10 : 5);
     }
     food += output;
   }
@@ -554,25 +562,35 @@ export function createBaselineTurnResolver(): TurnResolver<
                 reason: 'flood',
               });
               if (destroyRoll('building') <= 35) {
-                updated = { ...updated, buildingType: null };
+                updated = {
+                  ...updated,
+                  buildingType: null,
+                  population: Math.max(0, cell.population) + 1,
+                };
                 emit(`season:${nextTurnNumber}`, country.id, 'building.destroyed', {
                   countryId: country.id,
                   cellId: cell.id,
                   x: cell.x,
                   y: cell.y,
                   buildingType: cell.buildingType,
+                  population: updated.population,
                   reason: 'flood',
                 });
               }
             }
           } else if (cell.buildingType && destroyRoll('building') <= 35) {
-            updated = { ...updated, buildingType: null };
+            updated = {
+              ...updated,
+              buildingType: null,
+              population: Math.max(0, cell.population) + 1,
+            };
             emit(`season:${nextTurnNumber}`, country.id, 'building.destroyed', {
               countryId: country.id,
               cellId: cell.id,
               x: cell.x,
               y: cell.y,
               buildingType: cell.buildingType,
+              population: updated.population,
               reason: 'flood',
             });
           } else if (cell.structureType && destroyRoll('structure') <= 35) {
@@ -631,6 +649,68 @@ export function createBaselineTurnResolver(): TurnResolver<
         continue;
       }
 
+      if (order.type === 'demolition') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
+          orderResults.push(
+            rejection(order.id, 'CELL_NOT_OWNED', 'Сносить можно только здание на своей клетке суши.'),
+          );
+          continue;
+        }
+        if (!cell.buildingType) {
+          orderResults.push(
+            rejection(order.id, 'BUILDING_NOT_FOUND', 'На этой клетке нет здания для сноса.'),
+          );
+          continue;
+        }
+        if (cell.buildingType === 'capital' || cell.buildingType === 'gold_mine') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'BUILDING_CANNOT_BE_DEMOLISHED',
+              'Столицу и золотую шахту сносить нельзя.',
+            ),
+          );
+          continue;
+        }
+        const buildingType = cell.buildingType;
+        const population = Math.max(0, cell.population) + 1;
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id
+            ? { ...candidate, buildingType: null, structureType: null, population }
+            : candidate,
+        );
+        if (cell.structureType) {
+          emit(order.id, country.id, 'structure.destroyed', {
+            orderId: order.id,
+            countryId: country.id,
+            cellId: cell.id,
+            x,
+            y,
+            structureType: cell.structureType,
+            reason: 'demolition',
+          });
+        }
+        emit(order.id, country.id, 'building.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          buildingType,
+          population,
+          reason: 'demolition',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'BUILDING_DEMOLISHED',
+          message: 'Здание снесено. Освободившаяся клетка возвращает одного жителя.',
+          data: { x, y, buildingType, population },
+        });
+        continue;
+      }
+
       if (order.type === 'construction') {
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
         const buildingType = String(order.payload['buildingType'] ?? '');
@@ -647,7 +727,30 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
+        if (buildingType === 'fisher' &&
+          !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'FISHER_REQUIRES_WATER',
+              'Рыбака можно построить только рядом с водой или рекой, в том числе по диагонали.',
+            ),
+          );
+          continue;
+        }
+
         if (buildingType === 'greenhouse' || buildingType === 'dam') {
+          if (buildingType === 'dam' &&
+            !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
+            orderResults.push(
+              rejection(
+                order.id,
+                'DAM_REQUIRES_WATER',
+                'Дамбу можно поставить только на клетке у воды или реки.',
+              ),
+            );
+            continue;
+          }
           if (cell.structureType) {
             orderResults.push(
               rejection(
