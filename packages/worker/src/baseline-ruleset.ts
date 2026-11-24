@@ -146,7 +146,8 @@ export function createBaselineTurnResolver(): TurnResolver<
     const events: BaselineGameEvent[] = [];
     const orderResults: OrderResolution[] = [];
     const actionsUsedByCountry = new Map<string, number>();
-    const colonizedCells: Array<{ x: number; y: number; type: string }> = [];
+    let colonizedCells = 0;
+    let discoveriesRolled = 0;
     let constructions = 0;
     let residentsAdded = 0;
 
@@ -243,37 +244,50 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       if (order.type === 'colonization') {
         const radius = ruleset.parameters.colonizationRadius;
-        const candidates: Array<{ x: number; y: number }> = [];
+        const candidates: Array<{ x: number; y: number; terrainCode: string }> = [];
         for (let cellY = Math.max(0, y - radius); cellY <= Math.min(mapHeight - 1, y + radius); cellY += 1) {
           for (let cellX = Math.max(0, x - radius); cellX <= Math.min(mapWidth - 1, x + radius); cellX += 1) {
-            if (terrain[cellY * mapWidth + cellX] !== 'l') continue;
             if (ownership.has(coordinateKey(cellX, cellY))) continue;
-            candidates.push({ x: cellX, y: cellY });
+            candidates.push({
+              x: cellX,
+              y: cellY,
+              terrainCode: terrain[cellY * mapWidth + cellX]!,
+            });
           }
         }
+        const landCandidates = candidates.filter((cell) => cell.terrainCode === 'l');
 
-        if (candidates.length === 0) {
+        if (landCandidates.length === 0) {
           orderResults.push(rejection(
             order.id,
             'NO_COLONIZABLE_LAND',
-            'В выбранном квадрате 3×3 нет свободных клеток суши для захвата.',
+            'Для колонизации в квадрате 3×3 нужно захватить хотя бы одну свободную клетку суши.',
           ));
           continue;
         }
 
-        const orderDiscoveries: Array<{ x: number; y: number; roll?: number; type: string }> = [];
+        const orderDiscoveries: Array<{
+          x: number;
+          y: number;
+          roll?: number;
+          type?: string;
+          alreadyDiscovered?: boolean;
+        }> = [];
         for (const cell of candidates) {
           const key = coordinateKey(cell.x, cell.y);
-          const previousDiscovery = discoveredByCoordinate.get(key);
+          const isLand = cell.terrainCode === 'l';
+          const previousDiscovery = isLand ? discoveredByCoordinate.get(key) : undefined;
           const cellId = previousDiscovery?.cellId ?? stableUuid(
             `paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`,
           );
+          const population = isLand ? 1 : 0;
           country.cells = [
             ...country.cells,
-            { id: cellId, x: cell.x, y: cell.y, population: 1, buildingType: null },
+            { id: cellId, x: cell.x, y: cell.y, population, buildingType: null },
           ];
           ownership.set(key, country.id);
-          residentsAdded += 1;
+          colonizedCells += 1;
+          if (isLand) residentsAdded += 1;
 
           emit(order.id, country.id, 'territory.colonized', {
             orderId: order.id,
@@ -281,24 +295,27 @@ export function createBaselineTurnResolver(): TurnResolver<
             cellId,
             x: cell.x,
             y: cell.y,
-            population: 1,
+            terrainCode: cell.terrainCode,
+            population,
           });
 
+          if (!isLand) continue;
+
           if (previousDiscovery !== undefined) {
+            // Discovery is permanent, but a territorial capture does not reveal it
+            // or grant the new owner access. Only the discovery history is extended.
             emit(order.id, country.id, 'discovery.captured', {
               orderId: order.id,
               countryId: country.id,
               cellId,
-              discoveryId: previousDiscovery.id,
-              discoveryType: previousDiscovery.type,
               x: cell.x,
               y: cell.y,
-            }, 'private');
-            orderDiscoveries.push({ x: cell.x, y: cell.y, type: previousDiscovery.type });
-            colonizedCells.push({ x: cell.x, y: cell.y, type: previousDiscovery.type });
+            });
+            orderDiscoveries.push({ x: cell.x, y: cell.y, alreadyDiscovered: true });
           } else {
             const roll = random.uniform('discovery', `cell:${cell.x}:${cell.y}`, 1, 100);
             const discoveryType = roll === 1 ? 'ruins' : roll === 100 ? 'gold' : 'empty';
+            discoveriesRolled += 1;
             emit(order.id, country.id, 'discovery.discovered', {
               orderId: order.id,
               countryId: country.id,
@@ -309,7 +326,6 @@ export function createBaselineTurnResolver(): TurnResolver<
               y: cell.y,
             }, 'private');
             orderDiscoveries.push({ x: cell.x, y: cell.y, roll, type: discoveryType });
-            colonizedCells.push({ x: cell.x, y: cell.y, type: discoveryType });
           }
         }
 
@@ -317,14 +333,16 @@ export function createBaselineTurnResolver(): TurnResolver<
           orderId: order.id,
           status: 'accepted',
           resultCode: 'COLONIZATION_ACCEPTED',
-          message: `Захвачено клеток суши: ${candidates.length}. Каждая новая клетка получила одного жителя.`,
+          message: `Захвачено клеток: ${candidates.length} (суша: ${landCandidates.length}, вода/реки: ${candidates.length - landCandidates.length}). На каждой новой клетке суши появился один житель.`,
           data: {
             centerX: x,
             centerY: y,
             width: 3,
             height: 3,
             colonizedCount: candidates.length,
-            residentsAdded: candidates.length,
+            colonizedLandCount: landCandidates.length,
+            colonizedWaterCount: candidates.length - landCandidates.length,
+            residentsAdded: landCandidates.length,
             discoveries: orderDiscoveries,
           },
         });
@@ -352,7 +370,8 @@ export function createBaselineTurnResolver(): TurnResolver<
         turnNumber: snapshot.turnNumber,
         actionPointsUsed: Object.fromEntries(actionsUsedByCountry),
         actionPointsPerTurn: ruleset.parameters.actionPointsPerTurn,
-        colonizedCells: colonizedCells.length,
+        colonizedCells,
+        discoveriesRolled,
         residentsAdded,
         constructions,
       },
