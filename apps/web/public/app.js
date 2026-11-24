@@ -2143,36 +2143,7 @@
         const py = top + cell.y * cellSize;
         ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
-        if (!miniature && cell.flooded) {
-          const dropSize = Math.max(2.5, cellSize * 0.22);
-          const dropX = px + cellSize * 0.14;
-          const dropY = py + cellSize * 0.14;
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(dropX + dropSize * 0.5, dropY);
-          ctx.bezierCurveTo(
-            dropX + dropSize * 0.3, dropY + dropSize * 0.33,
-            dropX, dropY + dropSize * 0.62,
-            dropX + dropSize * 0.08, dropY + dropSize * 0.78,
-          );
-          ctx.bezierCurveTo(
-            dropX + dropSize * 0.17, dropY + dropSize * 1.12,
-            dropX + dropSize * 0.83, dropY + dropSize * 1.12,
-            dropX + dropSize * 0.92, dropY + dropSize * 0.78,
-          );
-          ctx.bezierCurveTo(
-            dropX + dropSize, dropY + dropSize * 0.62,
-            dropX + dropSize * 0.7, dropY + dropSize * 0.33,
-            dropX + dropSize * 0.5, dropY,
-          );
-          ctx.closePath();
-          ctx.fillStyle = '#138bc2';
-          ctx.strokeStyle = '#f3fbff';
-          ctx.lineWidth = Math.max(0.55, cellSize * 0.025);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        }
+
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
@@ -2211,6 +2182,37 @@
           if (cell.buildingType) {
             drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
           }
+
+        if (!miniature && cell.flooded) {
+          const dropSize = Math.max(2.5, cellSize * 0.22);
+          const dropX = px + cellSize * 0.14;
+          const dropY = py + cellSize * 0.14;
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(dropX + dropSize * 0.5, dropY);
+          ctx.bezierCurveTo(
+            dropX + dropSize * 0.3, dropY + dropSize * 0.33,
+            dropX, dropY + dropSize * 0.62,
+            dropX + dropSize * 0.08, dropY + dropSize * 0.78,
+          );
+          ctx.bezierCurveTo(
+            dropX + dropSize * 0.17, dropY + dropSize * 1.12,
+            dropX + dropSize * 0.83, dropY + dropSize * 1.12,
+            dropX + dropSize * 0.92, dropY + dropSize * 0.78,
+          );
+          ctx.bezierCurveTo(
+            dropX + dropSize, dropY + dropSize * 0.62,
+            dropX + dropSize * 0.7, dropY + dropSize * 0.33,
+            dropX + dropSize * 0.5, dropY,
+          );
+          ctx.closePath();
+          ctx.fillStyle = '#138bc2';
+          ctx.strokeStyle = '#f3fbff';
+          ctx.lineWidth = Math.max(0.55, cellSize * 0.025);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
           if (cell.structureType === 'greenhouse' &&
               ['field', 'cotton_field'].includes(cell.buildingType)) {
             ctx.save();
