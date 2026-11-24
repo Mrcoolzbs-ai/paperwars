@@ -518,8 +518,8 @@
     const host = $('#chat-room-list');
     if (!host) return;
     let hasMatch = false;
-    $('.chat-room-section', host).forEach((section) => {
-      const entries = $('.chat-room-entry', section);
+    $$('.chat-room-section', host).forEach((section) => {
+      const entries = $$('.chat-room-entry', section);
       let sectionHasMatch = false;
       for (const entry of entries) {
         const matches = !query || entry.textContent.toLocaleLowerCase('ru-RU').includes(query);
