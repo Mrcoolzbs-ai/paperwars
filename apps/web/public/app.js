@@ -329,12 +329,10 @@
     if (vkIdSdkPromise) return vkIdSdkPromise;
 
     vkIdSdkPromise = (async () => {
-      let lastError;
       for (const source of VK_ID_SDK_SOURCES) {
         try {
           return await loadVkIdSdkScript(source);
         } catch (error) {
-          lastError = error;
           console.warn('VK ID SDK source unavailable; trying the next CDN.', source, error);
         }
       }
