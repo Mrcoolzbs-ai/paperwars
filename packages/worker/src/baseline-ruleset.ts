@@ -687,7 +687,9 @@ export function createBaselineTurnResolver(): TurnResolver<
             );
             continue;
           }
-          const updatedCell = { ...cell, structureType: buildingType };
+          const structureType: 'greenhouse' | 'dam' =
+            buildingType === 'greenhouse' ? 'greenhouse' : 'dam';
+          const updatedCell = { ...cell, structureType };
           country.cells = country.cells.map((candidate) =>
             candidate.id === cell.id ? updatedCell : candidate,
           );
@@ -697,7 +699,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             cellId: cell.id,
             x,
             y,
-            structureType: buildingType,
+            structureType,
           });
           constructions += 1;
           orderResults.push({
@@ -708,7 +710,7 @@ export function createBaselineTurnResolver(): TurnResolver<
               buildingType === 'greenhouse'
                 ? 'Теплица построена поверх поля.'
                 : 'Дамба построена и защищает эту клетку от затопления.',
-            data: { x, y, structureType: buildingType },
+            data: { x, y, structureType },
           });
           continue;
         }
