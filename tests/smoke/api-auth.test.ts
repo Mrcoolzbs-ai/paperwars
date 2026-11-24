@@ -418,8 +418,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers,
       });
       expect(profile.statusCode).toBe(200);
-      expect(profile.json<{ profile: { isAdmin: boolean; adminModeEnabled: boolean } }>().profile)
-        .toMatchObject({ isAdmin: true, adminModeEnabled: true });
+      expect(
+        profile.json<{ profile: { isAdmin: boolean; adminModeEnabled: boolean } }>().profile,
+      ).toMatchObject({ isAdmin: true, adminModeEnabled: true });
 
       const campaignsResponse = await app.inject({
         method: 'GET',
@@ -435,11 +436,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers,
       });
       expect(usersResponse.statusCode).toBe(200);
-      expect(
-        usersResponse.json<{ users: Array<{ id: string }> }>().users,
-      ).toContainEqual(expect.objectContaining({
-        id: login.json<{ user: { id: string } }>().user.id,
-      }));
+      expect(usersResponse.json<{ users: Array<{ id: string }> }>().users).toContainEqual(
+        expect.objectContaining({ id: login.json<{ user: { id: string } }>().user.id }),
+      );
 
       const disabled = await app.inject({
         method: 'POST',
@@ -477,11 +476,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(enabled.json()).toEqual({ enabled: true });
 
       const targetEmail = `deactivate-target-${randomUUID()}@example.test`;
-      const targetUserId = await createBackupAccount(
-        persistence!.pool,
-        targetEmail,
-        password,
-      );
+      const targetUserId = await createBackupAccount(persistence!.pool, targetEmail, password);
       const vkSubject = `vk-test-${randomUUID()}`;
       await persistence!.pool.query(
         `INSERT INTO auth_identities (user_id, provider, provider_user_id)
@@ -562,8 +557,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         payload: { code: 'incorrect-super-code' },
       });
       expect(fifthAttempt.statusCode).toBe(429);
-      expect(fifthAttempt.json<{ message: string }>().message)
-        .toBe('Слишком много неверных попыток. Повторите через 15 минут.');
+      expect(fifthAttempt.json<{ message: string }>().message).toBe(
+        'Слишком много неверных попыток. Повторите через 15 минут.',
+      );
 
       const blockedAttempt = await app.inject({
         method: 'POST',
