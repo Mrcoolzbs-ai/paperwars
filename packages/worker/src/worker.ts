@@ -429,7 +429,8 @@ async function persistWorldProjectionEvent(
          id, campaign_id, country_id, territory_type, source_order_id,
          center_x, center_y, width, height
        ) VALUES ($1, $2, $3, 'colony', $4, $5, $6, $7, $8)
-       ON CONFLICT (campaign_id, country_id, source_order_id) DO NOTHING`,
+       ON CONFLICT (campaign_id, country_id, source_order_id)
+         WHERE source_order_id IS NOT NULL DO NOTHING`,
       [territoryId, campaignId, countryId, orderId, centerX, centerY, width, height],
     );
 

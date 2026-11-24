@@ -361,18 +361,22 @@ export const countryTerritories = pgTable(
       table.countryId,
       table.id,
     ),
-    uniqueIndex('country_territories_source_order_unique').on(
-      table.campaignId,
-      table.countryId,
-      table.sourceOrderId,
-    ),
+    uniqueIndex('country_territories_source_order_unique')
+      .on(table.campaignId, table.countryId, table.sourceOrderId)
+      .where(sql`${table.sourceOrderId} is not null`),
     foreignKey({
       name: 'country_territories_country_fk',
       columns: [table.campaignId, table.countryId],
       foreignColumns: [countries.campaignId, countries.id],
     }).onDelete('cascade'),
-    check('country_territories_type_check', sql`${table.territoryType} in ('core', 'colony')`),
-    check('country_territories_dimensions_check', sql`${table.width} > 0 and ${table.height} > 0`),
+    check(
+      'country_territories_dimensions_check',
+      sql`
+        (${table.territoryType} = 'core' and ${table.width} = 5 and ${table.height} = 5 and ${table.sourceOrderId} is null)
+        or
+        (${table.territoryType} = 'colony' and ${table.width} = 3 and ${table.height} = 3 and ${table.sourceOrderId} is not null)
+      `,
+    ),
   ],
 );
 

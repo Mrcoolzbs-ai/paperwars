@@ -253,6 +253,11 @@
     return state.refreshPromise;
   }
 
+  function userErrorMessage(error) {
+    const message = typeof error?.message === 'string' ? userErrorMessage(error).trim() : '';
+    return /[А-Яа-яЁё]/.test(message) ? message : 'Произошла ошибка. Попробуйте ещё раз.';
+  }
+
   function russianApiError(data, status) {
     const code = typeof data?.error === 'string' ? data.error : '';
     const messages = {
@@ -518,7 +523,7 @@
       if (error.status === 403) {
         setChatStatus('Нет доступа к этой кампании. Обнови список комнат.', true);
       } else {
-        setChatStatus(error.message || 'Не удалось загрузить сообщения.', true);
+        setChatStatus(userErrorMessage(error) || 'Не удалось загрузить сообщения.', true);
       }
     }
   }
@@ -584,7 +589,7 @@
         setMessage('#auth-message', 'Сессия завершена. Войди снова.');
         void initVkOneTap();
       } else {
-        setChatStatus(error.message || 'Не удалось загрузить список кампаний.', true);
+        setChatStatus(userErrorMessage(error) || 'Не удалось загрузить список кампаний.', true);
         renderChatRooms();
       }
     }
@@ -628,7 +633,7 @@
         setMessage('#auth-message', 'Сессия завершена. Войди снова.');
         void initVkOneTap();
       } else {
-        setChatStatus(error.message || 'Не удалось отправить сообщение.', true);
+        setChatStatus(userErrorMessage(error) || 'Не удалось отправить сообщение.', true);
       }
     } finally {
       state.chatSending = false;
@@ -737,7 +742,7 @@
       console.error('VK ID One Tap initialization failed', error);
       setMessage(
         '#vk-one-tap-message',
-        error.message || 'Не удалось подготовить быстрый вход VK ID. Используй обычную кнопку ниже.',
+        userErrorMessage(error) || 'Не удалось подготовить быстрый вход VK ID. Используй обычную кнопку ниже.',
       );
     }
   }
@@ -823,7 +828,7 @@
       await loadProfile();
       return true;
     } catch (error) {
-      setMessage('#profile-page-message', error.message || 'Не удалось загрузить профиль.');
+      setMessage('#profile-page-message', userErrorMessage(error) || 'Не удалось загрузить профиль.');
       return false;
     }
   }
@@ -914,7 +919,7 @@
       state.openCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
       renderOpenCampaigns();
     } catch (error) {
-      host.innerHTML = '<div class="open-campaign-empty">Не удалось загрузить открытые кампании: ' + escapeHtml(error.message) + '</div>';
+      host.innerHTML = '<div class="open-campaign-empty">Не удалось загрузить открытые кампании: ' + escapeHtml(userErrorMessage(error)) + '</div>';
     } finally {
       if (refresh) refresh.disabled = false;
     }
@@ -950,7 +955,7 @@
           await loadCampaigns();
           showToast('Ты присоединился к кампании.');
         } catch (error) {
-          showToast(error.message, true);
+          showToast(userErrorMessage(error), true);
           await loadOpenCampaigns();
         } finally {
           button.disabled = false;
@@ -970,7 +975,7 @@
       if (wasOpen) showScreen('game');
       showToast('Ты покинул кампанию. Она удалена из твоего списка.');
     } catch (error) {
-      showToast(error.message, true);
+      showToast(userErrorMessage(error), true);
     }
   }
 
@@ -1045,7 +1050,7 @@
     if (campaign.countryId) await loadCountryProfile();
     await loadTurnRoom();
     if (campaign.countryId) {
-      try { await loadMapOrders(); } catch (error) { showToast('Не удалось загрузить приказы карты: ' + error.message, true); }
+      try { await loadMapOrders(); } catch (error) { showToast('Не удалось загрузить приказы карты: ' + userErrorMessage(error), true); }
     }
     if (!campaign.countryId) {
       const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
@@ -1219,7 +1224,7 @@
         ? 'Приказ колонизации добавлен в список.'
         : 'Приказ строительства добавлен в список.');
     } catch (error) {
-      showToast(error.message || 'Не удалось сохранить приказ.', true);
+      showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
   }
 
@@ -1236,7 +1241,7 @@
       drawMapCanvas($('#map-canvas'), false);
       showToast('Приказ снят с карты.');
     } catch (error) {
-      showToast(error.message || 'Не удалось снять приказ.', true);
+      showToast(userErrorMessage(error) || 'Не удалось снять приказ.', true);
     }
   }
 
@@ -1265,7 +1270,7 @@
       drawMapCanvas($('#map-canvas'), false);
       showToast('Приказ возвращён в черновик. Все твои подтверждённые приказы также стали черновиками — подтверди их заново.');
     } catch (error) {
-      showToast(error.message || 'Не удалось вернуть приказ в черновик.', true);
+      showToast(userErrorMessage(error) || 'Не удалось вернуть приказ в черновик.', true);
     }
   }
 
@@ -1284,7 +1289,7 @@
         ? 'Приказы подтверждены. Ход поставлен в очередь на обработку.'
         : 'Приказы подтверждены. Ожидаем остальных участников.');
     } catch (error) {
-      showToast(error.message || 'Не удалось подтвердить приказы.', true);
+      showToast(userErrorMessage(error) || 'Не удалось подтвердить приказы.', true);
     } finally {
       renderMapOrderSummary();
     }
@@ -1579,7 +1584,7 @@
       }
       renderMapOrderSummary();
       requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
-    }).catch((error) => showToast(error.message, true));
+    }).catch((error) => showToast(userErrorMessage(error), true));
     requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
   }
 
@@ -1638,7 +1643,7 @@
       activateTab('systems');
       await refreshAvailableSystems();
     } catch (error) {
-      showToast(error.message, true);
+      showToast(userErrorMessage(error), true);
     }
   }
 
@@ -1691,7 +1696,7 @@
     if (tab === 'turn') loadTurnRoom();
     if (tab === 'country') {
       resetTerritoryGrid();
-      refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
+      refreshAvailableSystems().catch((error) => setMessage('#country-message', userErrorMessage(error)));
     }
     if (tab === 'admin') loadPending();
   }
@@ -1709,7 +1714,7 @@
       $('#system-count').textContent = String(state.systems.length);
       $('#country-status').textContent = state.campaign.countryId
         ? 'Основано' : (state.systems.length ? 'Готово к основанию' : 'Не основано');
-    } catch (error) { setMessage('#system-message', error.message); }
+    } catch (error) { setMessage('#system-message', userErrorMessage(error)); }
   }
 
   function renderSystems() {
@@ -1789,7 +1794,7 @@
       updateBuildingChoices();
       await refreshAvailableSystems();
       showToast('Система добавлена в текущую кампанию без изменений.');
-    } catch (error) { showToast(error.message, true); }
+    } catch (error) { showToast(userErrorMessage(error), true); }
   }
 
   function resetFoundedPanels() {
@@ -1811,7 +1816,7 @@
       const data = await request('/campaigns/' + state.campaign.id + '/countries/mine');
       state.countryProfile = data.country || null;
       if (state.countryProfile) renderFoundedCards(state.countryProfile);
-    } catch (error) { showToast('Не удалось загрузить карточку государства: ' + error.message, true); }
+    } catch (error) { showToast('Не удалось загрузить карточку государства: ' + userErrorMessage(error), true); }
   }
 
   function formatTurnDate(value) {
@@ -1966,7 +1971,7 @@
           state.orderResults = Array.isArray(resultsData.results) ? resultsData.results : [];
         } catch (error) {
           state.orderResults = [];
-          state.orderResultsError = error.message || 'Неизвестная ошибка';
+          state.orderResultsError = userErrorMessage(error) || 'Неизвестная ошибка';
         }
       } else {
         state.orderResults = [];
@@ -1975,7 +1980,7 @@
       if (state.campaign?.id !== campaignId) return;
       state.turnStatus = null;
       state.orderResults = [];
-      state.turnRoomError = error.message || 'Неизвестная ошибка';
+      state.turnRoomError = userErrorMessage(error) || 'Неизвестная ошибка';
     } finally {
       if (state.campaign?.id === campaignId) {
         state.turnRoomLoading = false;
@@ -2286,7 +2291,7 @@
       $$('.approve-system', host).forEach((button) => button.addEventListener('click', () => reviewSystem(button.dataset.id, 'approve')));
       $$('.reject-system', host).forEach((button) => button.addEventListener('click', () => reviewSystem(button.dataset.id, 'reject')));
     } catch (error) {
-      host.innerHTML = `<div class="empty-state compact">${error.status === 403 ? 'Этот раздел доступен только назначенным администраторам.' : escapeHtml(error.message)}</div>`;
+      host.innerHTML = `<div class="empty-state compact">${error.status === 403 ? 'Этот раздел доступен только назначенным администраторам.' : escapeHtml(userErrorMessage(error))}</div>`;
     }
   }
 
@@ -2299,7 +2304,7 @@
       showToast(decision === 'approve' ? 'Система одобрена.' : 'Система отклонена.');
       await loadPending();
     } catch (error) {
-      showToast(error.message, true);
+      showToast(userErrorMessage(error), true);
     }
   }
 
@@ -2360,8 +2365,8 @@
       activateTab('country');
       buildWorldPreview();
     } catch (error) {
-      setMessage('#country-message', error.message || 'Не удалось создать государство.');
-      showToast(error.message || 'Не удалось создать государство.', true);
+      setMessage('#country-message', userErrorMessage(error) || 'Не удалось создать государство.');
+      showToast(userErrorMessage(error) || 'Не удалось создать государство.', true);
     } finally {
       submitButton.disabled = false;
     }
@@ -2410,7 +2415,7 @@
           showToast(mode === 'login' ? 'С возвращением.' : 'Аккаунт создан.');
         }
       } catch (error) {
-        let message = error.message || 'Не удалось выполнить авторизацию.';
+        let message = userErrorMessage(error) || 'Не удалось выполнить авторизацию.';
         if (error.code === 'EMAIL_NOT_VERIFIED') {
           $('#email-verification-actions').classList.remove('hidden');
           message = 'Сначала подтверди адрес электронной почты. Можно отправить письмо повторно.';
@@ -2467,7 +2472,7 @@
           ? 'Этот никнейм уже занят. Выбери другой.'
           : error.code === 'EMAIL_ALREADY_REGISTERED'
             ? 'Этот email уже используется другим аккаунтом.'
-            : error.message || 'Не удалось сохранить профиль.';
+            : userErrorMessage(error) || 'Не удалось сохранить профиль.';
         setMessage('#profile-form-message', message);
       } finally {
         button.disabled = false;
@@ -2507,7 +2512,7 @@
       } catch (error) {
         const message = error.code === 'UNAUTHENTICATED'
           ? 'Текущий пароль указан неверно.'
-          : error.message || 'Не удалось изменить пароль.';
+          : userErrorMessage(error) || 'Не удалось изменить пароль.';
         setMessage('#profile-password-message', message);
       } finally {
         button.disabled = false;
@@ -2524,7 +2529,7 @@
       } catch (error) {
         showToast(error.code === 'VK_ID_NOT_CONFIGURED'
           ? 'Привязка VK ID пока не настроена на сервере.'
-          : error.message || 'Не удалось начать привязку VK ID.', true);
+          : userErrorMessage(error) || 'Не удалось начать привязку VK ID.', true);
         button.disabled = false;
       }
     });
@@ -2543,7 +2548,7 @@
         await loadCampaigns();
         showToast('Подключение к кампании выполнено.');
       } catch (error) {
-        setMessage('#join-campaign-message', error.message);
+        setMessage('#join-campaign-message', userErrorMessage(error));
       }
     });
 
@@ -2562,7 +2567,7 @@
         });
         setMessage('#auth-message', 'Если аккаунт ожидает подтверждения, письмо отправлено. Проверь входящие и папку спама.', true);
       } catch (error) {
-        setMessage('#auth-message', error.message);
+        setMessage('#auth-message', userErrorMessage(error));
       } finally {
         button.disabled = false;
       }
@@ -2620,7 +2625,7 @@
         await loadCampaigns();
         showToast('Кампания «' + data.campaign.name + '» создана · seed ' + data.campaign.mapSeed + ' · слотов ' + data.campaign.maxPlayers + '.');
       } catch (error) {
-        setMessage('#campaign-message', error.message);
+        setMessage('#campaign-message', userErrorMessage(error));
       }
     });
 
@@ -2666,7 +2671,7 @@
         await refreshAvailableSystems();
         showToast('Учение сохранено в личной библиотеке и добавлено в кампанию.');
       } catch (error) {
-        setMessage('#system-message', error.message);
+        setMessage('#system-message', userErrorMessage(error));
       }
     });
 
@@ -2755,7 +2760,7 @@
     syncCultureOptions();
     $('#official-system-type').addEventListener('change', () => {
       updateBuildingChoices();
-      refreshAvailableSystems().catch((error) => setMessage('#country-message', error.message));
+      refreshAvailableSystems().catch((error) => setMessage('#country-message', userErrorMessage(error)));
       renderTerritoryGrid();
     });
     $('#building-type').addEventListener('change', (event) => { state.selectedBuilding = event.target.value; });
@@ -2786,14 +2791,14 @@
       try {
         await loadCampaigns();
       } catch (error) {
-        showToast('Сессия активна, но список кампаний не загрузился: ' + error.message, true);
+        showToast('Сессия активна, но список кампаний не загрузился: ' + userErrorMessage(error), true);
       }
       if (vkLinked && await openProfile()) {
         setMessage('#profile-page-message', 'Аккаунт VK ID успешно подключён.', true);
       }
     } catch (error) {
       showScreen('auth');
-      setMessage('#auth-message', 'Не удалось восстановить сессию: ' + error.message);
+      setMessage('#auth-message', 'Не удалось восстановить сессию: ' + userErrorMessage(error));
     }
   }
   init();
