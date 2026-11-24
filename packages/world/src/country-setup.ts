@@ -717,6 +717,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
         continue;
       }
 
+      const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
       const cells = await client.query<{
         readonly country_id: string;
         readonly cell_id: string;
@@ -744,7 +745,8 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
 
       let campaignChanged = false;
       for (const cell of cells.rows) {
-        const expectedPopulation = cell.has_building ? 0 : 1;
+        const expectedPopulation =
+          world.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building ? 1 : 0;
         if (cell.population === expectedPopulation) continue;
         await client.query(
           `UPDATE country_cells
@@ -1573,14 +1575,8 @@ export function createCountrySetupService(options: {
 
       const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
-          `SELECT count(*)::integer AS resident_count
-           FROM country_cells AS owned
-           LEFT JOIN country_buildings AS building
-             ON building.campaign_id = owned.campaign_id
-            AND building.country_id = owned.country_id
-            AND building.cell_id = owned.cell_id
-           WHERE owned.campaign_id = $1 AND owned.country_id = $2
-             AND building.id IS NULL`,
+          `SELECT COALESCE(sum(population), 0)::integer AS resident_count
+           FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
           [campaignId, country.country_id],
         ),
         options.pool.query<{ type: StartBuildingType; count: number }>(
@@ -2118,11 +2114,12 @@ export function createCountrySetupService(options: {
           const cellId = cellIds.get(`${cell.x},${cell.y}`);
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
+          const isDryLand = spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
           return [
             campaignId,
             countryId,
             cellId,
-            hasBuilding ? 0 : 1,
+            isDryLand && !hasBuilding ? 1 : 0,
             coreTerritoryId,
           ] as const;
         });
