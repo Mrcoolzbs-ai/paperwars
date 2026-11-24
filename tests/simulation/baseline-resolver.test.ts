@@ -151,20 +151,20 @@ describe('baseline turn resolver', () => {
         colonizedCount: 9,
         colonizedLandCount: 1,
         colonizedWaterCount: 8,
-        residentsAdded: 9,
+        residentsAdded: 1,
       },
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(9);
     expect(
       result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population,
-    ).toBe(9);
+    ).toBe(1);
     expect(
       result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0),
     ).toHaveLength(8);
     expect(random.calls).toHaveLength(1);
   });
 
-  it('distributes nine colony residents across captured land cells deterministically', () => {
+  it('adds exactly one resident for each newly captured land cell', () => {
     const terrain = Array.from({ length: 25 }, () => 'w');
     for (const [x, y] of [
       [1, 1],
@@ -182,9 +182,9 @@ describe('baseline turn resolver', () => {
       .filter((cell) => terrain[cell.y * 5 + cell.x] === 'l')
       .sort((a, b) => a.y - b.y || a.x - b.x);
 
-    expect(landCells?.map((cell) => cell.population)).toEqual([3, 2, 2, 2]);
-    expect(landCells?.reduce((sum, cell) => sum + cell.population, 0)).toBe(9);
-    expect(result.orderResults[0]?.data?.['residentsAdded']).toBe(9);
+    expect(landCells?.map((cell) => cell.population)).toEqual([1, 1, 1, 1]);
+    expect(landCells?.reduce((sum, cell) => sum + cell.population, 0)).toBe(4);
+    expect(result.orderResults[0]?.data?.['residentsAdded']).toBe(4);
   });
 
   it('rejects a colony box that would extend beyond the map edge', () => {
