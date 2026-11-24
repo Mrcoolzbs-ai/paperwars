@@ -35,6 +35,7 @@ export interface BaselineCountryState {
 export interface BaselineDiscoverySeed {
   readonly id: string;
   readonly cellId: string;
+  readonly discoveredByCountryId: string;
   readonly x: number;
   readonly y: number;
   readonly type: 'ruins' | 'gold' | 'empty';
@@ -157,6 +158,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       type: string,
       payload: Readonly<Record<string, unknown>>,
       visibility: 'public' | 'private' = 'public',
+      recipientCountryId = countryId,
     ): void => {
       const event = {
         eventId: toId<'EventId'>(stableUuid(
@@ -168,7 +170,9 @@ export function createBaselineTurnResolver(): TurnResolver<
         schemaVersion: 1,
         payload,
         visibility,
-        ...(visibility === 'private' ? { recipientCountryId: toId<'CountryId'>(countryId) } : {}),
+        ...(visibility === 'private'
+          ? { recipientCountryId: toId<'CountryId'>(recipientCountryId) }
+          : {}),
       };
       events.push(event);
     };
@@ -310,7 +314,7 @@ export function createBaselineTurnResolver(): TurnResolver<
               cellId,
               x: cell.x,
               y: cell.y,
-            });
+            }, 'private', previousDiscovery.discoveredByCountryId);
           } else {
             const roll = random.uniform('discovery', `cell:${cell.x}:${cell.y}`, 1, 100);
             const discoveryType = roll === 1 ? 'ruins' : roll === 100 ? 'gold' : 'empty';
