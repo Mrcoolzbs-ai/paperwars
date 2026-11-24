@@ -194,10 +194,7 @@ function adjacentWaterCount(
       if (offsetX === 0 && offsetY === 0) continue;
       const nextX = x + offsetX;
       const nextY = y + offsetY;
-      if (
-        isInsideMap(nextX, nextY, width, height) &&
-        terrain[nextY * width + nextX] !== 'l'
-      ) {
+      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
         count += 1;
       }
     }
@@ -235,8 +232,7 @@ function getCountrySupply(
   mapHeight = mapWidth > 0 ? Math.ceil(terrain.length / mapWidth) : 0,
 ): CountrySupply {
   const factories = country.cells.filter(
-    (cell) =>
-      cell.buildingType === 'factory' || cell.buildingType === 'factory_level_2',
+    (cell) => cell.buildingType === 'factory' || cell.buildingType === 'factory_level_2',
   );
   const active = (cell: BaselineCellState): boolean =>
     !componentIsDisabled(cell, 'building', disabledComponents);
@@ -297,13 +293,7 @@ function getCountrySupply(
     } else if (cell.buildingType === 'hunter') {
       output = season === 'spring' ? 15 : 5;
     } else if (cell.buildingType === 'fisher') {
-      const adjacentWaterCells = adjacentWaterCount(
-        cell.x,
-        cell.y,
-        terrain,
-        mapWidth,
-        mapHeight,
-      );
+      const adjacentWaterCells = adjacentWaterCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
       output = adjacentWaterCells * (season === 'spring' ? 10 : 5);
     }
     food += output;
@@ -690,11 +680,7 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       if (order.type === 'structure_removal') {
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
-        if (
-          cell === undefined ||
-          cell.structureType === null ||
-          cell.structureType === undefined
-        ) {
+        if (cell === undefined || cell.structureType === null || cell.structureType === undefined) {
           orderResults.push(
             rejection(
               order.id,
@@ -830,10 +816,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
-        if (
-          buildingType === 'fisher' &&
-          !adjacentToWater(x, y, terrain, mapWidth, mapHeight)
-        ) {
+        if (buildingType === 'fisher' && !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
           orderResults.push(
             rejection(
               order.id,
