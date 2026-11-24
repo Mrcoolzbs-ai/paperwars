@@ -47,6 +47,9 @@ importers:
       '@paper-wars/randomness':
         specifier: workspace:*
         version: link:../../packages/randomness
+      '@paper-wars/worker':
+        specifier: workspace:*
+        version: link:../../packages/worker
       '@paper-wars/simulation':
         specifier: workspace:*
         version: link:../../packages/simulation
@@ -131,6 +134,9 @@ importers:
       '@paper-wars/shared':
         specifier: workspace:*
         version: link:../shared
+      '@paper-wars/world':
+        specifier: workspace:*
+        version: link:../world
       '@paper-wars/simulation':
         specifier: workspace:*
         version: link:../simulation
