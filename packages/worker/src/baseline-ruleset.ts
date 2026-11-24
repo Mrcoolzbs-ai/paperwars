@@ -250,7 +250,11 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
         if (cell.population < 1) {
           orderResults.push(
-            rejection(order.id, 'NO_FREE_RESIDENT', 'Для строительства нужен один свободный житель.'),
+            rejection(
+              order.id,
+              'NO_FREE_RESIDENT',
+              'Для строительства нужен один свободный житель.',
+            ),
           );
           continue;
         }
