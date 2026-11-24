@@ -19,6 +19,13 @@ export interface BaselineCellState {
   readonly y: number;
   readonly population: number;
   readonly buildingType: string | null;
+  /** Overlay structure sharing the cell with its main building. */
+  readonly structureType?: 'greenhouse' | 'dam' | null;
+  /** Seasonal flood state, persisted in the world snapshot. */
+  readonly flooded?: boolean;
+  /** Hydrated from the relational ownership projection for colony lifecycle handling. */
+  readonly territoryId?: string;
+  readonly territoryType?: 'core' | 'colony';
 }
 
 export interface BaselineCountryState {
@@ -29,6 +36,10 @@ export interface BaselineCountryState {
   readonly government: string;
   readonly flagDataUrl: string | null;
   readonly officialSystem: Readonly<Record<string, unknown>>;
+  /** Enabled by worker hydration for real campaign states; omitted in legacy unit fixtures. */
+  readonly economyEnabled?: boolean;
+  /** Future unit state; each unit reserves one coin per turn until upkeep rates are defined. */
+  readonly units?: readonly unknown[];
   readonly cells: readonly BaselineCellState[];
 }
 
@@ -63,10 +74,19 @@ export type BaselineOrder = OrderEnvelope<Record<string, unknown>>;
 const ADDITIONAL_BUILDING_TYPES = new Set([
   'factory',
   'field',
+  'rice_field',
+  'field_level_2',
+  'cotton_field',
+  'textile_workshop',
+  'textile_workshop_level_2',
+  'hunter',
+  'fisher',
   'religious_building',
   'science',
   'barracks',
   'tower',
+  'greenhouse',
+  'dam',
 ]);
 
 function stableUuid(value: string): string {
@@ -85,6 +105,209 @@ function stableUuid(value: string): string {
 
 function coordinateKey(x: number, y: number): string {
   return `${x},${y}`;
+}
+
+export type BaselineSeason = 'spring' | 'summer' | 'autumn' | 'winter';
+
+export interface BaselineSeasonInfo {
+  readonly season: BaselineSeason;
+  readonly year: number;
+  readonly seasonTurn: number;
+}
+
+export function getBaselineSeasonForTurn(turnNumber: number): BaselineSeasonInfo {
+  const safeTurn = Math.max(1, Math.floor(turnNumber));
+  const position = (safeTurn - 1) % 24;
+  const seasons: readonly BaselineSeason[] = ['spring', 'summer', 'autumn', 'winter'];
+  return {
+    season: seasons[Math.floor(position / 6)]!,
+    year: Math.floor((safeTurn - 1) / 24) + 1,
+    seasonTurn: (position % 6) + 1,
+  };
+}
+
+type BuildingComponent = 'building' | 'structure';
+
+function componentKey(cellId: string, component: BuildingComponent): string {
+  return `${cellId}:${component}`;
+}
+
+function isInsideMap(x: number, y: number, width: number, height: number): boolean {
+  return x >= 0 && y >= 0 && x < width && y < height;
+}
+
+function adjacentToWater(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): boolean {
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function adjacentRiverCount(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): number {
+  const adjacent = [
+    [x - 1, y],
+    [x + 1, y],
+    [x, y - 1],
+    [x, y + 1],
+  ];
+  return adjacent.filter(
+    ([nextX, nextY]) =>
+      nextX !== undefined &&
+      nextY !== undefined &&
+      isInsideMap(nextX, nextY, width, height) &&
+      terrain[nextY * width + nextX] === 'r',
+  ).length;
+}
+
+function componentIsDisabled(
+  cell: BaselineCellState,
+  component: BuildingComponent,
+  disabledComponents: ReadonlySet<string>,
+): boolean {
+  if (disabledComponents.has(componentKey(cell.id, component))) return true;
+  if (cell.flooded === true && cell.buildingType !== 'rice_field') return true;
+  return false;
+}
+
+interface CountrySupply {
+  readonly population: number;
+  readonly food: number;
+  readonly goods: number;
+  readonly clothing: number;
+  readonly cottonFields: number;
+  readonly textileWorkshops: number;
+  readonly floodedCells: number;
+}
+
+function getCountrySupply(
+  country: BaselineCountryState,
+  population = country.cells.reduce((sum, cell) => sum + Math.max(0, cell.population), 0),
+  disabledComponents: ReadonlySet<string> = new Set(),
+  season: BaselineSeason = 'spring',
+  terrain = '',
+  mapWidth = 0,
+  mapHeight = mapWidth > 0 ? Math.ceil(terrain.length / mapWidth) : 0,
+): CountrySupply {
+  const factories = country.cells.filter((cell) => cell.buildingType === 'factory');
+  const active = (cell: BaselineCellState): boolean =>
+    !componentIsDisabled(cell, 'building', disabledComponents);
+  const activeFactories = factories.filter(active);
+  const activeCottonFields = country.cells.filter(
+    (cell) =>
+      cell.buildingType === 'cotton_field' &&
+      active(cell) &&
+      (season !== 'winter' ||
+        (cell.structureType === 'greenhouse' &&
+          !disabledComponents.has(componentKey(cell.id, 'structure')))),
+  );
+  const activeWorkshops = country.cells.filter(
+    (cell) =>
+      (cell.buildingType === 'textile_workshop' ||
+        cell.buildingType === 'textile_workshop_level_2') &&
+      active(cell),
+  );
+  let remainingCottonFields = season === 'winter' ? activeCottonFields.length : 0;
+  let clothing = 0;
+  for (const workshop of activeWorkshops) {
+    if (remainingCottonFields < 1) continue;
+    remainingCottonFields -= 1;
+    clothing += workshop.buildingType === 'textile_workshop_level_2' ? 20 : 10;
+  }
+
+  let food = 0;
+  for (const cell of country.cells) {
+    if (!cell.buildingType || !active(cell)) continue;
+    const factoryNearby = factories.some(
+      (factory) => Math.abs(factory.x - cell.x) <= 1 && Math.abs(factory.y - cell.y) <= 1,
+    );
+    const fieldCanWorkInWinter =
+      season === 'winter' &&
+      cell.buildingType === 'field' &&
+      cell.structureType === 'greenhouse' &&
+      !disabledComponents.has(componentKey(cell.id, 'structure'));
+    let output = 0;
+
+    if (
+      cell.buildingType === 'field' ||
+      cell.buildingType === 'field_level_2' ||
+      cell.buildingType === 'rice_field'
+    ) {
+      if (season === 'winter' && !fieldCanWorkInWinter) continue;
+      if (cell.buildingType === 'rice_field') {
+        if (season === 'winter') continue;
+        output =
+          cell.flooded === true
+            ? 15
+            : adjacentToWater(cell.x, cell.y, terrain, mapWidth, mapHeight)
+              ? 10
+              : 5;
+      } else {
+        output = cell.buildingType === 'field_level_2' ? 15 : 10;
+      }
+      if (factoryNearby) output /= 2;
+    } else if (cell.buildingType === 'hunter') {
+      output = season === 'spring' ? 15 : 5;
+    } else if (cell.buildingType === 'fisher') {
+      const riverCells = adjacentRiverCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
+      output = riverCells * (season === 'spring' ? 10 : 5);
+    }
+    food += output;
+  }
+
+  const floodedCells = country.cells.filter((cell) => cell.flooded === true).length;
+  return {
+    population,
+    food,
+    goods: activeFactories.length * 10,
+    clothing,
+    cottonFields: activeCottonFields.length,
+    textileWorkshops: activeWorkshops.length,
+    floodedCells,
+  };
+}
+
+function buildingUpkeep(buildingType: string | null): number {
+  if (buildingType === 'tower' || buildingType === 'field_level_2') return 2;
+  if (buildingType === 'textile_workshop_level_2') return 3;
+  return buildingType ? 1 : 0;
+}
+
+function structureUpkeep(structureType: BaselineCellState['structureType']): number {
+  return structureType ? 1 : 0;
+}
+
+function componentUpkeep(cell: BaselineCellState, component: BuildingComponent): number {
+  const base =
+    component === 'building'
+      ? buildingUpkeep(cell.buildingType)
+      : structureUpkeep(cell.structureType);
+  if (base === 0) return 0;
+
+  // A flooded tile adds one surcharge in total, not one per overlay component.
+  const carriesFloodSurcharge =
+    cell.flooded === true &&
+    cell.buildingType !== 'rice_field' &&
+    (component === 'building' || cell.buildingType === null);
+  return base + (carriesFloodSurcharge ? 1 : 0);
 }
 
 function isCoordinate(value: unknown): value is number {
@@ -160,6 +383,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       for (const cell of country.cells) ownership.set(coordinateKey(cell.x, cell.y), country.id);
     }
 
+    const seasonInfo = getBaselineSeasonForTurn(snapshot.turnNumber);
     const events: BaselineGameEvent[] = [];
     const orderResults: OrderResolution[] = [];
     const actionsUsedByCountry = new Map<string, number>();
@@ -187,6 +411,7 @@ export function createBaselineTurnResolver(): TurnResolver<
               type,
               String(payload['x'] ?? ''),
               String(payload['y'] ?? ''),
+              String(payload['territoryId'] ?? ''),
             ].join(':'),
           ),
         ),
@@ -203,6 +428,169 @@ export function createBaselineTurnResolver(): TurnResolver<
       events.push(event);
     };
 
+    const applyNextSeasonEnvironment = (nextTurnNumber: number): void => {
+      const nextSeason = getBaselineSeasonForTurn(nextTurnNumber).season;
+      const currentSeason = seasonInfo.season;
+      const leavingAutumn = currentSeason === 'autumn' && nextSeason !== 'autumn';
+      const enteringAutumn = currentSeason !== 'autumn' && nextSeason === 'autumn';
+
+      if (leavingAutumn) {
+        for (const country of countries) {
+          country.cells = country.cells.map((cell) => {
+            if (cell.flooded !== true) return cell;
+            emit(`season:${nextTurnNumber}`, country.id, 'cell.flood.receded', {
+              countryId: country.id,
+              cellId: cell.id,
+              x: cell.x,
+              y: cell.y,
+              nextTurnNumber,
+            });
+            return { ...cell, flooded: false };
+          });
+        }
+      }
+
+      if (!enteringAutumn) return;
+
+      const damCoordinates = new Set<string>();
+      for (const country of countries) {
+        for (const cell of country.cells) {
+          if (cell.structureType === 'dam') {
+            damCoordinates.add(coordinateKey(cell.x, cell.y));
+          }
+        }
+      }
+
+      const guaranteedFloodCoordinates = new Set<string>();
+      for (let y = 0; y < mapHeight; y += 1) {
+        for (let x = 0; x < mapWidth; x += 1) {
+          const key = coordinateKey(x, y);
+          if (
+            terrain[y * mapWidth + x] === 'l' &&
+            !damCoordinates.has(key) &&
+            adjacentToWater(x, y, terrain, mapWidth, mapHeight)
+          ) {
+            guaranteedFloodCoordinates.add(key);
+          }
+        }
+      }
+
+      // Every newly flooded tile can push the water farther with a 15% chance.
+      // Each land cell is rolled at most once per flood; dams block their own cell
+      // but do not form an impermeable wall, so the flood can flow around them.
+      const floodCoordinates = new Set(guaranteedFloodCoordinates);
+      const checkedOverflow = new Set<string>([...guaranteedFloodCoordinates, ...damCoordinates]);
+      const floodFrontier = [...guaranteedFloodCoordinates].sort();
+
+      while (floodFrontier.length > 0) {
+        const floodedKey = floodFrontier.shift()!;
+        const [floodX, floodY] = floodedKey.split(',').map(Number);
+        const neighbors: string[] = [];
+        for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+          for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+            if (offsetX === 0 && offsetY === 0) continue;
+            const x = floodX! + offsetX;
+            const y = floodY! + offsetY;
+            const key = coordinateKey(x, y);
+            if (
+              isInsideMap(x, y, mapWidth, mapHeight) &&
+              terrain[y * mapWidth + x] === 'l' &&
+              !checkedOverflow.has(key)
+            ) {
+              checkedOverflow.add(key);
+              neighbors.push(key);
+            }
+          }
+        }
+
+        for (const key of neighbors.sort()) {
+          const roll = random.uniform(
+            'flood-spread',
+            `autumn:${nextTurnNumber}:cell:${key}`,
+            1,
+            100,
+          );
+          if (roll <= 15) {
+            floodCoordinates.add(key);
+            floodFrontier.push(key);
+          }
+        }
+      }
+
+      for (const country of countries) {
+        country.cells = country.cells.map((cell) => {
+          const key = coordinateKey(cell.x, cell.y);
+          if (!floodCoordinates.has(key) || cell.structureType === 'dam') return cell;
+
+          let updated: BaselineCellState = { ...cell, flooded: true };
+          emit(`season:${nextTurnNumber}`, country.id, 'cell.flooded', {
+            countryId: country.id,
+            cellId: cell.id,
+            x: cell.x,
+            y: cell.y,
+            nextTurnNumber,
+          });
+
+          // Rice paddies are intentionally exempt: floods increase their output
+          // and do not disable, surcharge, or destroy them.
+          if (cell.buildingType === 'rice_field') return updated;
+
+          const destroyRoll = (component: BuildingComponent): number =>
+            random.uniform(
+              'flood-destruction',
+              `autumn:${nextTurnNumber}:${country.id}:${key}:${component}`,
+              1,
+              100,
+            );
+          if (cell.buildingType && cell.structureType === 'greenhouse') {
+            if (destroyRoll('structure') <= 35) {
+              updated = { ...updated, structureType: null };
+              emit(`season:${nextTurnNumber}`, country.id, 'structure.destroyed', {
+                countryId: country.id,
+                cellId: cell.id,
+                x: cell.x,
+                y: cell.y,
+                structureType: 'greenhouse',
+                reason: 'flood',
+              });
+              if (destroyRoll('building') <= 35) {
+                updated = { ...updated, buildingType: null };
+                emit(`season:${nextTurnNumber}`, country.id, 'building.destroyed', {
+                  countryId: country.id,
+                  cellId: cell.id,
+                  x: cell.x,
+                  y: cell.y,
+                  buildingType: cell.buildingType,
+                  reason: 'flood',
+                });
+              }
+            }
+          } else if (cell.buildingType && destroyRoll('building') <= 35) {
+            updated = { ...updated, buildingType: null };
+            emit(`season:${nextTurnNumber}`, country.id, 'building.destroyed', {
+              countryId: country.id,
+              cellId: cell.id,
+              x: cell.x,
+              y: cell.y,
+              buildingType: cell.buildingType,
+              reason: 'flood',
+            });
+          } else if (cell.structureType && destroyRoll('structure') <= 35) {
+            updated = { ...updated, structureType: null };
+            emit(`season:${nextTurnNumber}`, country.id, 'structure.destroyed', {
+              countryId: country.id,
+              cellId: cell.id,
+              x: cell.x,
+              y: cell.y,
+              structureType: cell.structureType,
+              reason: 'flood',
+            });
+          }
+          return updated;
+        });
+      }
+    };
+
     for (const order of orders) {
       const country = countriesById.get(order.countryId);
       if (country === undefined) {
@@ -213,8 +601,14 @@ export function createBaselineTurnResolver(): TurnResolver<
       }
 
       const actionsUsed = actionsUsedByCountry.get(country.id) ?? 0;
+      const requestedBuildingType = String(order.payload['buildingType'] ?? '');
+      const isFreeUpgrade =
+        order.type === 'construction' &&
+        (requestedBuildingType === 'field_level_2' ||
+          requestedBuildingType === 'textile_workshop_level_2');
       if (
         !adminCountryIds.has(country.id) &&
+        !isFreeUpgrade &&
         actionsUsed >= ruleset.parameters.actionPointsPerTurn
       ) {
         orderResults.push(
@@ -226,7 +620,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         );
         continue;
       }
-      actionsUsedByCountry.set(country.id, actionsUsed + 1);
+      if (!isFreeUpgrade) actionsUsedByCountry.set(country.id, actionsUsed + 1);
 
       const x = order.payload['x'];
       const y = order.payload['y'];
@@ -239,8 +633,8 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       if (order.type === 'construction') {
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
-        const buildingType = order.payload['buildingType'];
-        if (!ADDITIONAL_BUILDING_TYPES.has(String(buildingType))) {
+        const buildingType = String(order.payload['buildingType'] ?? '');
+        if (!ADDITIONAL_BUILDING_TYPES.has(buildingType)) {
           orderResults.push(
             rejection(order.id, 'INVALID_BUILDING_TYPE', 'Неизвестный тип постройки.'),
           );
@@ -252,6 +646,119 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           continue;
         }
+
+        if (buildingType === 'greenhouse' || buildingType === 'dam') {
+          if (cell.structureType) {
+            orderResults.push(
+              rejection(
+                order.id,
+                'CELL_ALREADY_HAS_STRUCTURE',
+                'На клетке уже есть теплица или дамба; совместить их нельзя.',
+              ),
+            );
+            continue;
+          }
+          if (
+            buildingType === 'greenhouse' &&
+            cell.buildingType !== 'field' &&
+            cell.buildingType !== 'cotton_field'
+          ) {
+            orderResults.push(
+              rejection(
+                order.id,
+                'GREENHOUSE_REQUIRES_FIELD',
+                'Теплицу можно построить только на обычном или хлопковом поле.',
+              ),
+            );
+            continue;
+          }
+          const structureType: 'greenhouse' | 'dam' =
+            buildingType === 'greenhouse' ? 'greenhouse' : 'dam';
+          const updatedCell = { ...cell, structureType };
+          country.cells = country.cells.map((candidate) =>
+            candidate.id === cell.id ? updatedCell : candidate,
+          );
+          emit(order.id, country.id, 'structure.constructed', {
+            orderId: order.id,
+            countryId: country.id,
+            cellId: cell.id,
+            x,
+            y,
+            structureType,
+          });
+          constructions += 1;
+          orderResults.push({
+            orderId: order.id,
+            status: 'accepted',
+            resultCode: 'STRUCTURE_CONSTRUCTED',
+            message:
+              buildingType === 'greenhouse'
+                ? 'Теплица построена поверх поля.'
+                : 'Дамба построена и защищает эту клетку от затопления.',
+            data: { x, y, structureType },
+          });
+          continue;
+        }
+
+        const upgrades: Record<string, string> = {
+          field_level_2: 'field',
+          textile_workshop_level_2: 'textile_workshop',
+        };
+        const upgradeFrom = upgrades[buildingType];
+        if (upgradeFrom) {
+          if (cell.buildingType !== upgradeFrom) {
+            orderResults.push(
+              rejection(
+                order.id,
+                'UPGRADE_REQUIRES_BASE_BUILDING',
+                'Для улучшения на клетке должна находиться соответствующая постройка.',
+              ),
+            );
+            continue;
+          }
+          if (buildingType === 'field_level_2' && cell.structureType === 'greenhouse') {
+            orderResults.push(
+              rejection(
+                order.id,
+                'FIELD_UPGRADE_INCOMPATIBLE_WITH_GREENHOUSE',
+                'Поле второго уровня нельзя накрыть теплицей.',
+              ),
+            );
+            continue;
+          }
+          if (cell.flooded === true) {
+            orderResults.push(
+              rejection(
+                order.id,
+                'FLOODED_CELL_CANNOT_BE_UPGRADED',
+                'Затопленную постройку нельзя улучшить до схода воды.',
+              ),
+            );
+            continue;
+          }
+          country.cells = country.cells.map((candidate) =>
+            candidate.id === cell.id ? { ...candidate, buildingType } : candidate,
+          );
+          constructions += 1;
+          emit(order.id, country.id, 'building.upgraded', {
+            orderId: order.id,
+            countryId: country.id,
+            cellId: cell.id,
+            x,
+            y,
+            previousBuildingType: upgradeFrom,
+            buildingType,
+          });
+          orderResults.push({
+            orderId: order.id,
+            status: 'accepted',
+            resultCode: 'BUILDING_UPGRADED',
+            message: 'Постройка улучшена без расхода очка действия и без потери жителя.',
+            data: { x, y, previousBuildingType: upgradeFrom, buildingType },
+          });
+          continue;
+        }
+
         if (cell.buildingType !== null) {
           orderResults.push(
             rejection(order.id, 'BUILDING_ALREADY_EXISTS', 'На клетке уже есть постройка.'),
@@ -273,7 +780,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         const updatedCell = {
           ...cell,
           population: remainingResidents,
-          buildingType: String(buildingType),
+          buildingType,
         };
         country.cells = country.cells.map((candidate) =>
           candidate.id === cell.id ? updatedCell : candidate,
@@ -284,7 +791,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           cellId: cell.id,
           x,
           y,
-          buildingType: String(buildingType),
+          buildingType,
           population: remainingResidents,
         });
         constructions += 1;
@@ -293,7 +800,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           status: 'accepted',
           resultCode: 'BUILDING_CONSTRUCTED',
           message: 'Постройка возведена; один житель направлен на строительство.',
-          data: { x, y, buildingType: String(buildingType), remainingResidents },
+          data: { x, y, buildingType, remainingResidents },
         });
         continue;
       }
@@ -394,6 +901,45 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
+        if (country.economyEnabled) {
+          const currentPopulation = country.cells.reduce(
+            (sum, cell) => sum + Math.max(0, cell.population),
+            0,
+          );
+          const supply = getCountrySupply(
+            country,
+            currentPopulation + landCandidates.length,
+            new Set(),
+            seasonInfo.season,
+            terrain,
+            mapWidth,
+            mapHeight,
+          );
+          if (supply.food < supply.population || supply.goods < supply.population) {
+            const foodShortage = supply.food < supply.population;
+            const goodsShortage = supply.goods < supply.population;
+            orderResults.push({
+              orderId: order.id,
+              status: 'rejected',
+              resultCode: 'COLONIZATION_ECONOMY_SHORTAGE',
+              message:
+                foodShortage && goodsShortage
+                  ? 'Колонизация недоступна: не хватает продовольствия и товаров.'
+                  : foodShortage
+                    ? 'Колонизация недоступна: не хватает продовольствия.'
+                    : 'Колонизация недоступна: не хватает товаров.',
+              data: {
+                population: supply.population,
+                food: supply.food,
+                goods: supply.goods,
+                foodShortage,
+                goodsShortage,
+              },
+            });
+            continue;
+          }
+        }
+
         const territoryId = stableUuid(
           `paperwars:territory:${snapshot.campaignId}:${country.id}:${order.id}`,
         );
@@ -413,7 +959,15 @@ export function createBaselineTurnResolver(): TurnResolver<
           const population = isLand ? 1 : 0;
           country.cells = [
             ...country.cells,
-            { id: cellId, x: cell.x, y: cell.y, population, buildingType: null },
+            {
+              id: cellId,
+              x: cell.x,
+              y: cell.y,
+              population,
+              buildingType: null,
+              territoryId,
+              territoryType: 'colony',
+            },
           ];
           ownership.set(key, country.id);
           colonizedCells += 1;
@@ -508,6 +1062,149 @@ export function createBaselineTurnResolver(): TurnResolver<
       );
     }
 
+    const countryEconomies: Array<Record<string, unknown>> = [];
+    for (const country of countries) {
+      if (!country.economyEnabled) continue;
+
+      const population = country.cells.reduce((sum, cell) => sum + Math.max(0, cell.population), 0);
+      let gold = country.cells.filter(
+        (cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true,
+      ).length;
+      let income = gold * population;
+      const unitCount = country.units?.length ?? 0;
+      const unitUpkeep = unitCount;
+      const components = country.cells.flatMap((cell) => [
+        ...(cell.buildingType
+          ? [{ cell, component: 'building' as const, type: cell.buildingType }]
+          : []),
+        ...(cell.structureType
+          ? [{ cell, component: 'structure' as const, type: cell.structureType }]
+          : []),
+      ]);
+      const initialBuildingUpkeep = components.reduce(
+        (sum, item) => sum + componentUpkeep(item.cell, item.component),
+        0,
+      );
+      const budgetDeficit = income < initialBuildingUpkeep + unitUpkeep;
+      let remainingBuildingUpkeep = initialBuildingUpkeep;
+      const disabledComponents = new Set<string>();
+      const disabledBuildings: Array<{
+        x: number;
+        y: number;
+        type: string;
+        component: BuildingComponent;
+        upkeepSaved: number;
+      }> = [];
+      const disableCandidates = [...components];
+
+      while (income < remainingBuildingUpkeep + unitUpkeep && disableCandidates.length > 0) {
+        const drawIndex = random.uniform(
+          'economy',
+          `${country.id}:disable-building:${snapshot.turnNumber}:${disabledBuildings.length}`,
+          0,
+          disableCandidates.length - 1,
+        );
+        const [disabled] = disableCandidates.splice(drawIndex, 1);
+        if (!disabled) break;
+        const saved = componentUpkeep(disabled.cell, disabled.component);
+        disabledComponents.add(componentKey(disabled.cell.id, disabled.component));
+        remainingBuildingUpkeep -= saved;
+        if (disabled.component === 'building' && disabled.type === 'gold_mine') {
+          gold -= 1;
+          income = gold * population;
+        }
+        disabledBuildings.push({
+          x: disabled.cell.x,
+          y: disabled.cell.y,
+          type: disabled.type,
+          component: disabled.component,
+          upkeepSaved: saved,
+        });
+      }
+
+      const supply = getCountrySupply(
+        country,
+        population,
+        disabledComponents,
+        seasonInfo.season,
+        terrain,
+        mapWidth,
+        mapHeight,
+      );
+      const foodShortage = supply.food < population;
+      const goodsShortage = supply.goods < population;
+      const clothingDemand = seasonInfo.season === 'winter' ? population : 0;
+      const clothingShortage = supply.clothing < clothingDemand;
+      const unclothedPopulation = Math.max(0, clothingDemand - supply.clothing);
+      let starvedColonies = 0;
+      let fledColonies = 0;
+      if (foodShortage || goodsShortage) {
+        const colonies = new Map<string, BaselineCellState[]>();
+        for (const cell of country.cells) {
+          if (cell.territoryType !== 'colony' || !cell.territoryId) continue;
+          const colony = colonies.get(cell.territoryId) ?? [];
+          colony.push(cell);
+          colonies.set(cell.territoryId, colony);
+        }
+        for (const [territoryId, colonyCells] of colonies) {
+          const reason = foodShortage ? 'starved' : 'fled';
+          if (reason === 'starved') starvedColonies += 1;
+          else fledColonies += 1;
+          const removedPopulation = colonyCells.reduce(
+            (sum, cell) => sum + Math.max(0, cell.population),
+            0,
+          );
+          country.cells = country.cells.filter((cell) => cell.territoryId !== territoryId);
+          for (const cell of colonyCells) ownership.delete(coordinateKey(cell.x, cell.y));
+          emit(`economy:${country.id}`, country.id, 'colony.removed', {
+            countryId: country.id,
+            territoryId,
+            reason,
+            removedCellCount: colonyCells.length,
+            removedPopulation,
+          });
+        }
+      }
+
+      countryEconomies.push({
+        countryId: country.id,
+        turnNumber: snapshot.turnNumber,
+        season: seasonInfo.season,
+        year: seasonInfo.year,
+        seasonTurn: seasonInfo.seasonTurn,
+        movementMultiplier: seasonInfo.season === 'winter' ? 0.5 : 1,
+        population,
+        gold,
+        income,
+        buildingUpkeep: remainingBuildingUpkeep,
+        initialBuildingUpkeep,
+        unitCount,
+        unitUpkeep,
+        budgetDeficit,
+        unitMovementAllowed: !budgetDeficit,
+        expenses: remainingBuildingUpkeep + unitUpkeep,
+        unpaidExpenses: Math.max(0, remainingBuildingUpkeep + unitUpkeep - income),
+        disabledBuildings,
+        food: supply.food,
+        foodDemand: population,
+        foodShortage,
+        goods: supply.goods,
+        goodsDemand: population,
+        goodsShortage,
+        clothing: supply.clothing,
+        clothingDemand,
+        clothingShortage,
+        unclothedPopulation,
+        cottonFields: supply.cottonFields,
+        textileWorkshops: supply.textileWorkshops,
+        floodedCells: supply.floodedCells,
+        starvedColonies,
+        fledColonies,
+      });
+    }
+
+    applyNextSeasonEnvironment(snapshot.turnNumber + 1);
+
     const {
       discoveredCells: _discoveredCells,
       adminCountryIds: _adminCountryIds,
@@ -528,12 +1225,17 @@ export function createBaselineTurnResolver(): TurnResolver<
       events,
       economicReport: {
         turnNumber: snapshot.turnNumber,
+        season: seasonInfo.season,
+        year: seasonInfo.year,
+        seasonTurn: seasonInfo.seasonTurn,
+        movementMultiplier: seasonInfo.season === 'winter' ? 0.5 : 1,
         actionPointsUsed: Object.fromEntries(actionsUsedByCountry),
         actionPointsPerTurn: ruleset.parameters.actionPointsPerTurn,
         colonizedCells,
         discoveriesRolled,
         residentsAdded,
         constructions,
+        countries: countryEconomies,
       },
       battleReports: [],
       campaignEnded: false,

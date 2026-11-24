@@ -274,7 +274,7 @@ async function loadTurnInput<
       }
       terrain = snapshotTerrain;
     }
-    const [discoveryResult, adminCountryResult] = await Promise.all([
+    const [discoveryResult, adminCountryResult, territoryCellResult] = await Promise.all([
       config.pool.query<{
         readonly id: string;
         readonly cell_id: string;
@@ -301,9 +301,53 @@ async function loadTurnInput<
          WHERE country.campaign_id = $1`,
         [job.campaignId],
       ),
+      config.pool.query<{
+        country_id: string;
+        cell_id: string;
+        territory_id: string;
+        territory_type: 'core' | 'colony';
+      }>(
+        `SELECT owned.country_id, owned.cell_id, owned.territory_id, territory.territory_type
+         FROM country_cells AS owned
+         JOIN country_territories AS territory
+           ON territory.campaign_id = owned.campaign_id
+          AND territory.country_id = owned.country_id
+          AND territory.id = owned.territory_id
+         WHERE owned.campaign_id = $1`,
+        [job.campaignId],
+      ),
     ]);
+    const territoryByCell = new Map(
+      territoryCellResult.rows.map((row) => [
+        `${row.country_id}:${row.cell_id}`,
+        { territoryId: row.territory_id, territoryType: row.territory_type },
+      ]),
+    );
+    const hydratedCountries = Array.isArray(snapshot.state['countries'])
+      ? snapshot.state['countries'].map((countryValue) => {
+          if (
+            !isRecord(countryValue) ||
+            typeof countryValue['id'] !== 'string' ||
+            !Array.isArray(countryValue['cells'])
+          ) {
+            return countryValue;
+          }
+          return {
+            ...countryValue,
+            economyEnabled: true,
+            cells: countryValue['cells'].map((cellValue) => {
+              if (!isRecord(cellValue) || typeof cellValue['id'] !== 'string') {
+                return cellValue;
+              }
+              const territory = territoryByCell.get(`${countryValue['id']}:${cellValue['id']}`);
+              return territory ? { ...cellValue, ...territory } : cellValue;
+            }),
+          };
+        })
+      : snapshot.state['countries'];
     const hydratedState = {
       ...snapshot.state,
+      countries: hydratedCountries,
       adminCountryIds: adminCountryResult.rows.map((row) => row.country_id),
       map: {
         ...stateMap,
@@ -515,6 +559,23 @@ async function persistWorldProjectionEvent(
     return;
   }
 
+  if (event.type === 'colony.removed') {
+    const countryId = projectionString(payload, 'countryId');
+    const territoryId = projectionString(payload, 'territoryId');
+    const deleted = await client.query(
+      `DELETE FROM country_territories
+       WHERE campaign_id = $1 AND country_id = $2
+         AND id = $3 AND territory_type = 'colony'`,
+      [campaignId, countryId, territoryId],
+    );
+    if (deleted.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A colony removal event references a colony territory that does not exist',
+      );
+    }
+    return;
+  }
+
   if (event.type === 'building.constructed') {
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');
@@ -536,6 +597,41 @@ async function persistWorldProjectionEvent(
        VALUES ($1, $2, $3, $4)`,
       [campaignId, countryId, cellId, buildingType],
     );
+    return;
+  }
+
+  if (event.type === 'building.destroyed') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const buildingType = projectionString(payload, 'buildingType');
+    const deleted = await client.query(
+      `DELETE FROM country_buildings
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = $4`,
+      [campaignId, countryId, cellId, buildingType],
+    );
+    if (deleted.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A building destruction event references a building that does not exist',
+      );
+    }
+    return;
+  }
+
+  if (event.type === 'building.upgraded') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const previousBuildingType = projectionString(payload, 'previousBuildingType');
+    const buildingType = projectionString(payload, 'buildingType');
+    const updated = await client.query(
+      `UPDATE country_buildings SET building_type = $5
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = $4`,
+      [campaignId, countryId, cellId, previousBuildingType, buildingType],
+    );
+    if (updated.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A building upgrade event references a building that does not match its previous type',
+      );
+    }
     return;
   }
 

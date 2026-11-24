@@ -26,6 +26,7 @@ import type {
   SocialSystemView,
   PlayerSocialSystemTemplateView,
   CountryProfileView,
+  CountryEconomyView,
   StartBuildingPlacement,
   StartBuildingType,
   AdditionalBuildingType,
@@ -792,6 +793,22 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
   return updatedCampaignCount;
 }
 
+function getCountryEconomyFromReport(
+  report: Record<string, unknown> | undefined,
+  countryId: string,
+): CountryEconomyView | null {
+  const countries = report?.['countries'];
+  if (!Array.isArray(countries)) return null;
+  const value = countries.find(
+    (candidate) =>
+      typeof candidate === 'object' &&
+      candidate !== null &&
+      'countryId' in candidate &&
+      candidate.countryId === countryId,
+  );
+  return value ? (value as CountryEconomyView) : null;
+}
+
 export function createCountrySetupService(options: {
   readonly pool: Pool;
   readonly systemAvailabilityPolicy?: SocialSystemAvailabilityPolicy;
@@ -858,10 +875,66 @@ export function createCountrySetupService(options: {
         map_width: number | null;
         map_height: number | null;
         map_seed: string;
-      }>('SELECT map_width, map_height, map_seed FROM campaigns WHERE id = $1', [campaignId]);
+        current_turn: number;
+      }>('SELECT map_width, map_height, map_seed, current_turn FROM campaigns WHERE id = $1', [
+        campaignId,
+      ]);
       const map = dims.rows[0];
       if (!map || map.map_width === null || map.map_height === null)
         throw new CampaignSetupNotReadyError();
+      const currentTurn = Math.max(1, map.current_turn);
+      const seasonPosition = (currentTurn - 1) % 24;
+      const season = (['spring', 'summer', 'autumn', 'winter'] as const)[
+        Math.floor(seasonPosition / 6)
+      ]!;
+      const seasonInfo = {
+        turnNumber: currentTurn,
+        season,
+        year: Math.floor((currentTurn - 1) / 24) + 1,
+        seasonTurn: (seasonPosition % 6) + 1,
+      };
+      const snapshotResult = await options.pool.query<{ state: Record<string, unknown> }>(
+        'SELECT state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2',
+        [campaignId, currentTurn],
+      );
+      const snapshotState = snapshotResult.rows[0]?.state;
+      const cellOverlayByCoordinate = new Map<
+        string,
+        { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean }
+      >();
+      const snapshotCountries = snapshotState?.['countries'];
+      if (Array.isArray(snapshotCountries)) {
+        for (const countryValue of snapshotCountries) {
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('cells' in countryValue) ||
+            !Array.isArray(countryValue.cells)
+          ) {
+            continue;
+          }
+          for (const cellValue of countryValue.cells) {
+            if (
+              typeof cellValue !== 'object' ||
+              cellValue === null ||
+              !('x' in cellValue) ||
+              !('y' in cellValue) ||
+              typeof cellValue.x !== 'number' ||
+              typeof cellValue.y !== 'number'
+            ) {
+              continue;
+            }
+            const overlay: { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean } = {};
+            if (cellValue.structureType === 'greenhouse' || cellValue.structureType === 'dam') {
+              overlay.structureType = cellValue.structureType;
+            }
+            if (cellValue.flooded === true) overlay.flooded = true;
+            if (overlay.structureType || overlay.flooded) {
+              cellOverlayByCoordinate.set(`${cellValue.x},${cellValue.y}`, overlay);
+            }
+          }
+        }
+      }
       const data = await options.pool.query<{
         country_id: string;
         name: string;
@@ -917,6 +990,8 @@ export function createCountrySetupService(options: {
             y: number;
             population: number;
             buildingType: StartBuildingType | null;
+            structureType?: 'greenhouse' | 'dam' | null;
+            flooded?: boolean;
           }>;
         }
       >();
@@ -948,6 +1023,7 @@ export function createCountrySetupService(options: {
           y: row.y,
           population: row.population,
           buildingType: row.building_type,
+          ...(cellOverlayByCoordinate.get(`${row.x},${row.y}`) ?? {}),
         });
       }
       const reservations = await options.pool.query<{
@@ -966,6 +1042,7 @@ export function createCountrySetupService(options: {
         width: map.map_width,
         height: map.map_height,
         seed: generatedMap.seed,
+        ...seasonInfo,
         terrain: generatedMap.terrain,
         countries: [...groups.values()],
         reservations: reservations.rows.map((row) => ({
@@ -1497,7 +1574,7 @@ export function createCountrySetupService(options: {
       const country = result.rows[0];
       if (!country) return null;
 
-      const [population, buildings] = await Promise.all([
+      const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(population), 0)::integer AS resident_count
            FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
@@ -1509,7 +1586,16 @@ export function createCountrySetupService(options: {
            GROUP BY building_type ORDER BY building_type`,
           [campaignId, country.country_id],
         ),
+        options.pool.query<{ report: Record<string, unknown> }>(
+          `SELECT report FROM economic_reports
+           WHERE campaign_id = $1 ORDER BY turn_number DESC LIMIT 1`,
+          [campaignId],
+        ),
       ]);
+      const economy = getCountryEconomyFromReport(
+        latestEconomy.rows[0]?.report,
+        country.country_id,
+      );
       return {
         id: country.country_id,
         campaignId: country.campaign_id,
@@ -1532,6 +1618,7 @@ export function createCountrySetupService(options: {
         },
         buildings: buildings.rows,
         residentCount: population.rows[0]?.resident_count ?? 0,
+        economy,
       } satisfies CountryProfileView;
     },
 
@@ -1556,7 +1643,7 @@ export function createCountrySetupService(options: {
       );
       const country = result.rows[0];
       if (!country) return null;
-      const [population, buildings] = await Promise.all([
+      const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(population), 0)::integer AS resident_count
            FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
@@ -1568,7 +1655,16 @@ export function createCountrySetupService(options: {
            GROUP BY building_type ORDER BY building_type`,
           [campaignId, country.country_id],
         ),
+        options.pool.query<{ report: Record<string, unknown> }>(
+          `SELECT report FROM economic_reports
+           WHERE campaign_id = $1 ORDER BY turn_number DESC LIMIT 1`,
+          [campaignId],
+        ),
       ]);
+      const economy = getCountryEconomyFromReport(
+        latestEconomy.rows[0]?.report,
+        country.country_id,
+      );
       return {
         id: country.country_id,
         campaignId: country.campaign_id,
@@ -1591,6 +1687,7 @@ export function createCountrySetupService(options: {
         },
         buildings: buildings.rows,
         residentCount: population.rows[0]?.resident_count ?? 0,
+        economy,
       } satisfies CountryProfileView;
     },
 
@@ -2179,6 +2276,11 @@ export function createCountrySetupService(options: {
       const allowedBuildings = new Set<AdditionalBuildingType>([
         'factory',
         'field',
+        'rice_field',
+        'cotton_field',
+        'textile_workshop',
+        'hunter',
+        'fisher',
         'religious_building',
         'science',
         'barracks',

@@ -146,6 +146,15 @@
     science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg'},
     barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg'},
     tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg'},
+    rice_field:{label:'Рисовое поле',code:'Р',required:1},
+    field_level_2:{label:'Поле II уровня',code:'П²',required:2},
+    cotton_field:{label:'Хлопковое поле',code:'Х',required:1},
+    textile_workshop:{label:'Ткацкая мастерская',code:'ТМ',required:1},
+    textile_workshop_level_2:{label:'Ткацкая мастерская II уровня',code:'ТМ²',required:3},
+    hunter:{label:'Охотники',code:'О',required:1},
+    fisher:{label:'Рыбаки',code:'Р',required:1},
+    greenhouse:{label:'Теплица',code:'Т',required:1},
+    dam:{label:'Дамба',code:'Д',required:1},
   };
   function buildingIconHtml(type,extraClass='') {
     const meta=buildingMeta[type];if(!meta)return '';
@@ -1066,6 +1075,16 @@
       const details = document.createElement('span');
       details.textContent = 'Правление: ' + (country.government || 'не указано') +
         ' · Культура: ' + ((country.culture || []).join(', ') || 'не указана');
+      const economy = document.createElement('span');
+      if (country.economy) {
+        const report = country.economy;
+        economy.textContent = 'Экономика: доход ' + report.income + ' · содержание ' +
+          report.expenses + ' · еда ' + report.food + '/' + report.foodDemand +
+          ' · товары ' + report.goods + '/' + report.goodsDemand +
+          (report.budgetDeficit ? ' · дефицит бюджета' : '');
+      } else {
+        economy.textContent = 'Экономика: ожидает первого завершённого хода.';
+      }
       const system = document.createElement('div');
       system.className = 'admin-data-card';
       const systemTitle = document.createElement('strong');
@@ -1077,7 +1096,7 @@
         row.textContent = principle.name + ' — ' + (principle.effect || principle.description || '');
         system.append(row);
       }
-      card.append(heading, meta, details, system);
+      card.append(heading, meta, details, economy, system);
       host.append(card);
     }
   }
@@ -1622,11 +1641,21 @@
   const mapBuildingOptions = [
     ['factory', 'Фабрика'],
     ['field', 'Поле'],
+    ['rice_field', 'Рисовое поле'],
+    ['cotton_field', 'Хлопковое поле'],
+    ['textile_workshop', 'Ткацкая мастерская'],
+    ['hunter', 'Охотники'],
+    ['fisher', 'Рыбаки'],
     ['science', 'Научный центр'],
     ['religious_building', 'Храм'],
     ['barracks', 'Казармы'],
     ['tower', 'Башня'],
   ];
+
+  function isFreeUpgradeOrder(order) {
+    return order?.type === 'construction' &&
+      ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType);
+  }
 
   function mapOrderCoordinates(order) {
     const payload = order?.payload;
@@ -1703,7 +1732,9 @@
   }
 
   function mapActionCount() {
-    return state.mapOrders.filter((order) => order.status !== 'discarded').length;
+    return state.mapOrders.filter(
+      (order) => order.status !== 'discarded' && !isFreeUpgradeOrder(order),
+    ).length;
   }
 
   function renderMapOrderSummary() {
@@ -1711,11 +1742,11 @@
     const confirm = $('#confirm-map-orders');
     if (!summary || !confirm) return;
     const activeOrders = state.mapOrders.filter((order) => order.status !== 'discarded');
-    const actionCount = activeOrders.length;
+    const actionCount = activeOrders.filter((order) => !isFreeUpgradeOrder(order)).length;
     const unlimitedActions = isAdminMode();
     const remainingActions = unlimitedActions ? '∞' : Math.max(0, 3 - actionCount);
     const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
-    const confirmedCount = actionCount - draftCount;
+    const confirmedCount = activeOrders.length - draftCount;
     summary.hidden = !state.campaign?.countryId;
     summary.textContent = `ОД: ${actionCount}/${unlimitedActions ? '∞' : '3'} · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
@@ -1877,6 +1908,12 @@
     const buildingAtCell = countryAtCell?.cells.find(
       (item) => item.x === cell.x && item.y === cell.y && item.buildingType,
     );
+    const canFreeUpgrade = Boolean(
+      ownedCell &&
+      !ownedCell.flooded &&
+      ((ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') ||
+        ownedCell.buildingType === 'textile_workshop'),
+    );
     const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
       if (territory.type !== 'colony') return false;
       const minX = territory.centerX - Math.floor(territory.width / 2);
@@ -1904,10 +1941,10 @@
       content += '</div>';
     } else if (state.turnStatus?.ordersAccepting !== true) {
       content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
-    } else if (actionsRemaining === 0) {
+    } else if (actionsRemaining === 0 && !canFreeUpgrade) {
       content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
     } else if (ownedCell) {
-      const canBuild = isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
+      const canBuild = actionsRemaining > 0 && isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
       if (canBuild) {
         content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
         content += mapBuildingOptions.map(([type, label]) =>
@@ -1920,7 +1957,27 @@
           (ownedCell.buildingType ? 'На клетке уже стоит здание.' : isLand ? 'На клетке нет свободного жителя.' : 'На воде и реках строить нельзя.') +
           '</p>';
       }
-      if (canColonizeRegion) {
+      if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
+        content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
+        if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу · 1 ОД</button>';
+        }
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam">Построить дамбу · 1 ОД</button>';
+        content += '</div>';
+      } else if (ownedCell.structureType) {
+        content += '<small>На клетке уже установлена защита: теплица или дамба.</small>';
+      }
+      if (!ownedCell.flooded && ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') {
+        content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2">Улучшить поле до II уровня · бесплатно</button>';
+        content += '</div>';
+      }
+      if (!ownedCell.flooded && ownedCell.buildingType === 'textile_workshop') {
+        content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2">Улучшить мастерскую · бесплатно</button>';
+        content += '</div>';
+      }
+      if (actionsRemaining > 0 && canColonizeRegion) {
         content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
         content += '<small>В квадрат 3×3 войдут новые клетки суши и воды. d100 бросается для каждой новой клетки суши.</small>';
       } else {
@@ -1997,6 +2054,12 @@
     if (!state.campaign) return;
     const data = await request('/campaigns/' + state.campaign.id + '/map');
     state.mapView = data.map;
+    const seasonLabel = $('#map-season-label');
+    if (seasonLabel) {
+      const labels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
+      seasonLabel.textContent = (labels[data.map.season] || 'Сезон не определён') +
+        ' · год ' + (data.map.year || 1) + ' · ход сезона ' + (data.map.seasonTurn || 1) + '/6';
+    }
     buildWorldPreview();
     renderTerritoryGrid();
     if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
@@ -2059,6 +2122,18 @@
         const py = top + cell.y * cellSize;
         ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
+        if (!miniature && cell.flooded) {
+          ctx.fillStyle = 'rgba(22, 132, 190, 0.38)';
+          ctx.fillRect(px, py, cellSize, cellSize);
+          ctx.strokeStyle = 'rgba(10, 92, 150, 0.9)';
+          ctx.lineWidth = Math.max(1, cellSize * 0.08);
+          ctx.beginPath();
+          ctx.moveTo(px, py + cellSize * 0.25);
+          ctx.lineTo(px + cellSize, py + cellSize * 0.75);
+          ctx.moveTo(px, py + cellSize * 0.65);
+          ctx.lineTo(px + cellSize, py + cellSize * 0.15);
+          ctx.stroke();
+        }
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
@@ -2092,10 +2167,24 @@
     if (!miniature) {
       for (const country of (state.mapView.countries || [])) {
         for (const cell of country.cells || []) {
-          if (!cell.buildingType) continue;
           const px = left + cell.x * cellSize;
           const py = top + cell.y * cellSize;
-          drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
+          if (cell.buildingType) {
+            drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
+          }
+          if (cell.structureType) {
+            ctx.save();
+            ctx.fillStyle = cell.structureType === 'dam' ? '#146a8a' : '#397b42';
+            const markerSize = Math.max(3, cellSize * 0.34);
+            ctx.fillRect(px + cellSize - markerSize - 1, py + 1, markerSize, markerSize);
+            ctx.fillStyle = '#fff';
+            ctx.font = '900 ' + Math.max(4, markerSize * 0.82) + 'px Arial,sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(cell.structureType === 'dam' ? 'Д' : 'Т',
+              px + cellSize - markerSize / 2 - 1, py + markerSize / 2 + 1);
+            ctx.restore();
+          }
         }
       }
       for (const order of state.mapOrders || []) {
@@ -2617,6 +2706,17 @@
     $('#country-card-host').classList.remove('hidden');
 
     const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
+    const economy = country.economy || null;
+    const economyIncome = economy ? String(economy.income) : '—';
+    const economyExpenses = economy ? String(economy.expenses) : '—';
+    const economyStatus = economy
+      ? (economy.unpaidExpenses > 0 ? 'Есть неоплаченные расходы' : 'Содержание оплачено')
+      : 'Расчёт появится после первого завершённого хода';
+    const disabledBuildingsLabel = economy?.disabledBuildings?.map((building) =>
+      (buildingMeta[building.type]?.label || building.type) + ' (' + building.x + ', ' + building.y + ')',
+    ).join(', ') || '';
+    const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
+    const seasonLabel = economy?.season ? seasonLabels[economy.season] || economy.season : '—';
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -2694,12 +2794,32 @@
           '</section>' +
           '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
         '</div>' +
+        '<h3 class="country-doc-section-title">СЕЗОН И ПОГОДА</h3>' +
+        '<div class="country-doc-economy">' +
+          '<div><b class="country-doc-income">☀</b><span>Текущий сезон</span><strong>' +
+            escapeHtml(seasonLabel) + '</strong><small>' +
+            (economy ? 'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' : 'Ожидается первый расчёт') +
+          '</small></div>' +
+          '<div><b class="country-doc-income">❄</b><span>Тёплая одежда</span><strong>' +
+            (economy && economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
+          '</strong><small>' +
+            (economy && economy.season === 'winter'
+              ? (economy.clothingShortage ? 'Не хватает одежды для ' + String(economy.unclothedPopulation || 0) + ' жителей' : 'Все жители обеспечены')
+              : 'Одежда не накапливается') +
+          '</small></div>' +
+          '<div><b class="country-doc-income">≈</b><span>Затопленные клетки</span><strong>' +
+            String(economy?.floodedCells || 0) + '</strong><small>' +
+            (economy?.movementMultiplier === 0.5 ? 'Зимой скорость войск ×0,5' : 'Обычная скорость передвижения') +
+          '</small></div>' +
+        '</div>' +
         '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
         '<div class="country-doc-economy">' +
-          '<div><b class="country-doc-gold">З</b><span>Золотые шахты</span><strong>' +
-            String(counts.get('gold_mine') || 0) + '</strong></div>' +
-          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>—</strong>' +
-            '<small>Экономические расчёты ещё не подключены.</small></div>' +
+          '<div><b class="country-doc-gold">З</b><span>Золото · доход</span><strong>' +
+            (economy ? String(economy.gold) + ' × ' + String(economy.population) : String(counts.get('gold_mine') || 0)) +
+            '</strong><small>Доход: ' + escapeHtml(economyIncome) + ' монет за ход</small></div>' +
+          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>' +
+            escapeHtml(economyIncome) + ' / ' + escapeHtml(economyExpenses) + '</strong>' +
+            '<small>' + escapeHtml(economyStatus) + '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ПОЛИТИКА</h3>' +
         '<div class="country-doc-government"><b>♜</b><span>' +
@@ -2707,9 +2827,20 @@
         '</span></div>' +
         '<div class="country-doc-bottom">' +
           '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
-            String(counts.get('factory') || 0) + ' фабрики</span><small>Производство: пока не рассчитывается</small></section>' +
+            String(counts.get('factory') || 0) + ' фабрики</span><small>' +
+            (economy ? String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
+              (economy.goodsShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
-            String(counts.get('field') || 0) + ' поля</span><small>Производство: пока не рассчитывается</small></section>' +
+            String((counts.get('field') || 0) + (counts.get('field_level_2') || 0) + (counts.get('rice_field') || 0)) + ' поля</span><small>' +
+            (economy ? String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
+              (economy.foodShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+          '<section><b class="country-doc-tile-icon">♧</b><strong>Тёплая одежда</strong><span>' +
+            String((counts.get('textile_workshop') || 0) + (counts.get('textile_workshop_level_2') || 0)) + ' мастерских · ' +
+            String(counts.get('cotton_field') || 0) + ' хлопковых полей</span><small>' +
+            (economy && economy.season === 'winter'
+              ? String(economy.clothing || 0) + ' из ' + String(economy.clothingDemand || economy.population) + ' жителей · ' +
+                (economy.clothingShortage ? 'не хватает ' + String(economy.unclothedPopulation || 0) : 'достаточно')
+              : 'Производство не накапливается; спрос зимой') + '</small></section>' +
           '<section class="country-doc-faith">' +
             (system.emblemDataUrl
               ? '<img src="' + escapeHtml(system.emblemDataUrl) + '" alt="">'
@@ -2720,6 +2851,24 @@
             '<div class="culture-symbols">' + cultureSymbols(country.culture || []) + '</div>' +
           '</section>' +
         '</div>' +
+        (economy && (economy.disabledBuildings.length || economy.starvedColonies || economy.fledColonies || economy.floodedCells || economy.clothingShortage)
+          ? '<section class="country-doc-inactive-actions" aria-live="polite"><strong>Экономические последствия этого хода</strong><p>' +
+            (economy.disabledBuildings.length
+              ? 'Отключены: ' + escapeHtml(disabledBuildingsLabel) + '. '
+              : '') +
+            (economy.starvedColonies
+              ? 'Вымерло колоний: ' + escapeHtml(economy.starvedColonies) + '. '
+              : '') +
+            (economy.fledColonies
+              ? 'Покинуто колоний из-за нехватки товаров: ' + escapeHtml(economy.fledColonies) + '. '
+              : '') +
+            (economy.floodedCells
+              ? 'Затоплено клеток: ' + escapeHtml(economy.floodedCells) + '. '
+              : '') +
+            (economy.clothingShortage
+              ? 'Не обеспечено тёплой одеждой жителей: ' + escapeHtml(economy.unclothedPopulation || 0) + '.'
+              : '') + '</p></section>'
+          : '') +
         '<section class="country-doc-inactive-actions" aria-live="polite">' +
           '<strong>Приказы через глобальную карту</strong>' +
           '<p>Строительство и колонизация задаются на большой карте: открой её, выбери клетку и вызови контекстное меню.</p>' +
