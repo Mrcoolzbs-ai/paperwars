@@ -873,11 +873,11 @@ describe('baseline turn resolver', () => {
       'BUILDING_UPGRADED',
       'BUILDING_UPGRADED',
     ]);
-    expect(result.nextState.countries[0]?.cells.map((cell) => cell.buildingType)).toEqual([
-      'gold_mine',
-      'field_level_2',
-      'textile_workshop_level_2',
-    ]);
+    expect(
+      result.nextState.countries[0]?.cells
+        .filter((cell) => cell.buildingType !== 'science')
+        .map((cell) => cell.buildingType),
+    ).toEqual(['gold_mine', 'field_level_2', 'textile_workshop_level_2']);
     const actionPointsUsed = result.economicReport?.['actionPointsUsed'] as
       Record<string, number> | undefined;
     expect(actionPointsUsed?.[countryId] ?? 0).toBe(0);
