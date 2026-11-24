@@ -114,6 +114,7 @@ export interface CountryProfileView {
   };
   readonly buildings: readonly { readonly type: StartBuildingType; readonly count: number }[];
   readonly residentCount: number;
+  sciencePoints?: number;
   readonly economy: CountryEconomyView | null;
 }
 
