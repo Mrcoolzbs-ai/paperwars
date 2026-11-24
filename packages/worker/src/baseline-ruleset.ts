@@ -180,6 +180,7 @@ function adjacentToCardinalWater(
       terrain[nextY * width + nextX] !== 'l',
   );
 }
+
 function adjacentWaterCount(
   x: number,
   y: number,
@@ -328,7 +329,9 @@ function buildingUpkeep(buildingType: string | null): number {
     buildingType === 'tower' ||
     buildingType === 'field_level_2' ||
     buildingType === 'factory_level_2'
-  ) return 2;
+  ) {
+    return 2;
+  }
   if (buildingType === 'textile_workshop_level_2') return 3;
   return buildingType ? 1 : 0;
 }
@@ -707,9 +710,17 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       if (order.type === 'structure_removal') {
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
-        if (cell === undefined || cell.structureType === null || cell.structureType === undefined) {
+        if (
+          cell === undefined ||
+          cell.structureType === null ||
+          cell.structureType === undefined
+        ) {
           orderResults.push(
-            rejection(order.id, 'STRUCTURE_NOT_FOUND', 'На этой клетке нет мини-сооружения для демонтажа.'),
+            rejection(
+              order.id,
+              'STRUCTURE_NOT_FOUND',
+              'На этой клетке нет мини-сооружения для демонтажа.',
+            ),
           );
           continue;
         }
@@ -740,7 +751,11 @@ export function createBaselineTurnResolver(): TurnResolver<
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
         if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
           orderResults.push(
-            rejection(order.id, 'CELL_NOT_OWNED', 'Сносить можно только здание на своей клетке суши.'),
+            rejection(
+              order.id,
+              'CELL_NOT_OWNED',
+              'Сносить можно только здание на своей клетке суши.',
+            ),
           );
           continue;
         }
@@ -835,8 +850,10 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
-        if (buildingType === 'fisher' &&
-          !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
+        if (
+          buildingType === 'fisher' &&
+          !adjacentToWater(x, y, terrain, mapWidth, mapHeight)
+        ) {
           orderResults.push(
             rejection(
               order.id,
@@ -848,8 +865,10 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
 
         if (buildingType === 'greenhouse' || buildingType === 'dam') {
-          if (buildingType === 'dam' &&
-            !adjacentToCardinalWater(x, y, terrain, mapWidth, mapHeight)) {
+          if (
+            buildingType === 'dam' &&
+            !adjacentToCardinalWater(x, y, terrain, mapWidth, mapHeight)
+          ) {
             orderResults.push(
               rejection(
                 order.id,
