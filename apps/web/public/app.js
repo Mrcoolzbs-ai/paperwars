@@ -1638,8 +1638,9 @@
   ];
 
   function isFreeUpgradeOrder(order) {
-    return order?.type === 'construction' &&
-      ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType);
+    return order?.type === 'structure_removal' ||
+      (order?.type === 'construction' &&
+        ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType));
   }
 
   function mapOrderCoordinates(order) {
@@ -1977,7 +1978,9 @@
         }
         content += '</div>';
       } else if (ownedCell.structureType) {
-        content += '<small>На клетке уже установлена защита: теплица или дамба.</small>';
+        const structureLabel = ownedCell.structureType === 'greenhouse' ? 'теплицу' : 'дамбу';
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="structure-removal">Демонтировать ' +
+          structureLabel + '</button><small>Без расхода ОД.</small>';
       }
       if (actionsRemaining > 0 && ownedCell.buildingType &&
           !['capital', 'gold_mine'].includes(ownedCell.buildingType)) {
@@ -2047,6 +2050,8 @@
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
         } else if (action === 'demolition') {
           await createMapOrder('demolition', { x: cell.x, y: cell.y });
+        } else if (action === 'structure-removal') {
+          await createMapOrder('structure_removal', { x: cell.x, y: cell.y });
         } else if (action === 'remove-order') {
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
@@ -2588,6 +2593,7 @@
     const labels = {
       construction: 'Строительство',
       demolition: 'Снос здания',
+      structure_removal: 'Демонтаж мини-сооружения',
       colonization: 'Колонизация',
       movement: 'Перемещение',
       research: 'Исследование',
