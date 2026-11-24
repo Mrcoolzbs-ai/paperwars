@@ -10,6 +10,7 @@ import type {
 import { createDeterministicRandomSource, createSimulationEngine } from '@paper-wars/simulation';
 import {
   claimNextTurnJob,
+  closeExpiredOrderWindows,
   completeTurnJob,
   createCommittedSeed,
   loadSeedForWorker,
@@ -965,6 +966,7 @@ export function createTurnWorker<
   return {
     async processNext(): Promise<TurnWorkerResult<TEvent>> {
       await reapExpiredTurnJobs(config.pool);
+      await closeExpiredOrderWindows(config.pool);
       const lease = await claimNextTurnJob(config.pool, config.workerId);
       if (lease === null) return { status: 'idle' };
 
