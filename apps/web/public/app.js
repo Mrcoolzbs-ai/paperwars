@@ -1624,6 +1624,17 @@
     return count;
   }
 
+  function mapCardinalWaterCount(x, y) {
+    const width = state.mapView?.width || 0;
+    const height = state.mapView?.height || 0;
+    return [[-1, 0], [1, 0], [0, -1], [0, 1]].filter(([dx, dy]) => {
+      const nextX = x + dx;
+      const nextY = y + dy;
+      return nextX >= 0 && nextY >= 0 && nextX < width && nextY < height &&
+        terrainCodeAt(nextX, nextY) !== 'l';
+    }).length;
+  }
+
   const SCIENCE_REQUIRED_BY_BUILDING = {
     rice_field: 2,
     dam: 3,
@@ -1659,7 +1670,7 @@
   function isFreeUpgradeOrder(order) {
     return order?.type === 'structure_removal' ||
       (order?.type === 'construction' &&
-        ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType));
+        ['field_level_2', 'factory_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType));
   }
 
   function mapOrderCoordinates(order) {
@@ -1995,7 +2006,7 @@
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
           content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу</button>';
         }
-        if (mapAdjacentWaterCount(cell.x, cell.y) > 0) {
+        if (mapCardinalWaterCount(cell.x, cell.y) > 0) {
           const required = scienceRequirementFor('dam');
           const locked = currentScienceLevel() < required;
           content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam"' +
