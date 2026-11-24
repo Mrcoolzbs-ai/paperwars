@@ -896,11 +896,14 @@ describe('baseline turn resolver', () => {
       },
       economyCell('empty-b', 5, 2, 1),
     ];
-    const state = createEconomyState(cells);
+    const baseState = createEconomyState(cells);
     const terrain = Array.from({ length: 45 }, () => 'l');
     terrain[1 * 9 + 4] = 'w';
     terrain[1 * 9 + 5] = 'w';
-    state.map = { ...state.map, terrain: terrain.join('') };
+    const state = {
+      ...baseState,
+      map: { ...baseState.map, terrain: terrain.join('') },
+    };
 
     const first = resolve(
       state,
