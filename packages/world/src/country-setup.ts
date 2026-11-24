@@ -1527,7 +1527,8 @@ export function createCountrySetupService(options: {
            ON system.campaign_id = country.campaign_id AND system.id = country.official_system_id
          LEFT JOIN country_territories AS core
            ON core.campaign_id = country.campaign_id
-          AND core.country_id = country.id AND core.territory_type = 'core'
+          AND core.country_id = country.id
+          AND core.territory_type = 'core'
          WHERE country.campaign_id = $1 AND country.id = $2 AND country.status = 'active'`,
         [campaignId, countryId],
       );
@@ -1586,7 +1587,12 @@ export function createCountrySetupService(options: {
           [campaignId],
         );
         const campaign = campaignResult.rows[0];
-        if (!campaign || campaign.status !== 'active' || campaign.map_width === null || campaign.map_height === null) {
+        if (
+          !campaign ||
+          campaign.status !== 'active' ||
+          campaign.map_width === null ||
+          campaign.map_height === null
+        ) {
           throw new CampaignSetupNotReadyError();
         }
         if (x < 0 || y < 0 || x >= campaign.map_width || y >= campaign.map_height) {
@@ -1612,7 +1618,8 @@ export function createCountrySetupService(options: {
         }>(
           `SELECT owned.country_id, owned.cell_id, owned.population
            FROM country_cells AS owned
-           JOIN cells AS cell ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+           JOIN cells AS cell
+             ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
            JOIN country_buildings AS building
              ON building.campaign_id = owned.campaign_id
             AND building.country_id = owned.country_id
@@ -1622,7 +1629,9 @@ export function createCountrySetupService(options: {
           [campaignId, x, y],
         );
         const cell = target.rows[0];
-        if (!cell) throw new CountrySetupValidationError('На этой клетке нет постройки для удаления.');
+        if (!cell) {
+          throw new CountrySetupValidationError('На этой клетке нет постройки для удаления.');
+        }
         await client.query(
           `UPDATE country_cells SET population = population + 1
            WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
@@ -1636,14 +1645,27 @@ export function createCountrySetupService(options: {
         if (!Array.isArray(countries)) throw new CampaignSetupNotReadyError();
         let changed = false;
         const updatedCountries = countries.map((countryValue) => {
-          if (typeof countryValue !== 'object' || countryValue === null ||
-              !('id' in countryValue) || countryValue.id !== cell.country_id ||
-              !('cells' in countryValue) || !Array.isArray(countryValue.cells)) return countryValue;
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('id' in countryValue) ||
+            countryValue.id !== cell.country_id ||
+            !('cells' in countryValue) ||
+            !Array.isArray(countryValue.cells)
+          ) {
+            return countryValue;
+          }
           return {
             ...countryValue,
             cells: countryValue.cells.map((cellValue) => {
-              if (typeof cellValue !== 'object' || cellValue === null ||
-                  !('id' in cellValue) || cellValue.id !== cell.cell_id) return cellValue;
+              if (
+                typeof cellValue !== 'object' ||
+                cellValue === null ||
+                !('id' in cellValue) ||
+                cellValue.id !== cell.cell_id
+              ) {
+                return cellValue;
+              }
               changed = true;
               return { ...cellValue, population: cell.population + 1, buildingType: null };
             }),
@@ -1713,23 +1735,42 @@ export function createCountrySetupService(options: {
         const minY = territory.center_y - Math.floor(territory.height / 2);
         let removedCount = 0;
         const updatedCountries = countries.map((countryValue) => {
-          if (typeof countryValue !== 'object' || countryValue === null ||
-              !('id' in countryValue) || countryValue.id !== territory.country_id ||
-              !('cells' in countryValue) || !Array.isArray(countryValue.cells)) return countryValue;
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('id' in countryValue) ||
+            countryValue.id !== territory.country_id ||
+            !('cells' in countryValue) ||
+            !Array.isArray(countryValue.cells)
+          ) {
+            return countryValue;
+          }
           return {
             ...countryValue,
             cells: countryValue.cells.filter((cellValue) => {
-              if (typeof cellValue !== 'object' || cellValue === null ||
-                  !('x' in cellValue) || !('y' in cellValue) ||
-                  typeof cellValue.x !== 'number' || typeof cellValue.y !== 'number') return true;
-              const inside = cellValue.x >= minX && cellValue.x < minX + territory.width &&
-                cellValue.y >= minY && cellValue.y < minY + territory.height;
+              if (
+                typeof cellValue !== 'object' ||
+                cellValue === null ||
+                !('x' in cellValue) ||
+                !('y' in cellValue) ||
+                typeof cellValue.x !== 'number' ||
+                typeof cellValue.y !== 'number'
+              ) {
+                return true;
+              }
+              const inside =
+                cellValue.x >= minX &&
+                cellValue.x < minX + territory.width &&
+                cellValue.y >= minY &&
+                cellValue.y < minY + territory.height;
               if (inside) removedCount += 1;
               return !inside;
             }),
           };
         });
-        if (removedCount === 0) throw new CountrySetupValidationError('В колонии нет клеток для удаления.');
+        if (removedCount === 0) {
+          throw new CountrySetupValidationError('В колонии нет клеток для удаления.');
+        }
         await client.query(
           'UPDATE world_snapshots SET version = version + 1, state = $3 WHERE campaign_id = $1 AND turn_number = $2',
           [campaignId, campaign.current_turn, { ...state, countries: updatedCountries }],
