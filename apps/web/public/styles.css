@@ -637,3 +637,198 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
 .vk-one-tap iframe {
   max-width: 100%;
 }
+
+/* Player account profile */
+.topbar-right {
+  gap: 12px;
+}
+.user-label {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#profile-button,
+#logout-button {
+  white-space: nowrap;
+}
+.profile-screen {
+  min-height: 62vh;
+}
+.profile-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+.profile-heading h1 {
+  margin: 14px 0 8px;
+  font-size: clamp(38px, 5vw, 54px);
+}
+.profile-heading p {
+  margin: 0;
+  font-size: 12px;
+}
+.profile-account-mark {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 210px;
+  padding: 12px 15px;
+  border: 1px solid #51644f;
+  background: #17231b;
+}
+.profile-account-mark > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #c99a5b;
+  background: #26372a;
+  color: var(--gold2);
+  font: 700 17px "Playfair Display", serif;
+}
+.profile-account-mark strong,
+.profile-account-mark small {
+  display: block;
+  max-width: 210px;
+  overflow-wrap: anywhere;
+}
+.profile-account-mark strong {
+  color: var(--text);
+  font: 600 14px "Playfair Display", serif;
+}
+.profile-account-mark small {
+  margin-top: 5px;
+  color: #92a18e;
+  font: 8px "DM Mono", monospace;
+  letter-spacing: .1em;
+}
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.profile-panel {
+  min-width: 0;
+  padding: clamp(20px, 2.5vw, 28px);
+}
+.profile-panel h2 {
+  margin: 9px 0 7px;
+  font: 600 25px "Playfair Display", serif;
+}
+.profile-description {
+  margin: 0 0 18px;
+  color: #9eac9c;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.profile-hint {
+  display: block;
+  color: #9ca992;
+  font-size: 10px;
+  line-height: 1.55;
+}
+.profile-panel .form-stack {
+  gap: 13px;
+}
+.profile-panel .button {
+  width: 100%;
+}
+.profile-security-list {
+  display: grid;
+  margin: 18px 0 13px;
+  border-top: 1px solid #3b4b3e;
+}
+.profile-security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid #3b4b3e;
+}
+.profile-security-row strong,
+.profile-security-row small {
+  display: block;
+}
+.profile-security-row strong {
+  color: #e7e8da;
+  font-size: 12px;
+}
+.profile-security-row small {
+  margin-top: 4px;
+  color: #929f91;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.profile-state-pill {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid #765c49;
+  color: #ddb18b;
+  font: 9px "DM Mono", monospace;
+}
+.profile-state-pill.connected {
+  border-color: #557c5c;
+  color: #a9ceaa;
+}
+.profile-vk-button {
+  margin-bottom: 8px;
+}
+.profile-password-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #3b4b3e;
+}
+.profile-password-section h3 {
+  margin: 0 0 7px;
+  color: #e7e5d8;
+  font: 600 17px "Playfair Display", serif;
+}
+.profile-password-section .form-stack {
+  margin-top: 14px;
+}
+#profile-page-message {
+  margin: 0 0 14px;
+}
+#profile-form-message,
+#profile-password-message {
+  margin-top: 10px;
+}
+@media(max-width:900px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+  .profile-heading {
+    align-items: flex-start;
+  }
+}
+@media(max-width:650px) {
+  .topbar-right {
+    gap: 7px;
+  }
+  .topbar-right .user-label {
+    display: none;
+  }
+  #profile-button,
+  #logout-button {
+    padding: 7px 9px;
+    font-size: 9px;
+  }
+  .profile-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+  .profile-account-mark {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .profile-layout {
+    gap: 13px;
+  }
+}
