@@ -115,10 +115,10 @@ describe('baseline turn resolver', () => {
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'accepted',
-      data: { colonizedCount: 9, colonizedLandCount: 1, colonizedWaterCount: 8, residentsAdded: 1 },
+      data: { colonizedCount: 9, colonizedLandCount: 1, colonizedWaterCount: 8, residentsAdded: 9 },
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(9);
-    expect(result.nextState.countries[0]?.cells.filter((cell) => cell.population === 1)).toHaveLength(1);
+    expect(result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population).toBe(9);
     expect(result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0)).toHaveLength(8);
     expect(random.calls).toHaveLength(1);
   });
