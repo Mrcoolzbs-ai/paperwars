@@ -424,13 +424,9 @@ async function persistWorldProjectionEvent(
     }
 
     let centerX =
-      typeof payload['centerX'] === 'number'
-        ? projectionInteger(payload, 'centerX')
-        : undefined;
+      typeof payload['centerX'] === 'number' ? projectionInteger(payload, 'centerX') : undefined;
     let centerY =
-      typeof payload['centerY'] === 'number'
-        ? projectionInteger(payload, 'centerY')
-        : undefined;
+      typeof payload['centerY'] === 'number' ? projectionInteger(payload, 'centerY') : undefined;
     if (centerX === undefined || centerY === undefined) {
       const orderGeometry = await client.query<{ center_x: number; center_y: number }>(
         `SELECT (payload->>'x')::integer AS center_x, (payload->>'y')::integer AS center_y
@@ -443,8 +439,7 @@ async function persistWorldProjectionEvent(
       centerY ??= orderGeometry.rows[0]?.center_y;
     }
     const width = typeof payload['width'] === 'number' ? projectionInteger(payload, 'width') : 3;
-    const height =
-      typeof payload['height'] === 'number' ? projectionInteger(payload, 'height') : 3;
+    const height = typeof payload['height'] === 'number' ? projectionInteger(payload, 'height') : 3;
     if (centerX === undefined || centerY === undefined) {
       throw new TurnWorkerInvariantError('A colonized cell has no valid colony center');
     }

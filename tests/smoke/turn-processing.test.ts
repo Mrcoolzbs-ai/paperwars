@@ -278,17 +278,15 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           [fixture.campaignId, fixture.userIds[0]],
         );
         expect(draftMembership.rows[0]?.orders_confirmed).toBe(false);
-        stored = await pool.query<{ status: string }>(
-          'SELECT status FROM orders WHERE id = $1',
-          [order.id],
-        );
+        stored = await pool.query<{ status: string }>('SELECT status FROM orders WHERE id = $1', [
+          order.id,
+        ]);
         expect(stored.rows[0]?.status).toBe('draft');
 
         await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
-        stored = await pool.query<{ status: string }>(
-          'SELECT status FROM orders WHERE id = $1',
-          [order.id],
-        );
+        stored = await pool.query<{ status: string }>('SELECT status FROM orders WHERE id = $1', [
+          order.id,
+        ]);
         expect(stored.rows[0]?.status).toBe('confirmed');
 
         const second = await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
