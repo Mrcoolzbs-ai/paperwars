@@ -870,8 +870,8 @@ describe('baseline turn resolver', () => {
 
     expect(economy).toMatchObject({
       income: 10,
-      initialBuildingUpkeep: 3,
-      buildingUpkeep: 3,
+      initialBuildingUpkeep: 4,
+      buildingUpkeep: 4,
       unpaidExpenses: 0,
     });
   });

@@ -2167,10 +2167,11 @@
     if (!miniature) {
       for (const country of (state.mapView.countries || [])) {
         for (const cell of country.cells || []) {
-          if (!cell.buildingType) continue;
           const px = left + cell.x * cellSize;
           const py = top + cell.y * cellSize;
-          drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
+          if (cell.buildingType) {
+            drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
+          }
           if (cell.structureType) {
             ctx.save();
             ctx.fillStyle = cell.structureType === 'dam' ? '#146a8a' : '#397b42';
@@ -2184,10 +2185,6 @@
               px + cellSize - markerSize / 2 - 1, py + markerSize / 2 + 1);
             ctx.restore();
           }
-        } else if (cell.structureType) {
-          const markerSize = Math.max(3, cellSize * 0.34);
-          ctx.fillStyle = cell.structureType === 'dam' ? '#146a8a' : '#397b42';
-          ctx.fillRect(px + cellSize - markerSize - 1, py + 1, markerSize, markerSize);
         }
       }
       for (const order of state.mapOrders || []) {
@@ -2834,7 +2831,7 @@
             (economy ? String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
               (economy.goodsShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
-            String((counts.get('field') || 0) + (counts.get('field_level_2') || 0) + (counts.get('rice_field') || 0)) + ' поля</span><small>'
+            String((counts.get('field') || 0) + (counts.get('field_level_2') || 0) + (counts.get('rice_field') || 0)) + ' поля</span><small>' +
             (economy ? String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
               (economy.foodShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">♧</b><strong>Тёплая одежда</strong><span>' +
