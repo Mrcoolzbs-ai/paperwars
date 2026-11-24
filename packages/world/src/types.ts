@@ -6,6 +6,7 @@ export type SocialSystemApprovalStatus = 'pending' | 'approved' | 'rejected';
 export type SocialSystemReviewDecision = 'approve' | 'reject';
 export type StartBuildingType =
   | 'factory'
+  | 'factory_level_2'
   | 'field'
   | 'rice_field'
   | 'field_level_2'
