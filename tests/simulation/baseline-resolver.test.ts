@@ -141,6 +141,7 @@ describe('baseline turn resolver', () => {
     const discovery = {
       id: '50000000-0000-4000-8000-000000000005',
       cellId: '60000000-0000-4000-8000-000000000006',
+      discoveredByCountryId: '70000000-0000-4000-8000-000000000007',
       x: 2,
       y: 2,
       type: 'gold' as const,
@@ -155,7 +156,8 @@ describe('baseline turn resolver', () => {
     expect(result.nextState.countries[0]?.cells[0]?.id).toBe(discovery.cellId);
     const capturedEvent = result.events.find((event) => event.type === 'discovery.captured');
     expect(capturedEvent).toBeDefined();
-    expect(capturedEvent?.visibility).toBe('public');
+    expect(capturedEvent?.visibility).toBe('private');
+    expect(capturedEvent?.recipientCountryId).toBe('70000000-0000-4000-8000-000000000007');
     expect(capturedEvent?.payload).not.toHaveProperty('discoveryType');
     expect(capturedEvent?.payload).not.toHaveProperty('discoveryId');
     expect(result.events.some((event) => event.type === 'discovery.discovered')).toBe(false);
