@@ -842,6 +842,15 @@ describe('baseline turn resolver', () => {
       economyCell('gold', 0, 0, 30, 'gold_mine'),
       economyCell('field', 1, 0, 1, 'field'),
       economyCell('workshop', 2, 0, 1, 'textile_workshop'),
+      ...Array.from({ length: 15 }, (_, index) =>
+        economyCell(
+          `science-${index}`,
+          (index + 3) % 9,
+          Math.floor((index + 3) / 9),
+          0,
+          'science',
+        ),
+      ),
     ]);
     const result = resolve(
       state,
@@ -873,7 +882,65 @@ describe('baseline turn resolver', () => {
       Record<string, number> | undefined;
     expect(actionPointsUsed?.[countryId] ?? 0).toBe(0);
     const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
-    expect(economy).toMatchObject({ initialBuildingUpkeep: 6, expenses: 6 });
+    expect(economy).toMatchObject({ initialBuildingUpkeep: 21, expenses: 21 });
+  });
+
+  it('uses the live science-centre count for dam unlocks and keeps existing dams when science falls', () => {
+    const cells = [
+      economyCell('science-one', 0, 0, 0, 'science'),
+      economyCell('science-two', 1, 0, 0, 'science'),
+      economyCell('science-three', 2, 0, 0, 'science'),
+      {
+        ...economyCell('empty-a', 4, 2, 1),
+        structureType: null,
+      },
+      economyCell('empty-b', 5, 2, 1),
+    ];
+    const state = createEconomyState(cells);
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 4] = 'w';
+    terrain[1 * 9 + 5] = 'w';
+    state.map = { ...state.map, terrain: terrain.join('') };
+
+    const first = resolve(
+      state,
+      [createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
+        x: 4,
+        y: 2,
+        buildingType: 'dam',
+      })],
+      createRandom().source,
+    );
+    expect(first.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'STRUCTURE_CONSTRUCTED',
+    });
+
+    const secondState = { ...first.nextState, turnNumber: 2 };
+    const second = resolve(
+      secondState,
+      [
+        createOrder('40000000-0000-4000-8000-000000000302', 'demolition', {
+          x: 2,
+          y: 0,
+        }),
+        createOrder('40000000-0000-4000-8000-000000000303', 'construction', {
+          x: 5,
+          y: 2,
+          buildingType: 'dam',
+        }),
+      ],
+      createRandom([], 2).source,
+    );
+
+    expect(second.orderResults.map((item) => item.resultCode)).toEqual([
+      'BUILDING_DEMOLISHED',
+      'SCIENCE_REQUIRED',
+    ]);
+    const country = second.nextState.countries[0];
+    expect(country?.cells.find((cell) => cell.id === 'empty-a')?.structureType).toBe('dam');
+    expect(country?.cells.find((cell) => cell.id === 'empty-b')?.structureType).toBeNull();
+    expect(country?.cells.filter((cell) => cell.buildingType === 'science')).toHaveLength(2);
   });
 
   it('adds only one flood surcharge to a cell that has both a field and a greenhouse', () => {
