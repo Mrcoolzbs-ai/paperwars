@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type {
   DomainEvent,
   OrderEnvelope,
@@ -20,6 +20,7 @@ import {
   type TurnJobLease,
 } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
+import { generateWorldMap } from '@paper-wars/world';
 
 export interface TurnWorkerConfig<
   TState extends Record<string, unknown>,
@@ -77,6 +78,9 @@ interface CampaignRow {
   readonly ruleset_version: string;
   readonly rng_version: string;
   readonly turn_duration_hours: number;
+  readonly map_width: number | null;
+  readonly map_height: number | null;
+  readonly map_seed: string | null;
 }
 
 interface SnapshotRow {
@@ -193,7 +197,8 @@ async function loadTurnInput<
   readonly turnSeed: Buffer;
 }> {
   const campaignResult = await config.pool.query<CampaignRow>(
-    `SELECT status, current_turn, ruleset_version, rng_version, turn_duration_hours
+    `SELECT status, current_turn, ruleset_version, rng_version, turn_duration_hours,
+            map_width, map_height, map_seed
      FROM campaigns WHERE id = $1`,
     [job.campaignId],
   );
@@ -225,7 +230,7 @@ async function loadTurnInput<
     `SELECT id, campaign_id, country_id, turn_number, order_type, schema_version, status, payload
      FROM orders
      WHERE campaign_id = $1 AND turn_number = $2 AND status = 'finalized'
-     ORDER BY id`,
+     ORDER BY created_at, id`,
     [job.campaignId, job.turnNumber],
   );
 
@@ -237,8 +242,78 @@ async function loadTurnInput<
     campaign.rng_version,
   );
 
+  let snapshot = toSnapshot<TState>(job.campaignId, job.turnNumber, snapshotRow);
+  if (campaign.map_width !== null && campaign.map_height !== null) {
+    if (campaign.map_seed === null) {
+      throw new TurnWorkerInvariantError('A configured world map must have a deterministic seed');
+    }
+    const rawStateMap = snapshot.state['map'];
+    const stateMap: Record<string, unknown> = isRecord(rawStateMap) ? rawStateMap : {};
+    const snapshotTerrain = stateMap['terrain'];
+    let terrain: string;
+    if (snapshotTerrain === undefined) {
+      terrain = generateWorldMap(
+        campaign.map_seed,
+        campaign.map_width,
+        campaign.map_height,
+      ).terrain;
+    } else {
+      if (
+        typeof snapshotTerrain !== 'string' ||
+        snapshotTerrain.length !== campaign.map_width * campaign.map_height ||
+        /[^lwr]/.test(snapshotTerrain)
+      ) {
+        throw new TurnWorkerInvariantError(
+          'The persisted world terrain does not match the campaign map dimensions',
+        );
+      }
+      if (stateMap['seed'] !== undefined && stateMap['seed'] !== campaign.map_seed) {
+        throw new TurnWorkerInvariantError(
+          'The persisted world terrain seed does not match the campaign seed',
+        );
+      }
+      terrain = snapshotTerrain;
+    }
+    const discoveryResult = await config.pool.query<{
+      readonly id: string;
+      readonly cell_id: string;
+      readonly x: number;
+      readonly y: number;
+      readonly discovered_by_country_id: string;
+      readonly discovery_type: 'ruins' | 'gold' | 'empty';
+    }>(
+      `SELECT discovery.id, discovery.cell_id, discovery.discovered_by_country_id,
+              cell.x, cell.y, discovery.discovery_type
+       FROM discovery_records AS discovery
+       JOIN cells AS cell
+         ON cell.campaign_id = discovery.campaign_id AND cell.id = discovery.cell_id
+       WHERE discovery.campaign_id = $1
+       ORDER BY cell.y, cell.x`,
+      [job.campaignId],
+    );
+    const hydratedState = {
+      ...snapshot.state,
+      map: {
+        ...stateMap,
+        width: campaign.map_width,
+        height: campaign.map_height,
+        seed: campaign.map_seed,
+        terrain,
+      },
+      discoveredCells: discoveryResult.rows.map((row) => ({
+        id: row.id,
+        cellId: row.cell_id,
+        discoveredByCountryId: row.discovered_by_country_id,
+        x: row.x,
+        y: row.y,
+        type: row.discovery_type,
+      })),
+    } as TState;
+    snapshot = { ...snapshot, state: hydratedState };
+  }
+
   return {
-    snapshot: toSnapshot<TState>(job.campaignId, job.turnNumber, snapshotRow),
+    snapshot,
     orders: toOrders<TPayload>(orderResult.rows),
     campaign,
     turnSeed,
@@ -300,6 +375,187 @@ function assertResolutionReports<TEvent>(
     economicReport: resolution.economicReport,
     battleReports: resolution.battleReports,
   };
+}
+
+function projectionString(payload: Readonly<Record<string, unknown>>, key: string): string {
+  const value = payload[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new TurnWorkerInvariantError(
+      `World event payload field ${key} must be a non-empty string`,
+    );
+  }
+  return value;
+}
+
+function projectionInteger(payload: Readonly<Record<string, unknown>>, key: string): number {
+  const value = payload[key];
+  if (!Number.isSafeInteger(value)) {
+    throw new TurnWorkerInvariantError(`World event payload field ${key} must be an integer`);
+  }
+  return value as number;
+}
+
+async function persistWorldProjectionEvent(
+  client: PoolClient,
+  campaignId: string,
+  turnNumber: number,
+  event: DomainEvent<string, Readonly<Record<string, unknown>>>,
+): Promise<void> {
+  const payload = event.payload;
+  if (event.type === 'territory.colonized') {
+    const cellId = projectionString(payload, 'cellId');
+    const countryId = projectionString(payload, 'countryId');
+    const x = projectionInteger(payload, 'x');
+    const y = projectionInteger(payload, 'y');
+    const population = projectionInteger(payload, 'population');
+    const terrainCode = projectionString(payload, 'terrainCode');
+    if (!['l', 'w', 'r'].includes(terrainCode)) {
+      throw new TurnWorkerInvariantError('A colonized cell contains an unsupported terrain code');
+    }
+    if (population < 0 || (terrainCode === 'l' ? population < 1 : population !== 0)) {
+      throw new TurnWorkerInvariantError(
+        'Population must be positive on land and zero on water or rivers',
+      );
+    }
+
+    const insertedCell = await client.query<{ id: string }>(
+      `INSERT INTO cells (id, campaign_id, x, y)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (campaign_id, x, y) DO NOTHING
+       RETURNING id`,
+      [cellId, campaignId, x, y],
+    );
+    let storedCellId = insertedCell.rows[0]?.id;
+    if (storedCellId === undefined) {
+      const existingCell = await client.query<{ id: string }>(
+        `SELECT id FROM cells
+         WHERE campaign_id = $1 AND x = $2 AND y = $3
+         FOR UPDATE`,
+        [campaignId, x, y],
+      );
+      storedCellId = existingCell.rows[0]?.id;
+    }
+    if (storedCellId !== cellId) {
+      throw new TurnWorkerInvariantError('Colonization cell identity conflicts with the world map');
+    }
+
+    const insertedOwnership = await client.query(
+      `INSERT INTO country_cells (campaign_id, country_id, cell_id, population)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (campaign_id, cell_id) DO NOTHING`,
+      [campaignId, countryId, cellId, population],
+    );
+    if (insertedOwnership.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A colonization event tried to claim an already owned cell',
+      );
+    }
+    return;
+  }
+
+  if (event.type === 'building.constructed') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const buildingType = projectionString(payload, 'buildingType');
+    const population = projectionInteger(payload, 'population');
+    const updated = await client.query(
+      `UPDATE country_cells
+       SET population = $4
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+      [campaignId, countryId, cellId, population],
+    );
+    if (updated.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A construction event references a cell not owned by its country',
+      );
+    }
+    await client.query(
+      `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
+       VALUES ($1, $2, $3, $4)`,
+      [campaignId, countryId, cellId, buildingType],
+    );
+    return;
+  }
+
+  if (event.type === 'discovery.discovered') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const discoveryType = projectionString(payload, 'discoveryType');
+    const roll = projectionInteger(payload, 'd100');
+    const expectedType = roll === 1 ? 'ruins' : roll === 100 ? 'gold' : 'empty';
+    if (
+      !['ruins', 'gold', 'empty'].includes(discoveryType) ||
+      roll < 1 ||
+      roll > 100 ||
+      discoveryType !== expectedType
+    ) {
+      throw new TurnWorkerInvariantError('A discovery event does not match its d100 result');
+    }
+
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO discovery_records (
+         campaign_id, cell_id, discovered_by_country_id, discovered_at_turn, discovery_type
+       ) VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [campaignId, cellId, countryId, turnNumber, discoveryType],
+    );
+    const record = inserted.rows[0];
+    if (record === undefined) {
+      throw new TurnWorkerInvariantError('Discovery record was not created');
+    }
+
+    const history = await client.query<{ id: string }>(
+      `INSERT INTO discovery_history (
+         discovery_id, event_type, actor_country_id, turn_number, payload
+       ) VALUES ($1, 'discovered', $2, $3, $4)
+       RETURNING id`,
+      [record.id, countryId, turnNumber, payload],
+    );
+    const historyId = history.rows[0]?.id;
+    if (historyId === undefined) {
+      throw new TurnWorkerInvariantError('Discovery history event was not created');
+    }
+
+    await client.query(
+      `INSERT INTO discovery_access (
+         discovery_id, country_id, status, granted_at_turn, granted_by_event_id
+       ) VALUES ($1, $2, 'active', $3, $4)`,
+      [record.id, countryId, turnNumber, historyId],
+    );
+    return;
+  }
+
+  if (event.type === 'discovery.captured') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const existing = await client.query<{ id: string; discovered_by_country_id: string }>(
+      `SELECT id, discovered_by_country_id FROM discovery_records
+       WHERE campaign_id = $1 AND cell_id = $2
+       FOR UPDATE`,
+      [campaignId, cellId],
+    );
+    const record = existing.rows[0];
+    if (record === undefined) {
+      throw new TurnWorkerInvariantError('A captured cell has no permanent discovery record');
+    }
+    if (
+      event.visibility !== 'private' ||
+      event.recipientCountryId !== record.discovered_by_country_id
+    ) {
+      throw new TurnWorkerInvariantError(
+        'A captured discovery notice must remain private to its original discoverer',
+      );
+    }
+
+    // Capturing a tile never discloses its discovery or grants the capturing
+    // country access. It only appends the permanent history event.
+    await client.query(
+      `INSERT INTO discovery_history (
+         discovery_id, event_type, actor_country_id, turn_number, payload
+       ) VALUES ($1, 'captured', $2, $3, $4)`,
+      [record.id, countryId, turnNumber, payload],
+    );
+  }
 }
 
 async function persistResolution<
@@ -399,6 +655,10 @@ async function persistResolution<
           event.recipientCountryId ?? null,
         ],
       );
+    }
+
+    for (const event of resolution.events) {
+      await persistWorldProjectionEvent(client, lease.campaignId, lease.turnNumber, event);
     }
 
     for (const draw of resolution.randomDraws) {

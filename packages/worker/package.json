@@ -20,6 +20,7 @@
     "@paper-wars/persistence": "workspace:*",
     "@paper-wars/simulation": "workspace:*",
     "@paper-wars/shared": "workspace:*",
+    "@paper-wars/world": "workspace:*",
     "pg": "^8.23.1"
   },
   "devDependencies": {

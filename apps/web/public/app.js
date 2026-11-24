@@ -13,7 +13,8 @@
     availableSystems: [],
     pending: [],
     countryProfile: null,
-    constructionSelection: null,
+    mapOrders: [],
+    mapContextMenuCell: null,
     turnStatus: null,
     orderResults: [],
     turnRoomLoading: false,
@@ -504,6 +505,8 @@
     state.librarySystems = [];
     state.availableSystems = [];
     state.countryProfile = null;
+    state.mapOrders = [];
+    state.mapContextMenuCell = null;
     state.turnStatus = null;
     state.orderResults = [];
     state.turnRoomLoading = false;
@@ -532,6 +535,9 @@
     await loadSystems();
     if (campaign.countryId) await loadCountryProfile();
     await loadTurnRoom();
+    if (campaign.countryId) {
+      try { await loadMapOrders(); } catch (error) { showToast('Не удалось загрузить приказы карты: ' + error.message, true); }
+    }
     if (!campaign.countryId) {
       const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
       if (reservation) {
@@ -550,6 +556,250 @@
 
   function mapIsLand(x, y) {
     return terrainCodeAt(x, y) === 'l';
+  }
+
+  const mapBuildingOptions = [
+    ['factory', 'Фабрика'],
+    ['field', 'Поле'],
+    ['science', 'Научный центр'],
+    ['religious_building', 'Храм'],
+    ['barracks', 'Казармы'],
+    ['tower', 'Башня'],
+  ];
+
+  function mapOrderCoordinates(order) {
+    const payload = order?.payload;
+    if (!payload || !Number.isSafeInteger(payload.x) || !Number.isSafeInteger(payload.y)) return null;
+    return { x: payload.x, y: payload.y };
+  }
+
+  function mapOrdersAt(x, y) {
+    return state.mapOrders.filter((order) => {
+      const point = mapOrderCoordinates(order);
+      return point?.x === x && point?.y === y;
+    });
+  }
+
+  function mapFreeLandCellsInBox(centerX, centerY) {
+    if (!state.mapView || centerX < 1 || centerY < 1 ||
+        centerX >= state.mapView.width - 1 || centerY >= state.mapView.height - 1) return [];
+    const ownedCoordinates = new Set();
+    for (const country of state.mapView.countries || []) {
+      for (const cell of country.cells) ownedCoordinates.add(cell.x + ',' + cell.y);
+    }
+    const freeLand = [];
+    for (let y = Math.max(0, centerY - 1); y <= Math.min(state.mapView.height - 1, centerY + 1); y += 1) {
+      for (let x = Math.max(0, centerX - 1); x <= Math.min(state.mapView.width - 1, centerX + 1); x += 1) {
+        if (mapIsLand(x, y) && !ownedCoordinates.has(x + ',' + y)) freeLand.push({ x, y });
+      }
+    }
+    return freeLand;
+  }
+
+  function mapActionCount() {
+    return state.mapOrders.filter((order) => order.status !== 'discarded').length;
+  }
+
+  function renderMapOrderSummary() {
+    const summary = $('#map-order-summary');
+    const confirm = $('#confirm-map-orders');
+    if (!summary || !confirm) return;
+    const activeOrders = state.mapOrders.filter((order) => order.status !== 'discarded');
+    const actionCount = activeOrders.length;
+    const remainingActions = Math.max(0, 3 - actionCount);
+    const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
+    const confirmedCount = actionCount - draftCount;
+    summary.hidden = !state.campaign?.countryId;
+    summary.textContent = `ОД: ${actionCount}/3 · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
+    confirm.hidden = !state.campaign?.countryId;
+    confirm.disabled =
+      state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
+    confirm.textContent = state.turnStatus?.ordersConfirmed
+      ? 'Приказы подтверждены'
+      : draftCount > 0
+        ? `Подтвердить приказы (${draftCount})`
+        : 'Подтвердить ход без приказов';
+  }
+
+  async function loadMapOrders() {
+    if (!state.campaign?.countryId) {
+      state.mapOrders = [];
+      renderMapOrderSummary();
+      return;
+    }
+    const campaignId = state.campaign.id;
+    const data = await request('/campaigns/' + encodeURIComponent(campaignId) + '/orders/mine');
+    if (state.campaign?.id !== campaignId) return;
+    state.mapOrders = Array.isArray(data.orders) ? data.orders : [];
+    renderMapOrderSummary();
+    if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
+  }
+
+  async function createMapOrder(type, payload) {
+    if (!state.campaign?.countryId) {
+      showToast('Сначала основай государство.', true);
+      return;
+    }
+    if (state.turnStatus?.ordersAccepting !== true) {
+      showToast('Сейчас приём приказов закрыт.', true);
+      return;
+    }
+    if (mapActionCount() >= 3) {
+      showToast('На этот ход уже использованы все 3 очка действий.', true);
+      return;
+    }
+    const campaignId = state.campaign.id;
+    try {
+      await request('/campaigns/' + encodeURIComponent(campaignId) + '/orders', {
+        method: 'POST',
+        body: JSON.stringify({ type, schemaVersion: 1, payload }),
+      });
+      await loadMapOrders();
+      await loadTurnRoom();
+      closeMapContextMenu();
+      drawMapCanvas($('#map-canvas'), false);
+      showToast(type === 'colonization'
+        ? 'Приказ колонизации добавлен в список.'
+        : 'Приказ строительства добавлен в список.');
+    } catch (error) {
+      showToast(error.message || 'Не удалось сохранить приказ.', true);
+    }
+  }
+
+  async function removeMapOrder(orderId) {
+    if (!state.campaign || !orderId) return;
+    try {
+      await request(
+        '/campaigns/' + encodeURIComponent(state.campaign.id) + '/orders/' + encodeURIComponent(orderId),
+        { method: 'DELETE' },
+      );
+      await loadMapOrders();
+      await loadTurnRoom();
+      closeMapContextMenu();
+      drawMapCanvas($('#map-canvas'), false);
+      showToast('Приказ снят с карты.');
+    } catch (error) {
+      showToast(error.message || 'Не удалось снять приказ.', true);
+    }
+  }
+
+  async function confirmMapOrders() {
+    if (!state.campaign || state.turnStatus?.ordersAccepting !== true) return;
+    const button = $('#confirm-map-orders');
+    button.disabled = true;
+    try {
+      const result = await request(
+        '/campaigns/' + encodeURIComponent(state.campaign.id) + '/orders/confirm',
+        { method: 'POST' },
+      );
+      await loadMapOrders();
+      await loadTurnRoom();
+      showToast(result.turnQueued
+        ? 'Приказы подтверждены. Ход поставлен в очередь на обработку.'
+        : 'Приказы подтверждены. Ожидаем остальных участников.');
+    } catch (error) {
+      showToast(error.message || 'Не удалось подтвердить приказы.', true);
+    } finally {
+      renderMapOrderSummary();
+    }
+  }
+
+  function closeMapContextMenu() {
+    const menu = $('#map-context-menu');
+    if (menu) {
+      menu.classList.add('hidden');
+      menu.replaceChildren();
+    }
+    state.mapContextMenuCell = null;
+  }
+
+  function openMapContextMenu(cell, clientX, clientY) {
+    const menu = $('#map-context-menu');
+    if (!menu || !state.mapView || !cell) return;
+    state.mapContextMenuCell = cell;
+    const ownCountry = (state.mapView.countries || []).find((country) => country.isMine);
+    const ownedCell = ownCountry?.cells.find((item) => item.x === cell.x && item.y === cell.y);
+    const anyCountryOwnsCell = (state.mapView.countries || []).some((country) =>
+      country.cells.some((item) => item.x === cell.x && item.y === cell.y),
+    );
+    const isLand = mapIsLand(cell.x, cell.y);
+    const existingOrders = mapOrdersAt(cell.x, cell.y);
+    const freeLandInBox = mapFreeLandCellsInBox(cell.x, cell.y);
+    const canColonizeRegion = freeLandInBox.length > 0;
+    const actionsRemaining = Math.max(0, 3 - mapActionCount());
+    let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
+    content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
+
+    if (!state.campaign?.countryId) {
+      content += '<button class="map-context-action" type="button" data-map-action="choose-spawn" ' +
+        (isLand ? '' : 'disabled') + '>Выбрать центр основания страны</button>';
+      content += '<small>Для регистрации государства сначала выбери стартовую территорию 5×5.</small>';
+    } else if (existingOrders.length) {
+      content += '<div class="map-context-group"><span>ПРИКАЗЫ НА ЭТОЙ КЛЕТКЕ</span>';
+      content += existingOrders.map((order) =>
+        '<button class="map-context-action map-context-remove" type="button" data-map-action="remove-order" data-order-id="' +
+        escapeHtml(order.id) + '">Снять: ' + escapeHtml(orderTypeLabel(order.type)) + '</button>',
+      ).join('');
+      content += '</div>';
+    } else if (state.turnStatus?.ordersAccepting !== true) {
+      content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
+    } else if (actionsRemaining === 0) {
+      content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
+    } else if (ownedCell) {
+      const canBuild = isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
+      if (canBuild) {
+        content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
+        content += mapBuildingOptions.map(([type, label]) =>
+          '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
+          type + '">' + label + '</button>',
+        ).join('');
+        content += '</div>';
+      } else {
+        content += '<p class="map-context-note">' +
+          (ownedCell.buildingType ? 'На клетке уже стоит здание.' : isLand ? 'На клетке нет свободного жителя.' : 'На воде и реках строить нельзя.') +
+          '</p>';
+      }
+      if (canColonizeRegion) {
+        content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
+        content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
+      }
+    } else if (canColonizeRegion) {
+      content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
+      content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
+    } else if (anyCountryOwnsCell) {
+      content += '<p class="map-context-note">Квадрат 3×3 должен целиком помещаться на карте и содержать свободную клетку суши.</p>';
+    } else {
+      content += '<p class="map-context-note">Квадрат 3×3 должен целиком помещаться на карте и содержать свободную клетку суши.</p>';
+    }
+
+    if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
+      content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
+    }
+    menu.innerHTML = content;
+    menu.classList.remove('hidden');
+    menu.style.left = Math.max(10, Math.min(clientX, window.innerWidth - 300)) + 'px';
+    menu.style.top = Math.max(10, Math.min(clientY, window.innerHeight - 360)) + 'px';
+    menu.querySelectorAll('[data-map-action]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const action = button.dataset.mapAction;
+        if (action === 'close') {
+          closeMapContextMenu();
+        } else if (action === 'choose-spawn') {
+          chooseSpawnCenter(cell.x, cell.y);
+          closeMapContextMenu();
+        } else if (action === 'construction') {
+          await createMapOrder('construction', {
+            x: cell.x,
+            y: cell.y,
+            buildingType: button.dataset.buildingType,
+          });
+        } else if (action === 'colonization') {
+          await createMapOrder('colonization', { x: cell.x, y: cell.y });
+        } else if (action === 'remove-order') {
+          await removeMapOrder(button.dataset.orderId);
+        }
+      });
+    });
   }
 
   async function loadCampaignMap() {
@@ -650,6 +900,28 @@
           drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
         }
       }
+      for (const order of state.mapOrders || []) {
+        const point = mapOrderCoordinates(order);
+        if (!point || point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) continue;
+        const px = left + point.x * cellSize;
+        const py = top + point.y * cellSize;
+        ctx.save();
+        ctx.fillStyle = order.status === 'confirmed' ? '#f1d37c' : '#f19b68';
+        ctx.strokeStyle = '#19231b';
+        ctx.lineWidth = Math.max(1, cellSize * 0.08);
+        ctx.beginPath();
+        ctx.arc(px + cellSize / 2, py + cellSize / 2, Math.max(2, cellSize * 0.34), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        if (cellSize >= 8) {
+          ctx.fillStyle = '#19231b';
+          ctx.font = 'bold ' + Math.max(7, Math.min(11, cellSize * 0.58)) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(order.type === 'colonization' ? 'К' : 'С', px + cellSize / 2, py + cellSize / 2);
+        }
+        ctx.restore();
+      }
     }
     for (const reservation of (state.mapView.reservations || [])) {
       ctx.save();
@@ -681,18 +953,24 @@
     state.mapTransform = null;
     $('#confirm-spawn').disabled = !state.mapSelectedCenter;
     $('#map-selection-label').textContent = state.campaign.countryId
-      ? 'Государство уже основано. Перетаскивай карту и смотри территории игроков.'
+      ? 'Зажми ЛКМ для перемещения. ПКМ по клетке — строительство или колонизация.'
       : existingReservation
         ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
         : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
     $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId));
+    $('#confirm-map-orders').classList.toggle('hidden', !state.campaign.countryId);
+    closeMapContextMenu();
     $('#map-modal').classList.remove('hidden');
-    loadCampaignMap().then(() => {
+    Promise.all([
+      loadCampaignMap(),
+      state.campaign.countryId ? loadMapOrders() : Promise.resolve(),
+    ]).then(() => {
       const reservation = (state.mapView?.reservations || []).find((item) => item.isMine);
       if (reservation && !state.mapSelectedCenter) {
         state.mapSelectedCenter = { x: reservation.centerX, y: reservation.centerY };
         $('#confirm-spawn').disabled = false;
       }
+      renderMapOrderSummary();
       requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
     }).catch((error) => showToast(error.message, true));
     requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
@@ -916,8 +1194,8 @@
     $('#country-intro').classList.remove('hidden');
     $('#country-builder').classList.remove('hidden');
     $('#country-card-host').classList.add('hidden');
-    $('#country-action-panel').classList.add('hidden');
-    state.constructionSelection = null;
+    state.mapOrders = [];
+    closeMapContextMenu();
   }
 
   async function loadCountryProfile() {
@@ -970,6 +1248,7 @@
     if (refreshButton) refreshButton.disabled = state.turnRoomLoading;
 
     const status = state.turnStatus;
+    renderMapOrderSummary();
     if (status) {
       const turnLabel = String(status.currentTurn).padStart(2, '0');
       const headerStatus = status.status === 'completed'
@@ -1117,67 +1396,6 @@
     if(!values?.length)return '<span class="country-culture-empty">Культура не задана</span>';
     return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
   }
-  function renderConstructionGrid() {
-    const host = $('#construction-grid');
-    const submit = $('#construction-submit');
-    if (!host || !state.countryProfile || !state.mapView) return;
-    const country = state.countryProfile;
-    const centerX = country.territory.centerX;
-    const centerY = country.territory.centerY;
-    const mine = state.mapView.countries.find((item) => item.isMine);
-    const ownedCells = mine?.cells || [];
-    host.replaceChildren();
-
-    for (let y = 0; y < 5; y += 1) {
-      for (let x = 0; x < 5; x += 1) {
-        const worldX = centerX - 2 + x;
-        const worldY = centerY - 2 + y;
-        const cell = ownedCells.find((item) => item.x === worldX && item.y === worldY);
-        const dryLand = mapIsLand(worldX, worldY);
-        const occupied = Boolean(cell?.buildingType);
-        const canBuild = Boolean(cell) && dryLand && !occupied && Number(cell?.population || 0) > 0;
-        const selected = state.constructionSelection?.x === x && state.constructionSelection?.y === y;
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'construction-cell' +
-          (selected ? ' selected' : '') +
-          (occupied ? ' occupied' : '') +
-          (!dryLand ? ' water' : '');
-        button.disabled = !canBuild;
-        button.dataset.x = String(x);
-        button.dataset.y = String(y);
-        button.title = occupied
-          ? 'Клетка занята: ' + (buildingMeta[cell.buildingType]?.label || cell.buildingType)
-          : !dryLand ? 'Вода или река — строительство недоступно'
-          : !cell ? 'Клетка не принадлежит государству'
-          : Number(cell.population || 0) < 1 ? 'Нет свободного жителя'
-          : 'Свободная сухопутная клетка';
-        button.textContent = occupied
-          ? (cell.buildingType === 'gold_mine' ? 'З' : buildingMeta[cell.buildingType]?.short || '⌂')
-          : !dryLand ? '≈'
-          : canBuild ? '+'
-          : '·';
-        if (canBuild) {
-          button.addEventListener('click', () => {
-            state.constructionSelection = { x, y };
-            renderConstructionGrid();
-          });
-        }
-        const coordinate = document.createElement('small');
-        coordinate.textContent = x + ',' + y;
-        button.append(coordinate);
-        host.append(button);
-      }
-    }
-
-    const selection = state.constructionSelection;
-    $('#construction-selection').textContent = selection
-      ? 'Выбрана клетка ' + (selection.x + 1) + ':' + (selection.y + 1) +
-        ' · на ней будет размещено новое здание.'
-      : 'Выбери свободную сухопутную клетку.';
-    if (submit) submit.disabled = !selection;
-  }
-
   function renderFoundedCards(country) {
     const faithType = country.officialSystem.type;
     const system = country.officialSystem;
@@ -1295,16 +1513,13 @@
           '</section>' +
         '</div>' +
         '<section class="country-doc-inactive-actions" aria-live="polite">' +
-          '<strong>Доступно строительство зданий</strong>' +
-          '<p>Дополнительные фабрики, поля, научные центры, храмы, казармы и башни можно строить сразу на свободных сухопутных клетках. Каждый объект занимает одного жителя. Остальные действия появятся после реализации соответствующих правил симуляции.</p>' +
+          '<strong>Приказы через глобальную карту</strong>' +
+          '<p>Строительство и колонизация задаются на большой карте: открой её, выбери клетку и вызови контекстное меню.</p>' +
         '</section>' +
         '<footer class="country-doc-footer">Территория 5 × 5 · центр ' +
           (country.territory.centerX ?? '—') + ', ' + (country.territory.centerY ?? '—') +
         '</footer>' +
       '</article>';
-    state.constructionSelection = null;
-    $('#country-action-panel').classList.remove('hidden');
-    renderConstructionGrid();
   }
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
     if (state.principles.length >= 10) {
@@ -1533,6 +1748,8 @@
       await loadCampaignMap();
       await loadCampaigns();
       await loadCountryProfile();
+      await loadTurnRoom();
+      await loadMapOrders();
       activateTab('country');
       buildWorldPreview();
     } catch (error) {
@@ -1732,8 +1949,19 @@
 
     $('#refresh-systems').addEventListener('click', loadSystems);
     $('#open-map').addEventListener('click', openMap);
-    $('#close-map').addEventListener('click', () => $('#map-modal').classList.add('hidden'));
+    $('#close-map').addEventListener('click', () => {
+      closeMapContextMenu();
+      $('#map-modal').classList.add('hidden');
+    });
     $('#confirm-spawn').addEventListener('click', confirmSpawn);
+    $('#confirm-map-orders').addEventListener('click', confirmMapOrders);
+    document.addEventListener('pointerdown', (event) => {
+      const menu = $('#map-context-menu');
+      if (menu && !menu.contains(event.target) && event.target !== $('#map-canvas')) closeMapContextMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeMapContextMenu();
+    });
     window.addEventListener('resize', () => {
       drawMapCanvas($('#world-grid'), true);
       if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
@@ -1757,9 +1985,20 @@
     $('#map-canvas').addEventListener('pointerup', (event) => {
       const drag = state.mapDrag;
       state.mapDrag = null;
-      if (!drag || drag.moved || state.campaign?.countryId) return;
+      if (!drag || drag.moved) return;
       const cell = mapCellAt(event.clientX, event.clientY);
-      if (cell) chooseSpawnCenter(cell.x, cell.y);
+      if (!cell) return;
+      if (state.campaign?.countryId) {
+        if (event.pointerType === 'touch') openMapContextMenu(cell, event.clientX, event.clientY);
+        return;
+      }
+      chooseSpawnCenter(cell.x, cell.y);
+    });
+    $('#map-canvas').addEventListener('contextmenu', (event) => {
+      if (!state.campaign?.countryId) return;
+      event.preventDefault();
+      const cell = mapCellAt(event.clientX, event.clientY);
+      if (cell) openMapContextMenu(cell, event.clientX, event.clientY);
     });
     $('#map-canvas').addEventListener('wheel', (event) => {
       event.preventDefault();
@@ -1795,42 +2034,6 @@
     });
     $('#building-type').addEventListener('change', (event) => { state.selectedBuilding = event.target.value; });
     $('#country-form').addEventListener('submit', submitCountry);
-    $('#construction-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const selection = state.constructionSelection;
-      if (!state.campaign || !selection) return;
-      const submit = $('#construction-submit');
-      submit.disabled = true;
-      setMessage('#construction-message', '');
-      try {
-        const response = await request(
-          '/campaigns/' + encodeURIComponent(state.campaign.id) + '/countries/mine/buildings',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              buildingType: $('#construction-building-type').value,
-              x: selection.x,
-              y: selection.y,
-            }),
-          },
-        );
-        state.constructionSelection = null;
-        await loadCampaignMap();
-        await loadCountryProfile();
-        setMessage(
-          '#construction-message',
-          'Здание построено. Осталось жителей на клетке: ' + response.building.remainingResidents +
-            '. Снимок мира обновлён до версии ' + response.building.snapshotVersion + '.',
-          true,
-        );
-        showToast('Новое здание построено.');
-      } catch (error) {
-        setMessage('#construction-message', error.message || 'Не удалось построить здание.');
-        showToast(error.message || 'Не удалось построить здание.', true);
-      } finally {
-        renderConstructionGrid();
-      }
-    });
     $('#refresh-pending').addEventListener('click', loadPending);
   }
 

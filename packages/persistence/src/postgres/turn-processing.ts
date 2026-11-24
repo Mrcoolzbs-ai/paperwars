@@ -10,6 +10,7 @@ export type CampaignTurnProcessingErrorCode =
   | 'ORDERS_NOT_READY'
   | 'TURN_JOB_ALREADY_EXISTS'
   | 'INVALID_ORDER'
+  | 'ACTION_POINTS_EXHAUSTED'
   | 'COUNTRY_NOT_REGISTERED'
   | 'ORDER_NOT_FOUND'
   | 'ORDER_NOT_EDITABLE'
@@ -658,6 +659,21 @@ export async function createCampaignOrder(
     await client.query('BEGIN');
     transactionOpen = true;
     const context = await lockWritableOrderContext(client, campaignId, userId);
+    const actionCount = await client.query<{ action_count: number }>(
+      `SELECT count(*)::integer AS action_count
+       FROM orders
+       WHERE campaign_id = $1
+         AND country_id = $2
+         AND turn_number = $3
+         AND status IN ('draft', 'unconfirmed', 'confirmed')`,
+      [campaignId, context.countryId, context.turnNumber],
+    );
+    if ((actionCount.rows[0]?.action_count ?? 0) >= 3) {
+      throw new CampaignTurnProcessingError(
+        'ACTION_POINTS_EXHAUSTED',
+        'На этот ход уже использованы все 3 очка действий.',
+      );
+    }
     await withdrawOrderConfirmation(
       client,
       campaignId,

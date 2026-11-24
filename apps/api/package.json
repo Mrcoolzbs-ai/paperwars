@@ -20,7 +20,8 @@
     "fastify": "^4.28.1",
     "@paper-wars/auth": "workspace:*",
     "@paper-wars/persistence": "workspace:*",
-    "@paper-wars/randomness": "workspace:*"
+    "@paper-wars/randomness": "workspace:*",
+    "@paper-wars/worker": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.3"

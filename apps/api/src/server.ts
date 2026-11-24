@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -7,6 +8,11 @@ import {
   createChatService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
+import {
+  createBaselineRuleset,
+  createBaselineTurnResolver,
+  createTurnWorker,
+} from '@paper-wars/worker';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createCountrySetupService, recalculateCountryPopulations } from '@paper-wars/world';
 import { createApp } from './app.js';
@@ -105,15 +111,22 @@ const accessTokens = createAccessTokenSigner({
 
 const persistence = createPostgresPersistence({ connectionString: databaseUrl });
 let app: ReturnType<typeof createApp> | undefined;
+let workerAbortController: AbortController | undefined;
+let workerRunPromise: Promise<void> | undefined;
 let closing = false;
 
 async function shutdown(): Promise<void> {
   if (closing) return;
   closing = true;
+  workerAbortController?.abort();
   try {
-    await app?.close();
+    if (workerRunPromise !== undefined) await workerRunPromise;
   } finally {
-    await persistence.close();
+    try {
+      await app?.close();
+    } finally {
+      await persistence.close();
+    }
   }
 }
 
@@ -162,6 +175,21 @@ try {
   });
 
   await app.listen({ port, host });
+
+  const ruleset = createBaselineRuleset(rulesetVersion, rngVersion);
+  const turnWorker = createTurnWorker({
+    pool: persistence.pool,
+    workerId: `paperwars-api-${process.pid}-${randomUUID()}`,
+    keyProvider: seedKeyProvider,
+    ruleset,
+    resolver: createBaselineTurnResolver(),
+  });
+  workerAbortController = new AbortController();
+  workerRunPromise = turnWorker.run(workerAbortController.signal, {
+    pollIntervalMs: integerEnv('TURN_WORKER_POLL_INTERVAL_MS', 1000),
+    onError: (error) =>
+      app?.log.error({ err: error }, 'Turn worker failed to process a queued turn'),
+  });
 } catch (error) {
   app?.log.error(error);
   await shutdown();

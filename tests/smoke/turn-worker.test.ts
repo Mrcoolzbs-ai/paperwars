@@ -447,6 +447,146 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
+    it('atomically persists a colonized land cell, its d100 discovery and RNG journal entry', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(false);
+      const cellId = randomUUID();
+      const territoryEventId = randomUUID();
+      const discoveryEventId = randomUUID();
+      let expectedD100 = 0;
+      let expectedDiscoveryType = '';
+      try {
+        const resolver: WorkerResolver = ({ snapshot, random }) => {
+          expectedD100 = random.uniform('discovery', 'cell:10:10', 1, 100);
+          expectedDiscoveryType =
+            expectedD100 === 1 ? 'ruins' : expectedD100 === 100 ? 'gold' : 'empty';
+          const territoryEvent: WorkerEvent = {
+            eventId: toId<'EventId'>(territoryEventId),
+            campaignId: snapshot.campaignId,
+            turnNumber: snapshot.turnNumber,
+            type: 'territory.colonized',
+            schemaVersion: 1,
+            payload: {
+              countryId: fixture.countryId,
+              cellId,
+              x: 10,
+              y: 10,
+              terrainCode: 'l',
+              population: 9,
+            },
+            visibility: 'public',
+          };
+          const discoveryEvent: WorkerEvent = {
+            eventId: toId<'EventId'>(discoveryEventId),
+            campaignId: snapshot.campaignId,
+            turnNumber: snapshot.turnNumber,
+            type: 'discovery.discovered',
+            schemaVersion: 1,
+            payload: {
+              countryId: fixture.countryId,
+              cellId,
+              x: 10,
+              y: 10,
+              discoveryType: expectedDiscoveryType,
+              d100: expectedD100,
+            },
+            visibility: 'private',
+            recipientCountryId: toId<'CountryId'>(fixture.countryId),
+          };
+          return {
+            campaignId: snapshot.campaignId,
+            turnNumber: snapshot.turnNumber,
+            sourceSnapshotVersion: snapshot.version,
+            nextState: { value: snapshot.state.value + 1 },
+            orderResults: [],
+            events: [territoryEvent, discoveryEvent],
+            economicReport: { residentsAdded: 9 },
+            battleReports: [],
+            campaignEnded: false,
+          };
+        };
+        const worker = createTurnWorker({
+          pool,
+          workerId: 'worker-test-colonization',
+          keyProvider,
+          ruleset,
+          resolver,
+        });
+
+        await expect(worker.processNext()).resolves.toMatchObject({ status: 'completed' });
+
+        const ownership = await pool.query<{ population: number }>(
+          'SELECT population FROM country_cells WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
+          [fixture.campaignId, fixture.countryId, cellId],
+        );
+        const discovery = await pool.query<{
+          id: string;
+          discovery_type: string;
+          discovered_by_country_id: string;
+        }>(
+          'SELECT id, discovery_type, discovered_by_country_id FROM discovery_records WHERE campaign_id = $1 AND cell_id = $2',
+          [fixture.campaignId, cellId],
+        );
+        const history = await pool.query<{ event_type: string }>(
+          'SELECT event_type FROM discovery_history WHERE discovery_id = $1',
+          [discovery.rows[0]?.id],
+        );
+        const access = await pool.query<{ status: string; country_id: string }>(
+          'SELECT status, country_id FROM discovery_access WHERE discovery_id = $1',
+          [discovery.rows[0]?.id],
+        );
+        const draw = await pool.query<{ domain: string; draw_id: string; value: number }>(
+          `SELECT domain, draw_id, value::integer AS value
+             FROM random_draws WHERE campaign_id = $1 AND turn_number = 1`,
+          [fixture.campaignId],
+        );
+        const gameEvents = await pool.query<{
+          visibility: string;
+          recipient_country_id: string | null;
+        }>(
+          'SELECT visibility, recipient_country_id FROM game_events WHERE campaign_id = $1 AND turn_number = 1 ORDER BY event_type',
+          [fixture.campaignId],
+        );
+
+        expect(ownership.rows[0]?.population).toBe(9);
+        expect(discovery.rows[0]).toMatchObject({
+          discovery_type: expectedDiscoveryType,
+          discovered_by_country_id: fixture.countryId,
+        });
+        expect(history.rows.map((row) => row.event_type)).toEqual(['discovered']);
+        expect(access.rows).toEqual([{ status: 'active', country_id: fixture.countryId }]);
+        expect(draw.rows).toHaveLength(1);
+        expect(draw.rows[0]).toMatchObject({
+          domain: 'discovery',
+          draw_id: 'cell:10:10',
+          value: expectedD100,
+        });
+        expect(gameEvents.rows).toContainEqual({
+          visibility: 'private',
+          recipient_country_id: fixture.countryId,
+        });
+      } finally {
+        await pool.query(
+          `DELETE FROM discovery_access
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [fixture.campaignId],
+        );
+        await pool.query(
+          `DELETE FROM discovery_history
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [fixture.campaignId],
+        );
+        await pool.query('DELETE FROM discovery_records WHERE campaign_id = $1', [
+          fixture.campaignId,
+        ]);
+        await removeFixture(fixture);
+      }
+    });
+
     it('rolls back every result write when an event conflicts after the next snapshot insert', async () => {
       const pool = getPool();
       const fixture = await createFixture(true);

@@ -748,5 +748,58 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         await removeFixture(fixture);
       }
     });
+
+    it('limits each player to three actions and frees removed slots', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(2);
+      try {
+        const firstOrders = [];
+        for (let index = 0; index < 3; index += 1) {
+          firstOrders.push(
+            await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+              type: 'colonization',
+              payload: { x: index + 1, y: 2 },
+            }),
+          );
+        }
+
+        await expect(
+          createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+            type: 'construction',
+            payload: { x: 1, y: 1, buildingType: 'field' },
+          }),
+        ).rejects.toMatchObject({ code: 'ACTION_POINTS_EXHAUSTED' });
+
+        const secondPlayerOrders = [];
+        for (let index = 0; index < 3; index += 1) {
+          secondPlayerOrders.push(
+            await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[1]!, {
+              type: 'colonization',
+              payload: { x: index + 4, y: 2 },
+            }),
+          );
+        }
+        expect(secondPlayerOrders).toHaveLength(3);
+
+        await deleteCampaignOrder(
+          pool,
+          fixture.campaignId,
+          fixture.userIds[0]!,
+          firstOrders[0]!.id,
+        );
+        const replacement = await createCampaignOrder(
+          pool,
+          fixture.campaignId,
+          fixture.userIds[0]!,
+          {
+            type: 'construction',
+            payload: { x: 1, y: 1, buildingType: 'field' },
+          },
+        );
+        expect(replacement.status).toBe('draft');
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
   },
 );
