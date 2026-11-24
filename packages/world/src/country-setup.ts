@@ -648,10 +648,9 @@ async function buildSnapshot(
 }
 
 /**
- * Corrects legacy turn-one population data from the territory occupancy rule.
- * Every empty owned cell contributes one resident, regardless of terrain. Turn-one
- * snapshots are rebuilt from the corrected relational state so the API and
- * simulation agree. Campaigns whose first turn has already been queued are untouched.
+ * Corrects legacy turn-one population from the territory occupancy rule: every
+ * empty owned cell contributes one resident, regardless of terrain. Rebuilds the
+ * turn-one snapshot so the API and simulation agree. Leaves queued turns untouched.
  */
 export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
   const campaigns = await pool.query<{ readonly id: string }>(
