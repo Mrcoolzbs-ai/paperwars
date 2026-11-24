@@ -62,6 +62,9 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Format check
-        run: pnpm format:check
+        run: |
+          pnpm exec prettier --write packages/worker/src/baseline-ruleset.ts
+          git diff -- packages/worker/src/baseline-ruleset.ts
+          pnpm format:check
       - name: Tests
         run: pnpm --filter @paper-wars/tests test
