@@ -2070,7 +2070,7 @@
         const countryBorderTop = top + minY * cellSize;
         ctx.strokeStyle = territory.type === 'core' ? '#050505' : '#253b55';
         ctx.lineWidth = territory.type === 'core' ? 3 : 2.2;
-        ctx.setLineDash(territory.type === 'core' ? [] : [Math.max(3, cellSize * 0.28), Math.max(2, cellSize * 0.16)]);
+        ctx.setLineDash([]);
         ctx.strokeRect(
           left + minX * cellSize + 1,
           countryBorderTop + 1,
