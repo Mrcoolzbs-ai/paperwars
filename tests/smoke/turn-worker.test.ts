@@ -566,6 +566,23 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           recipient_country_id: fixture.countryId,
         });
       } finally {
+        await pool.query(
+          `DELETE FROM discovery_access
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [fixture.campaignId],
+        );
+        await pool.query(
+          `DELETE FROM discovery_history
+           WHERE discovery_id IN (
+             SELECT id FROM discovery_records WHERE campaign_id = $1
+           )`,
+          [fixture.campaignId],
+        );
+        await pool.query('DELETE FROM discovery_records WHERE campaign_id = $1', [
+          fixture.campaignId,
+        ]);
         await removeFixture(fixture);
       }
     });
