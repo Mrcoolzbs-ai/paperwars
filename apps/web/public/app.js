@@ -284,17 +284,72 @@
     element.classList.toggle('success', success);
   }
 
+  const VK_ID_SDK_SOURCES = [
+    'https://unpkg.com/@vkid/sdk@2.6.1/dist-sdk/umd/index.js',
+    'https://cdn.jsdelivr.net/npm/@vkid/sdk@2.6.1/dist-sdk/umd/index.js',
+  ];
+  let vkIdSdkPromise = null;
+
+  function loadVkIdSdkScript(source) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      let settled = false;
+      const timeoutId = window.setTimeout(() => {
+        script.remove();
+        finish(reject, new Error('VK ID SDK loading timed out.'));
+      }, 12000);
+
+      function finish(callback, value) {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
+        callback(value);
+      }
+
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.src = source;
+      script.onload = () => {
+        if (window.VKIDSDK) {
+          finish(resolve, window.VKIDSDK);
+        } else {
+          finish(reject, new Error('VK ID SDK loaded without exposing its browser API.'));
+        }
+      };
+      script.onerror = () => {
+        script.remove();
+        finish(reject, new Error('VK ID SDK source could not be loaded.'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  function loadVkIdSdk() {
+    if (window.VKIDSDK) return Promise.resolve(window.VKIDSDK);
+    if (vkIdSdkPromise) return vkIdSdkPromise;
+
+    vkIdSdkPromise = (async () => {
+      let lastError;
+      for (const source of VK_ID_SDK_SOURCES) {
+        try {
+          return await loadVkIdSdkScript(source);
+        } catch (error) {
+          lastError = error;
+          console.warn('VK ID SDK source unavailable; trying the next CDN.', source, error);
+        }
+      }
+      vkIdSdkPromise = null;
+      throw new Error('Не удалось загрузить библиотеку VK ID с двух CDN.');
+    })();
+    return vkIdSdkPromise;
+  }
+
   async function initVkOneTap() {
     const container = $('#vk-one-tap');
     if (!container) return;
 
-    const sdk = window.VKIDSDK;
-    if (!sdk) {
-      setMessage('#vk-one-tap-message', 'Быстрый вход не загрузился. Используй обычный вход через VK ID ниже.');
-      return;
-    }
-
     try {
+      const sdk = await loadVkIdSdk();
       const config = await request('/auth/vk/one-tap-config', { method: 'POST' });
       if (
         !config ||
@@ -323,7 +378,10 @@
         });
     } catch (error) {
       console.error('VK ID One Tap initialization failed', error);
-      setMessage('#vk-one-tap-message', error.message || 'Не удалось подготовить быстрый вход VK ID.');
+      setMessage(
+        '#vk-one-tap-message',
+        error.message || 'Не удалось подготовить быстрый вход VK ID. Используй обычную кнопку ниже.',
+      );
     }
   }
 
