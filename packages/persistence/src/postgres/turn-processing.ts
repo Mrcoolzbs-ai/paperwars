@@ -379,7 +379,11 @@ export async function confirmCampaignOrders(
  * campaign_memberships/orders. All deadline checks use PostgreSQL
  * clock_timestamp(), never the application host clock.
  */
-export async function closeOrders(pool: Pool, campaignId: string): Promise<ClosedTurnJob> {
+export async function closeOrders(
+  pool: Pool,
+  campaignId: string,
+  force = false,
+): Promise<ClosedTurnJob> {
   const client = await pool.connect();
   let transactionOpen = false;
 
@@ -457,7 +461,7 @@ export async function closeOrders(pool: Pool, campaignId: string): Promise<Close
       [campaignId],
     );
     const deadlineElapsed = deadlineResult.rows[0]?.deadline_elapsed ?? false;
-    if (!allMembersConfirmed && !deadlineElapsed) {
+    if (!force && !allMembersConfirmed && !deadlineElapsed) {
       throw new CampaignTurnProcessingError(
         'ORDERS_NOT_READY',
         'All active participants must confirm orders or the turn deadline must pass',
@@ -659,20 +663,26 @@ export async function createCampaignOrder(
     await client.query('BEGIN');
     transactionOpen = true;
     const context = await lockWritableOrderContext(client, campaignId, userId);
-    const actionCount = await client.query<{ action_count: number }>(
-      `SELECT count(*)::integer AS action_count
-       FROM orders
-       WHERE campaign_id = $1
-         AND country_id = $2
-         AND turn_number = $3
-         AND status IN ('draft', 'unconfirmed', 'confirmed')`,
-      [campaignId, context.countryId, context.turnNumber],
+    const adminRole = await client.query(
+      'SELECT 1 FROM user_admins WHERE user_id = $1',
+      [userId],
     );
-    if ((actionCount.rows[0]?.action_count ?? 0) >= 3) {
-      throw new CampaignTurnProcessingError(
-        'ACTION_POINTS_EXHAUSTED',
-        'На этот ход уже использованы все 3 очка действий.',
+    if (adminRole.rows.length === 0) {
+      const actionCount = await client.query<{ action_count: number }>(
+        `SELECT count(*)::integer AS action_count
+         FROM orders
+         WHERE campaign_id = $1
+           AND country_id = $2
+           AND turn_number = $3
+           AND status IN ('draft', 'unconfirmed', 'confirmed')`,
+        [campaignId, context.countryId, context.turnNumber],
       );
+      if ((actionCount.rows[0]?.action_count ?? 0) >= 3) {
+        throw new CampaignTurnProcessingError(
+          'ACTION_POINTS_EXHAUSTED',
+          'На этот ход уже использованы все 3 очка действий.',
+        );
+      }
     }
     await withdrawOrderConfirmation(
       client,
