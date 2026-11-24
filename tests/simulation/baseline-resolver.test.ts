@@ -123,6 +123,22 @@ describe('baseline turn resolver', () => {
     expect(random.calls).toHaveLength(1);
   });
 
+  it('rejects a colony box that would extend beyond the map edge', () => {
+    const random = createRandom();
+    const result = resolve(
+      createState('l'.repeat(25)),
+      [createOrder('40000000-0000-4000-8000-000000000009', 'colonization', { x: 0, y: 2 })],
+      random.source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_OUT_OF_BOUNDS',
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(0);
+    expect(random.calls).toHaveLength(0);
+  });
+
   it('rejects a square with no free land and makes no random draws', () => {
     const random = createRandom();
     const result = resolve(createState('w'.repeat(25)), [createOrder('40000000-0000-4000-8000-000000000006')], random.source);
