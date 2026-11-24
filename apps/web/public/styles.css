@@ -1122,3 +1122,16 @@ body.chat-modal-open {
     font-size: 7px;
   }
 }
+
+@media(max-width:650px) {
+  .topbar-right {
+    gap: 7px;
+  }
+  .topbar-right .button {
+    padding: 7px 9px;
+    font-size: 9px;
+  }
+  .user-label {
+    display: none;
+  }
+}
