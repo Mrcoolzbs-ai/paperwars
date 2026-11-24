@@ -53,6 +53,8 @@ export interface CountryEconomyView {
   readonly buildingUpkeep: number;
   readonly unitCount: number;
   readonly unitUpkeep: number;
+  readonly budgetDeficit: boolean;
+  readonly unitMovementAllowed: boolean;
   readonly expenses: number;
   readonly unpaidExpenses: number;
   readonly disabledBuildings: readonly {
