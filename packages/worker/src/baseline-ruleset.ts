@@ -143,19 +143,8 @@ function adjacentToWater(
   width: number,
   height: number,
 ): boolean {
-  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-      if (offsetX === 0 && offsetY === 0) continue;
-      const nextX = x + offsetX;
-      const nextY = y + offsetY;
-      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
-        return true;
-      }
-    }
-  }
-  return false;
+  return adjacentWaterCount(x, y, terrain, width, height) > 0;
 }
-
 function adjacentWaterCount(
   x: number,
   y: number,
