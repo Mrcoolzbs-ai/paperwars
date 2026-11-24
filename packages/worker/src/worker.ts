@@ -252,17 +252,25 @@ async function loadTurnInput<
     const snapshotTerrain = stateMap['terrain'];
     let terrain: string;
     if (snapshotTerrain === undefined) {
-      terrain = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height).terrain;
+      terrain = generateWorldMap(
+        campaign.map_seed,
+        campaign.map_width,
+        campaign.map_height,
+      ).terrain;
     } else {
       if (
         typeof snapshotTerrain !== 'string' ||
         snapshotTerrain.length !== campaign.map_width * campaign.map_height ||
         /[^lwr]/.test(snapshotTerrain)
       ) {
-        throw new TurnWorkerInvariantError('The persisted world terrain does not match the campaign map dimensions');
+        throw new TurnWorkerInvariantError(
+          'The persisted world terrain does not match the campaign map dimensions',
+        );
       }
       if (stateMap['seed'] !== undefined && stateMap['seed'] !== campaign.map_seed) {
-        throw new TurnWorkerInvariantError('The persisted world terrain seed does not match the campaign seed');
+        throw new TurnWorkerInvariantError(
+          'The persisted world terrain seed does not match the campaign seed',
+        );
       }
       terrain = snapshotTerrain;
     }
@@ -372,7 +380,9 @@ function assertResolutionReports<TEvent>(
 function projectionString(payload: Readonly<Record<string, unknown>>, key: string): string {
   const value = payload[key];
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new TurnWorkerInvariantError(`World event payload field ${key} must be a non-empty string`);
+    throw new TurnWorkerInvariantError(
+      `World event payload field ${key} must be a non-empty string`,
+    );
   }
   return value;
 }
@@ -403,7 +413,9 @@ async function persistWorldProjectionEvent(
       throw new TurnWorkerInvariantError('A colonized cell contains an unsupported terrain code');
     }
     if (population < 0 || (terrainCode === 'l' ? population < 1 : population !== 0)) {
-      throw new TurnWorkerInvariantError('Population must be positive on land and zero on water or rivers');
+      throw new TurnWorkerInvariantError(
+        'Population must be positive on land and zero on water or rivers',
+      );
     }
 
     const insertedCell = await client.query<{ id: string }>(
@@ -434,7 +446,9 @@ async function persistWorldProjectionEvent(
       [campaignId, countryId, cellId, population],
     );
     if (insertedOwnership.rowCount !== 1) {
-      throw new TurnWorkerInvariantError('A colonization event tried to claim an already owned cell');
+      throw new TurnWorkerInvariantError(
+        'A colonization event tried to claim an already owned cell',
+      );
     }
     return;
   }
@@ -451,7 +465,9 @@ async function persistWorldProjectionEvent(
       [campaignId, countryId, cellId, population],
     );
     if (updated.rowCount !== 1) {
-      throw new TurnWorkerInvariantError('A construction event references a cell not owned by its country');
+      throw new TurnWorkerInvariantError(
+        'A construction event references a cell not owned by its country',
+      );
     }
     await client.query(
       `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
@@ -484,7 +500,9 @@ async function persistWorldProjectionEvent(
       [campaignId, cellId, countryId, turnNumber, discoveryType],
     );
     const record = inserted.rows[0];
-    if (record === undefined) throw new TurnWorkerInvariantError('Discovery record was not created');
+    if (record === undefined) {
+      throw new TurnWorkerInvariantError('Discovery record was not created');
+    }
 
     const history = await client.query<{ id: string }>(
       `INSERT INTO discovery_history (
@@ -494,7 +512,9 @@ async function persistWorldProjectionEvent(
       [record.id, countryId, turnNumber, payload],
     );
     const historyId = history.rows[0]?.id;
-    if (historyId === undefined) throw new TurnWorkerInvariantError('Discovery history event was not created');
+    if (historyId === undefined) {
+      throw new TurnWorkerInvariantError('Discovery history event was not created');
+    }
 
     await client.query(
       `INSERT INTO discovery_access (
@@ -522,7 +542,9 @@ async function persistWorldProjectionEvent(
       event.visibility !== 'private' ||
       event.recipientCountryId !== record.discovered_by_country_id
     ) {
-      throw new TurnWorkerInvariantError('A captured discovery notice must remain private to its original discoverer');
+      throw new TurnWorkerInvariantError(
+        'A captured discovery notice must remain private to its original discoverer',
+      );
     }
 
     // Capturing a tile never discloses its discovery or grants the capturing
