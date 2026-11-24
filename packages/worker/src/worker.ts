@@ -247,7 +247,8 @@ async function loadTurnInput<
     if (campaign.map_seed === null) {
       throw new TurnWorkerInvariantError('A configured world map must have a deterministic seed');
     }
-    const stateMap = isRecord(snapshot.state['map']) ? snapshot.state['map'] : {};
+    const rawStateMap = snapshot.state['map'];
+    const stateMap: Record<string, unknown> = isRecord(rawStateMap) ? rawStateMap : {};
     const snapshotTerrain = stateMap['terrain'];
     let terrain: string;
     if (snapshotTerrain === undefined) {
