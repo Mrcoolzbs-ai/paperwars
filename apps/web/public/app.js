@@ -512,7 +512,7 @@
     const mute = document.createElement('button');
     mute.type = 'button';
     mute.className = 'chat-room-mute';
-    mute.textContent = muted ? '♩' : '♬';
+    mute.textContent = muted ? '🔕' : '🔔';
     mute.title = muted ? 'Включить уведомления для этого чата' : 'Отключить уведомления для этого чата';
     mute.setAttribute('aria-label', mute.title);
     mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
@@ -1061,7 +1061,7 @@
   }
 
   async function loadAdminCountryCard(countryId) {
-    const campaignId = adminSelectedCampaignId();
+    const campaignId = state.campaign?.id;
     if (!campaignId || !countryId) return;
     const host = $('#admin-country-card');
     host.textContent = 'Загрузка карточки государства…';
@@ -1218,7 +1218,7 @@
   }
 
   async function adminDeleteBuilding(x, y) {
-    const campaignId = adminSelectedCampaignId();
+    const campaignId = state.campaign?.id;
     if (!campaignId) return;
     try {
       await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/buildings', {
@@ -1235,7 +1235,7 @@
   }
 
   async function adminDeleteColony(territoryId) {
-    const campaignId = adminSelectedCampaignId();
+    const campaignId = state.campaign?.id;
     if (!campaignId || !territoryId) return;
     try {
       await request(
