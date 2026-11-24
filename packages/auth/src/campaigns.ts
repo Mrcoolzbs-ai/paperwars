@@ -379,7 +379,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           target.map_height === null
         ) {
           throw new AuthValidationError(
-            'Кампания уже начала первый ход и больше не принимает новых игроков. Подключиться можно до завершения основания государств.',
+            'Кампания уже начала первый ход и больше не принимает новых игроков. ' +
+              'Подключиться можно до завершения основания государств.',
           );
         }
         if (existing.rows[0]?.status !== 'active') {
@@ -390,7 +391,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           );
           const maxPlayers = Math.floor((target.map_width * target.map_height) / 100);
           if ((playerCount.rows[0]?.count ?? 0) >= maxPlayers) {
-            throw new AuthValidationError('В кампании закончились свободные места (' + maxPlayers + ').');
+            throw new AuthValidationError(
+              'В кампании закончились свободные места (' + maxPlayers + ').',
+            );
           }
         }
         await client.query(
