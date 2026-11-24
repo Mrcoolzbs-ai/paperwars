@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createAccessTokenSigner,
+  createAdminService,
   createAuthService,
   createCampaignService,
   hashPassword,
@@ -9,6 +10,7 @@ import {
 import { createApp } from '@paper-wars/api';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
+import { createCountrySetupService } from '@paper-wars/world';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
@@ -63,12 +65,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             rulesetVersion: 'baseline-v1',
             rngVersion: 'rng-v1',
           });
+    const admin =
+      persistence === undefined
+        ? undefined
+        : createAdminService({ pool: persistence.pool, adminCode: 'paper-wars-test-super-code' });
+    const countrySetup =
+      persistence === undefined ? undefined : createCountrySetupService({ pool: persistence.pool });
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
       secureCookies: false,
       ...(auth === undefined ? {} : { authService: auth }),
       ...(campaigns === undefined ? {} : { campaignService: campaigns }),
+      ...(admin === undefined ? {} : { adminService: admin }),
+      ...(countrySetup === undefined ? {} : { countrySetupService: countrySetup }),
     });
 
     beforeAll(async () => {
@@ -369,6 +379,144 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(refreshed.statusCode).toBe(200);
       expect(refreshed.headers['set-cookie']).toContain('HttpOnly');
       expect(refreshed.body).not.toContain('refreshToken');
+    });
+
+    it('grants and revokes the protected super-admin mode without exposing the server code', async () => {
+      const email = `super-admin-${randomUUID()}@example.test`;
+      const password = 'an api integration test password';
+      await createBackupAccount(persistence!.pool, email, password);
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const { accessToken } = login.json<{ accessToken: string }>();
+      const headers = { authorization: `Bearer ${accessToken}` };
+
+      const deniedBeforeGrant = await app.inject({
+        method: 'GET',
+        url: '/admin/users',
+        headers,
+      });
+      expect(deniedBeforeGrant.statusCode).toBe(403);
+
+      const grant = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-code',
+        headers,
+        payload: { code: 'paper-wars-test-super-code' },
+      });
+      expect(grant.statusCode).toBe(200);
+      expect(grant.json()).toEqual({ isAdmin: true });
+      expect(grant.body).not.toContain('paper-wars-test-super-code');
+
+      const profile = await app.inject({
+        method: 'GET',
+        url: '/auth/profile',
+        headers,
+      });
+      expect(profile.statusCode).toBe(200);
+      expect(profile.json<{ profile: { isAdmin: boolean; adminModeEnabled: boolean } }>().profile)
+        .toMatchObject({ isAdmin: true, adminModeEnabled: true });
+
+      const campaignsResponse = await app.inject({
+        method: 'GET',
+        url: '/admin/campaigns',
+        headers,
+      });
+      expect(campaignsResponse.statusCode).toBe(200);
+      expect(campaignsResponse.json<{ campaigns: unknown[] }>().campaigns).toBeInstanceOf(Array);
+
+      const usersResponse = await app.inject({
+        method: 'GET',
+        url: '/admin/users',
+        headers,
+      });
+      expect(usersResponse.statusCode).toBe(200);
+      expect(
+        usersResponse.json<{ users: Array<{ id: string }> }>().users,
+      ).toContainEqual(expect.objectContaining({
+        id: login.json<{ user: { id: string } }>().user.id,
+      }));
+
+      const disabled = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-mode',
+        headers,
+        payload: { enabled: false },
+      });
+      expect(disabled.statusCode).toBe(200);
+      expect(disabled.json()).toEqual({ enabled: false });
+
+      const profileWhileDisabled = await app.inject({
+        method: 'GET',
+        url: '/auth/profile',
+        headers,
+      });
+      expect(
+        profileWhileDisabled.json<{ profile: { isAdmin: boolean; adminModeEnabled: boolean } }>()
+          .profile,
+      ).toMatchObject({ isAdmin: true, adminModeEnabled: false });
+
+      const deniedWhileDisabled = await app.inject({
+        method: 'GET',
+        url: '/admin/users',
+        headers,
+      });
+      expect(deniedWhileDisabled.statusCode).toBe(403);
+
+      const enabled = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-mode',
+        headers,
+        payload: { enabled: true },
+      });
+      expect(enabled.statusCode).toBe(200);
+      expect(enabled.json()).toEqual({ enabled: true });
+    });
+
+    it('rate limits failed super-code attempts per user account', async () => {
+      const email = `wrong-super-code-${randomUUID()}@example.test`;
+      const password = 'an api integration test password';
+      await createBackupAccount(persistence!.pool, email, password);
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const { accessToken } = login.json<{ accessToken: string }>();
+      const headers = { authorization: `Bearer ${accessToken}` };
+
+      for (let attempt = 1; attempt <= 4; attempt += 1) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/auth/admin-code',
+          headers,
+          payload: { code: 'incorrect-super-code' },
+        });
+        expect(response.statusCode).toBe(400);
+        expect(response.json<{ message: string }>().message).toBe('Неверный супер-код.');
+      }
+
+      const fifthAttempt = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-code',
+        headers,
+        payload: { code: 'incorrect-super-code' },
+      });
+      expect(fifthAttempt.statusCode).toBe(429);
+      expect(fifthAttempt.json<{ message: string }>().message)
+        .toBe('Слишком много неверных попыток. Повторите через 15 минут.');
+
+      const blockedAttempt = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-code',
+        headers,
+        payload: { code: 'paper-wars-test-super-code' },
+      });
+      expect(blockedAttempt.statusCode).toBe(429);
     });
 
     it('rejects unauthenticated campaign requests and malformed refresh cookies', async () => {
