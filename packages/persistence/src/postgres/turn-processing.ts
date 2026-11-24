@@ -543,6 +543,51 @@ export async function closeOrders(
 }
 
 /**
+ * Closes order windows whose server-side deadline has elapsed.
+ *
+ * The worker calls this before claiming jobs, so expired turns cannot remain
+ * stuck forever waiting for a participant to click a confirmation button.
+ */
+export async function closeExpiredOrderWindows(
+  pool: Pool,
+  limit = 25,
+): Promise<ClosedTurnJob[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError('limit must be an integer between 1 and 100');
+  }
+
+  const expired = await pool.query<{ id: string }>(
+    `SELECT id
+     FROM campaigns
+     WHERE status = 'active'
+       AND orders_locked = FALSE
+       AND deadline_at IS NOT NULL
+       AND deadline_at <= clock_timestamp()
+     ORDER BY deadline_at, id
+     LIMIT $1`,
+    [limit],
+  );
+
+  const closed: ClosedTurnJob[] = [];
+  for (const campaign of expired.rows) {
+    try {
+      closed.push(await closeOrders(pool, campaign.id));
+    } catch (error) {
+      if (
+        error instanceof CampaignTurnProcessingError &&
+        (error.code === 'ORDERS_ALREADY_LOCKED' ||
+          error.code === 'TURN_JOB_ALREADY_EXISTS' ||
+          error.code === 'CAMPAIGN_NOT_ACTIVE')
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  return closed;
+}
+
+/**
  * Rolls back the most recently completed turn and reconstructs the relational
  * world projection from the source snapshot. The original random seed is kept
  * committed so the same turn can be played again.
