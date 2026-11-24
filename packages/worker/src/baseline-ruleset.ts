@@ -1049,7 +1049,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           const supply = getCountrySupply(
             country,
-            currentPopulation + landCandidates.length,
+            currentPopulation + candidates.length,
             new Set(),
             seasonInfo.season,
             terrain,
@@ -1097,7 +1097,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           const cellId =
             previousDiscovery?.cellId ??
             stableUuid(`paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`);
-          const population = isLand ? 1 : 0;
+          const population = 1;
           country.cells = [
             ...country.cells,
             {
@@ -1112,7 +1112,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           ];
           ownership.set(key, country.id);
           colonizedCells += 1;
-          if (isLand) residentsAdded += population;
+          residentsAdded += population;
 
           emit(order.id, country.id, 'territory.colonized', {
             orderId: order.id,
