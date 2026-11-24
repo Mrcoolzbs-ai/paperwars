@@ -85,9 +85,12 @@ describe('browser client', () => {
         script.body.indexOf('function renderFoundedCards'),
       ),
     );
-    expect(mapRenderer).toContain("ctx.fillText('З'");
-    expect(mapRenderer).not.toContain('strokeRect');
+    expect(mapRenderer).toContain('img.src = meta.asset ||');
+    expect(mapRenderer).toContain('ctx.drawImage(cached.img');
+    expect(mapRenderer).toContain('ctx.fillText(marker');
     expect(mapRenderer).not.toContain("'#302700'");
+    expect(script.body).toContain("ctx.strokeStyle = '#2a9b4a'");
+    expect(script.body).toContain('strokeRect(px + cellSize * 0.08');
     expect(script.body).toContain('countryLabelX');
     expect(script.body).toContain('countryBorderTop - 4');
     expect(countryCardRenderer).toContain("['♟', 'Люди'");
@@ -99,9 +102,9 @@ describe('browser client', () => {
     expect(script.body).toContain('Сессия активна, но список кампаний не загрузился');
     expect(script.body).toContain('Авторизация прошла успешно, но список кампаний не загрузился');
     expect(script.body).toContain('Building symbols are rendered after country labels');
-    expect(script.body).toContain("ctx.fillText('З'");
+    expect(script.body).not.toContain("ctx.fillText('З'");
     expect(script.body).toContain('Эффект: ');
-    expect(countryCardRenderer).toContain('Приказы через глобальную карту');
+    expect(countryCardRenderer).not.toContain('Приказы через глобальную карту');
     expect(script.body).toContain("addEventListener('contextmenu'");
     expect(script.body).toContain("createMapOrder('construction'");
     expect(script.body).toContain("createMapOrder('colonization'");
