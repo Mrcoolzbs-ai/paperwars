@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type {
   DomainEvent,
   OrderEnvelope,
@@ -20,6 +20,7 @@ import {
   type TurnJobLease,
 } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
+import { generateWorldMap } from '@paper-wars/world';
 
 export interface TurnWorkerConfig<
   TState extends Record<string, unknown>,
@@ -77,6 +78,9 @@ interface CampaignRow {
   readonly ruleset_version: string;
   readonly rng_version: string;
   readonly turn_duration_hours: number;
+  readonly map_width: number | null;
+  readonly map_height: number | null;
+  readonly map_seed: string | null;
 }
 
 interface SnapshotRow {
@@ -193,7 +197,8 @@ async function loadTurnInput<
   readonly turnSeed: Buffer;
 }> {
   const campaignResult = await config.pool.query<CampaignRow>(
-    `SELECT status, current_turn, ruleset_version, rng_version, turn_duration_hours
+    `SELECT status, current_turn, ruleset_version, rng_version, turn_duration_hours,
+            map_width, map_height, map_seed
      FROM campaigns WHERE id = $1`,
     [job.campaignId],
   );
@@ -237,8 +242,50 @@ async function loadTurnInput<
     campaign.rng_version,
   );
 
+  let snapshot = toSnapshot<TState>(job.campaignId, job.turnNumber, snapshotRow);
+  if (campaign.map_width !== null && campaign.map_height !== null) {
+    if (campaign.map_seed === null) {
+      throw new TurnWorkerInvariantError('A configured world map must have a deterministic seed');
+    }
+    const generatedMap = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
+    const discoveryResult = await config.pool.query<{
+      readonly id: string;
+      readonly cell_id: string;
+      readonly x: number;
+      readonly y: number;
+      readonly discovery_type: 'ruins' | 'gold' | 'empty';
+    }>(
+      `SELECT discovery.id, discovery.cell_id, cell.x, cell.y, discovery.discovery_type
+       FROM discovery_records AS discovery
+       JOIN cells AS cell
+         ON cell.campaign_id = discovery.campaign_id AND cell.id = discovery.cell_id
+       WHERE discovery.campaign_id = $1
+       ORDER BY cell.y, cell.x`,
+      [job.campaignId],
+    );
+    const stateMap = isRecord(snapshot.state.map) ? snapshot.state.map : {};
+    const hydratedState = {
+      ...snapshot.state,
+      map: {
+        ...stateMap,
+        width: campaign.map_width,
+        height: campaign.map_height,
+        seed: campaign.map_seed,
+        terrain: generatedMap.terrain,
+      },
+      discoveredCells: discoveryResult.rows.map((row) => ({
+        id: row.id,
+        cellId: row.cell_id,
+        x: row.x,
+        y: row.y,
+        type: row.discovery_type,
+      })),
+    } as TState;
+    snapshot = { ...snapshot, state: hydratedState };
+  }
+
   return {
-    snapshot: toSnapshot<TState>(job.campaignId, job.turnNumber, snapshotRow),
+    snapshot,
     orders: toOrders<TPayload>(orderResult.rows),
     campaign,
     turnSeed,
