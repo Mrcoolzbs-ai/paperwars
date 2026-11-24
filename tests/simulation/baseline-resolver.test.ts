@@ -849,13 +849,7 @@ describe('baseline turn resolver', () => {
       economyCell('field', 1, 0, 1, 'field'),
       economyCell('workshop', 2, 0, 1, 'textile_workshop'),
       ...Array.from({ length: 15 }, (_, index) =>
-        economyCell(
-          `science-${index}`,
-          (index + 3) % 9,
-          Math.floor((index + 3) / 9),
-          0,
-          'science',
-        ),
+        economyCell(`science-${index}`, (index + 3) % 9, Math.floor((index + 3) / 9), 0, 'science'),
       ),
     ]);
     const result = resolve(
@@ -913,11 +907,13 @@ describe('baseline turn resolver', () => {
 
     const first = resolve(
       state,
-      [createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
-        x: 4,
-        y: 2,
-        buildingType: 'dam',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
+          x: 4,
+          y: 2,
+          buildingType: 'dam',
+        }),
+      ],
       createRandom().source,
     );
     expect(first.orderResults[0]).toMatchObject({
