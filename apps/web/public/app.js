@@ -1644,6 +1644,10 @@
   };
 
   function currentScienceLevel() {
+    const ownCountry = (state.mapView?.countries || []).find((item) => item.isMine);
+    if (ownCountry) {
+      return ownCountry.cells.filter((cell) => cell.buildingType === 'science').length;
+    }
     return Math.max(0, Number(
       (state.countryProfile?.buildings || []).find((item) => item.type === 'science')?.count || 0
     ));
@@ -2931,6 +2935,9 @@
     const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
     const seasonLabel = seasonLabels[economy.season] || economy.season || '—';
     const populationForCard = economy.population ?? country.residentCount ?? 0;
+    const scienceLevel = state.mapView?.countries?.find((item) => item.id === country.id)
+      ?.cells.filter((cell) => cell.buildingType === 'science').length ??
+      Number(counts.get('science') || 0);
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -2982,7 +2989,7 @@
 
     const countryStats = [
       ['♟', 'Люди', String(populationForCard)],
-      ['⚛', 'Наука', String(counts.get('science') || 0)],
+      ['⚛', 'Наука', String(scienceLevel)],
       ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
       ['♛', 'Правитель', 'Не назначен'],
     ];
