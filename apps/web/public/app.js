@@ -1733,19 +1733,17 @@
     const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
     const confirmedCount = activeOrders.length - draftCount;
     const status = state.turnStatus;
-    const canConfirm = Boolean(status && status.ordersLocked !== true &&
-      status.ordersConfirmed !== true &&
-      !['pending', 'processing'].includes(status.turnJobStatus));
     const deadlinePassed = Boolean(status?.deadlineAt &&
       Date.now() >= new Date(status.deadlineAt).getTime());
     summary.hidden = !state.campaign?.countryId;
     summary.textContent = `ОД: ${actionCount}/${unlimitedActions ? '∞' : '3'} · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
-    confirm.disabled = !canConfirm;
+    confirm.disabled =
+      status?.ordersAccepting !== true || status?.ordersConfirmed === true;
     confirm.textContent = status?.ordersConfirmed
       ? 'Приказы подтверждены'
       : deadlinePassed
-        ? 'Закрыть ход'
+        ? 'Ход закрывается автоматически'
         : draftCount > 0
           ? `Подтвердить приказы (${draftCount})`
           : 'Подтвердить ход без приказов';
@@ -1774,7 +1772,7 @@
       const deadlinePassed = Boolean(state.turnStatus?.deadlineAt &&
         Date.now() >= new Date(state.turnStatus.deadlineAt).getTime());
       showToast(deadlinePassed
-        ? 'Срок приёма приказов истёк. Подтверди ход, чтобы отправить его на обработку.'
+        ? 'Срок приёма приказов истёк. Ход закроется автоматически.'
         : 'Приём приказов закрыт. ' + (state.turnRoomError || 'Проверь, завершили ли все участники основание государств.'), true);
       return;
     }
@@ -1856,10 +1854,7 @@
   }
 
   async function confirmMapOrders() {
-    if (!state.campaign || !state.turnStatus ||
-        state.turnStatus.ordersLocked === true ||
-        state.turnStatus.ordersConfirmed === true ||
-        ['pending', 'processing'].includes(state.turnStatus.turnJobStatus)) return;
+    if (!state.campaign || state.turnStatus?.ordersAccepting !== true) return;
     const button = $('#confirm-map-orders');
     button.disabled = true;
     try {
@@ -1949,7 +1944,7 @@
       const intakeMessage = waitingForSetup
         ? 'Ожидаем, пока все участники основают государства.'
         : deadlinePassed
-          ? 'Срок приёма приказов истёк. Подтверди приказы, чтобы запустить обработку хода.'
+          ? 'Срок приёма приказов истёк. Сервер автоматически закроет ход и запустит расчёт.'
           : status?.turnJobStatus === 'pending' || status?.turnJobStatus === 'processing'
             ? 'Ход уже обрабатывается.'
             : 'Приём приказов сейчас закрыт.';
