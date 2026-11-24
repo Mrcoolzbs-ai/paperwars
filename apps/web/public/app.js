@@ -2890,6 +2890,11 @@
 
     $('#profile-button').addEventListener('click', () => { void openProfile(); });
     $('#profile-back').addEventListener('click', closeProfile);
+    $('#admin-code-form').addEventListener('submit', submitAdminCode);
+    $('#admin-mode-toggle').addEventListener('click', toggleAdminMode);
+    $('#admin-campaign-select').addEventListener('change', () => { void loadAdminDiscoveries(); });
+    $('#admin-force-end-turn').addEventListener('click', adminForceEndTurn);
+    $('#admin-rollback-turn').addEventListener('click', adminRollbackTurn);
     $('#profile-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!state.profile) return;
@@ -2918,11 +2923,9 @@
         setMessage('#profile-form-message', 'Данные профиля сохранены.', true);
         showToast('Профиль обновлён.');
       } catch (error) {
-        const message = error.code === 'NICKNAME_ALREADY_TAKEN'
-          ? 'Этот никнейм уже занят. Выбери другой.'
-          : error.code === 'EMAIL_ALREADY_REGISTERED'
-            ? 'Этот email уже используется другим аккаунтом.'
-            : userErrorMessage(error) || 'Не удалось сохранить профиль.';
+        const message = error.code === 'EMAIL_ALREADY_REGISTERED'
+          ? 'Этот email уже используется другим аккаунтом.'
+          : userErrorMessage(error) || 'Не удалось сохранить профиль.';
         setMessage('#profile-form-message', message);
       } finally {
         button.disabled = false;
@@ -3058,6 +3061,18 @@
       sessionStorage.removeItem('pw_access_token');
       showScreen('auth');
       showToast('Сессия завершена.');
+    });
+
+    const clampWorldDimension = (input) => {
+      const value = Number(input.value);
+      if (Number.isFinite(value) && value > 200) input.value = '200';
+    };
+    ['#map-width', '#map-height'].forEach((selector) => {
+      const input = $(selector);
+      input.max = '200';
+      input.addEventListener('input', () => clampWorldDimension(input));
+      input.addEventListener('change', () => clampWorldDimension(input));
+      input.addEventListener('paste', () => requestAnimationFrame(() => clampWorldDimension(input)));
     });
 
     $('#campaign-form').addEventListener('submit', async (event) => {
