@@ -26,13 +26,15 @@ function createState(
         population: terrain[y * width] === 'l' ? 1 : 0,
         buildingType: null,
       }))
-    : [{
-        id: '60000000-0000-4000-8000-000000000099',
-        x: 0,
-        y: 2,
-        population: terrain[2 * width] === 'l' ? 1 : 0,
-        buildingType: null,
-      }];
+    : [
+        {
+          id: '60000000-0000-4000-8000-000000000099',
+          x: 0,
+          y: 2,
+          population: terrain[2 * width] === 'l' ? 1 : 0,
+          buildingType: null,
+        },
+      ];
   return {
     campaignId,
     turnNumber: 1,

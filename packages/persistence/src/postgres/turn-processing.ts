@@ -559,10 +559,9 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
       status: 'active' | 'completed';
       current_turn: number;
       turn_duration_hours: number;
-    }>(
-      'SELECT status, current_turn, turn_duration_hours FROM campaigns WHERE id = $1 FOR UPDATE',
-      [campaignId],
-    );
+    }>('SELECT status, current_turn, turn_duration_hours FROM campaigns WHERE id = $1 FOR UPDATE', [
+      campaignId,
+    ]);
     const campaign = campaignResult.rows[0];
     if (!campaign) {
       throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Кампания не найдена.');
@@ -708,10 +707,7 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
           const minX = candidate.center_x - Math.floor(candidate.width / 2);
           const minY = candidate.center_y - Math.floor(candidate.height / 2);
           return (
-            x >= minX &&
-            x < minX + candidate.width &&
-            y >= minY &&
-            y < minY + candidate.height
+            x >= minX && x < minX + candidate.width && y >= minY && y < minY + candidate.height
           );
         });
         if (!territory) {
@@ -726,8 +722,7 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
            ) VALUES ($1, $2, $3, $4, $5)`,
           [campaignId, countryId, cellValue.id, cellValue.population, territory.id],
         );
-        const buildingType =
-          'buildingType' in cellValue ? cellValue.buildingType : null;
+        const buildingType = 'buildingType' in cellValue ? cellValue.buildingType : null;
         if (typeof buildingType === 'string') {
           await client.query(
             `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
@@ -746,18 +741,18 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
       campaignId,
       turnNumber,
     ]);
-    await client.query('DELETE FROM economic_reports WHERE campaign_id = $1 AND turn_number >= $2', [
-      campaignId,
-      turnNumber,
-    ]);
+    await client.query(
+      'DELETE FROM economic_reports WHERE campaign_id = $1 AND turn_number >= $2',
+      [campaignId, turnNumber],
+    );
     await client.query('DELETE FROM battle_reports WHERE campaign_id = $1 AND turn_number >= $2', [
       campaignId,
       turnNumber,
     ]);
-    await client.query(
-      'DELETE FROM world_snapshots WHERE campaign_id = $1 AND turn_number > $2',
-      [campaignId, turnNumber],
-    );
+    await client.query('DELETE FROM world_snapshots WHERE campaign_id = $1 AND turn_number > $2', [
+      campaignId,
+      turnNumber,
+    ]);
     await client.query('DELETE FROM turn_jobs WHERE campaign_id = $1 AND turn_number >= $2', [
       campaignId,
       turnNumber,
@@ -793,7 +788,7 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
       [campaignId, turnNumber],
     );
     await client.query(
-      'UPDATE campaign_memberships SET orders_confirmed = FALSE WHERE campaign_id = $1 AND status = \'active\'',
+      "UPDATE campaign_memberships SET orders_confirmed = FALSE WHERE campaign_id = $1 AND status = 'active'",
       [campaignId],
     );
     await client.query(

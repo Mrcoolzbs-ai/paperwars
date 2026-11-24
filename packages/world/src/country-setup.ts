@@ -1618,7 +1618,9 @@ export function createCountrySetupService(options: {
           throw new CampaignSetupNotReadyError();
         }
         if (x < 0 || y < 0 || x >= campaign.map_width || y >= campaign.map_height) {
-          throw new CountrySetupValidationError('Координаты постройки находятся за пределами карты.');
+          throw new CountrySetupValidationError(
+            'Координаты постройки находятся за пределами карты.',
+          );
         }
         const snapshot = await client.query<{ state: Record<string, unknown> }>(
           'SELECT state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',

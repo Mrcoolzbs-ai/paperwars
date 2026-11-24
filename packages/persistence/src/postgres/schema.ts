@@ -904,40 +904,32 @@ export const chatMessages = pgTable(
   ],
 );
 
-
-export const userAdmins = pgTable(
-  'user_admins',
-  {
-    userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
-    createdAt: createdAt(),
-  },
-);
+export const userAdmins = pgTable('user_admins', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: createdAt(),
+});
 
 export const adminCodeAttempts = pgTable(
   'admin_code_attempts',
   {
-    userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
     attempts: integer('attempts').notNull().default(0),
     windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
     blockedUntil: timestamp('blocked_until', { withTimezone: true, mode: 'date' }),
   },
-  (table) => [
-    check('admin_code_attempts_count_check', sql`${table.attempts} between 0 and 5`),
-  ],
+  (table) => [check('admin_code_attempts_count_check', sql`${table.attempts} between 0 and 5`)],
 );
 
-
-export const userAdminSettings = pgTable(
-  'user_admin_settings',
-  {
-    userId: uuid('user_id')
-      .primaryKey()
-      .references(() => userAdmins.userId, { onDelete: 'cascade' }),
-    enabled: boolean('enabled').notNull().default(true),
-    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
-  },
-);
+export const userAdminSettings = pgTable('user_admin_settings', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => userAdmins.userId, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+});

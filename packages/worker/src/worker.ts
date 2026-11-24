@@ -283,7 +283,7 @@ async function loadTurnInput<
         readonly discovered_by_country_id: string;
         readonly discovery_type: 'ruins' | 'gold' | 'empty';
       }>(
-      `SELECT discovery.id, discovery.cell_id, discovery.discovered_by_country_id,
+        `SELECT discovery.id, discovery.cell_id, discovery.discovered_by_country_id,
               cell.x, cell.y, discovery.discovery_type
        FROM discovery_records AS discovery
        JOIN cells AS cell

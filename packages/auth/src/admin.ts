@@ -10,7 +10,10 @@ export type AdminServiceErrorCode =
   | 'ADMIN_USER_NOT_FOUND';
 
 export class AdminServiceError extends Error {
-  constructor(readonly code: AdminServiceErrorCode, message: string) {
+  constructor(
+    readonly code: AdminServiceErrorCode,
+    message: string,
+  ) {
     super(message);
     this.name = 'AdminServiceError';
   }
@@ -31,7 +34,11 @@ export interface AdminService {
   setAdminMode(userId: string, enabled: unknown): Promise<boolean>;
   grantWithCode(userId: string, code: unknown): Promise<void>;
   listUsers(adminUserId: string): Promise<readonly AdminUserView[]>;
-  renameUser(adminUserId: string, targetUserId: string, displayName: unknown): Promise<AdminUserView>;
+  renameUser(
+    adminUserId: string,
+    targetUserId: string,
+    displayName: unknown,
+  ): Promise<AdminUserView>;
   deleteUser(adminUserId: string, targetUserId: string): Promise<void>;
 }
 
@@ -76,7 +83,10 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
 
   async function requireAdmin(userId: string): Promise<void> {
     if (!(await service.isAdmin(userId))) {
-      throw new AdminServiceError('ADMIN_NOT_FOUND', 'Для этого действия нужны права администратора.');
+      throw new AdminServiceError(
+        'ADMIN_NOT_FOUND',
+        'Для этого действия нужны права администратора.',
+      );
     }
     if (!(await service.isAdminModeEnabled(userId))) {
       throw new AdminServiceError('ADMIN_NOT_FOUND', 'Включи административный режим в профиле.');
@@ -102,10 +112,16 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
     async setAdminMode(userId, enabledInput) {
       validateUserId(userId);
       if (typeof enabledInput !== 'boolean') {
-        throw new AdminServiceError('ADMIN_NOT_FOUND', 'Некорректное состояние административного режима.');
+        throw new AdminServiceError(
+          'ADMIN_NOT_FOUND',
+          'Некорректное состояние административного режима.',
+        );
       }
       if (!(await service.isAdmin(userId))) {
-        throw new AdminServiceError('ADMIN_NOT_FOUND', 'Для этого действия нужны права администратора.');
+        throw new AdminServiceError(
+          'ADMIN_NOT_FOUND',
+          'Для этого действия нужны права администратора.',
+        );
       }
       await pool.query(
         `INSERT INTO user_admin_settings (user_id, enabled, updated_at)
@@ -172,9 +188,8 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
             await client.query('DELETE FROM admin_code_attempts WHERE user_id = $1', [userId]);
           } else {
             const nextAttempts = attempts + 1;
-            const blockedUntil = nextAttempts >= maxAttempts
-              ? new Date(now.getTime() + attemptWindowMs)
-              : null;
+            const blockedUntil =
+              nextAttempts >= maxAttempts ? new Date(now.getTime() + attemptWindowMs) : null;
             await client.query(
               `INSERT INTO admin_code_attempts (user_id, attempts, window_started_at, blocked_until)
                VALUES ($1, $2, $3, $4)
@@ -184,9 +199,13 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
                    blocked_until = EXCLUDED.blocked_until`,
               [userId, nextAttempts, resetWindow ? now : previous!.window_started_at, blockedUntil],
             );
-            failure = nextAttempts >= maxAttempts
-              ? new AdminServiceError('ADMIN_CODE_RATE_LIMITED', 'Слишком много неверных попыток. Повторите через 15 минут.')
-              : new AdminServiceError('ADMIN_CODE_INVALID', 'Неверный супер-код.');
+            failure =
+              nextAttempts >= maxAttempts
+                ? new AdminServiceError(
+                    'ADMIN_CODE_RATE_LIMITED',
+                    'Слишком много неверных попыток. Повторите через 15 минут.',
+                  )
+                : new AdminServiceError('ADMIN_CODE_INVALID', 'Неверный супер-код.');
           }
         }
         await client.query('COMMIT');
@@ -247,7 +266,8 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         [targetUserId, displayName],
       );
       const row = updated.rows[0];
-      if (!row) throw new AdminServiceError('ADMIN_USER_NOT_FOUND', 'Активный пользователь не найден.');
+      if (!row)
+        throw new AdminServiceError('ADMIN_USER_NOT_FOUND', 'Активный пользователь не найден.');
       return {
         id: row.id,
         displayName: row.display_name,
@@ -262,7 +282,10 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
       await requireAdmin(adminUserId);
       validateUserId(targetUserId);
       if (adminUserId === targetUserId) {
-        throw new AdminServiceError('ADMIN_ACCOUNT_PROTECTED', 'Нельзя удалить собственный аккаунт администратора.');
+        throw new AdminServiceError(
+          'ADMIN_ACCOUNT_PROTECTED',
+          'Нельзя удалить собственный аккаунт администратора.',
+        );
       }
       const client = await pool.connect();
       let transactionOpen = false;
@@ -294,10 +317,14 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
            WHERE user_id = $1`,
           [targetUserId],
         );
-        await client.query('DELETE FROM campaign_spawn_reservations WHERE user_id = $1', [targetUserId]);
+        await client.query('DELETE FROM campaign_spawn_reservations WHERE user_id = $1', [
+          targetUserId,
+        ]);
         await client.query('DELETE FROM chat_messages WHERE user_id = $1', [targetUserId]);
         await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [targetUserId]);
-        await client.query('DELETE FROM player_social_system_library WHERE owner_user_id = $1', [targetUserId]);
+        await client.query('DELETE FROM player_social_system_library WHERE owner_user_id = $1', [
+          targetUserId,
+        ]);
         await client.query(
           `UPDATE users
            SET status = 'disabled', email = NULL, password_hash = NULL,

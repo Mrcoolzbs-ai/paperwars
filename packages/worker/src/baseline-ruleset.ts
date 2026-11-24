@@ -213,7 +213,10 @@ export function createBaselineTurnResolver(): TurnResolver<
       }
 
       const actionsUsed = actionsUsedByCountry.get(country.id) ?? 0;
-      if (!adminCountryIds.has(country.id) && actionsUsed >= ruleset.parameters.actionPointsPerTurn) {
+      if (
+        !adminCountryIds.has(country.id) &&
+        actionsUsed >= ruleset.parameters.actionPointsPerTurn
+      ) {
         orderResults.push(
           rejection(
             order.id,
@@ -356,14 +359,27 @@ export function createBaselineTurnResolver(): TurnResolver<
 
         const sideLength = radius * 2 + 1;
         const adjacentSides = [
-          Array.from({ length: sideLength }, (_, offset) => [x - radius + offset, y - radius - 1] as const),
-          Array.from({ length: sideLength }, (_, offset) => [x - radius + offset, y + radius + 1] as const),
-          Array.from({ length: sideLength }, (_, offset) => [x - radius - 1, y - radius + offset] as const),
-          Array.from({ length: sideLength }, (_, offset) => [x + radius + 1, y - radius + offset] as const),
+          Array.from(
+            { length: sideLength },
+            (_, offset) => [x - radius + offset, y - radius - 1] as const,
+          ),
+          Array.from(
+            { length: sideLength },
+            (_, offset) => [x - radius + offset, y + radius + 1] as const,
+          ),
+          Array.from(
+            { length: sideLength },
+            (_, offset) => [x - radius - 1, y - radius + offset] as const,
+          ),
+          Array.from(
+            { length: sideLength },
+            (_, offset) => [x + radius + 1, y - radius + offset] as const,
+          ),
         ];
         const touchesOwnTerritory = adjacentSides.some((side) =>
-          side.every(([adjacentX, adjacentY]) =>
-            ownership.get(coordinateKey(adjacentX, adjacentY)) === country.id,
+          side.every(
+            ([adjacentX, adjacentY]) =>
+              ownership.get(coordinateKey(adjacentX, adjacentY)) === country.id,
           ),
         );
 

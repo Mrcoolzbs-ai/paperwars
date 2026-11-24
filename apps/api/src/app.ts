@@ -131,9 +131,14 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
 }
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof AdminServiceError) {
-    const status = error.code === 'ADMIN_CODE_UNAVAILABLE' ? 503
-      : error.code === 'ADMIN_CODE_RATE_LIMITED' ? 429
-        : error.code === 'ADMIN_NOT_FOUND' ? 403 : 400;
+    const status =
+      error.code === 'ADMIN_CODE_UNAVAILABLE'
+        ? 503
+        : error.code === 'ADMIN_CODE_RATE_LIMITED'
+          ? 429
+          : error.code === 'ADMIN_NOT_FOUND'
+            ? 403
+            : 400;
     return reply.code(status).send({ error: error.code, message: error.message });
   }
   const messages: Record<string, string> = {
@@ -851,7 +856,11 @@ function registerAdminRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
-      const updated = await adminService.renameUser(user.id, request.params.userId, body['displayName']);
+      const updated = await adminService.renameUser(
+        user.id,
+        request.params.userId,
+        body['displayName'],
+      );
       return reply.send({ user: updated });
     } catch (error) {
       return sendAuthError(error, reply);

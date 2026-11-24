@@ -245,8 +245,17 @@ export interface CountrySetupService {
   listMySocialSystems(userId: string, campaignId: string): Promise<readonly SocialSystemView[]>;
   listMySocialSystemLibrary(userId: string): Promise<readonly PlayerSocialSystemTemplateView[]>;
   getMyCountry(userId: string, campaignId: string): Promise<CountryProfileView | null>;
-  getCountryProfileForAdmin(adminUserId: string, campaignId: string, countryId: string): Promise<CountryProfileView | null>;
-  deleteBuildingForAdmin(adminUserId: string, campaignId: string, x: number, y: number): Promise<void>;
+  getCountryProfileForAdmin(
+    adminUserId: string,
+    campaignId: string,
+    countryId: string,
+  ): Promise<CountryProfileView | null>;
+  deleteBuildingForAdmin(
+    adminUserId: string,
+    campaignId: string,
+    x: number,
+    y: number,
+  ): Promise<void>;
   deleteColonyForAdmin(adminUserId: string, campaignId: string, territoryId: string): Promise<void>;
   listPendingSocialSystems(
     adminUserId: string,
