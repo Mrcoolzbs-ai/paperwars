@@ -11,7 +11,10 @@ const campaignId = '10000000-0000-4000-8000-000000000001';
 const countryId = '20000000-0000-4000-8000-000000000002';
 const ruleset = createBaselineRuleset('baseline-v1', 'rng-v1');
 
-function createState(terrain: string, discoveredCells: BaselineWorldState['discoveredCells'] = []): BaselineWorldState {
+function createState(
+  terrain: string,
+  discoveredCells: BaselineWorldState['discoveredCells'] = [],
+): BaselineWorldState {
   return {
     campaignId,
     turnNumber: 1,
@@ -30,7 +33,11 @@ function createState(terrain: string, discoveredCells: BaselineWorldState['disco
   };
 }
 
-function createOrder(id: string, type = 'colonization', payload: Record<string, unknown> = { x: 2, y: 2 }) {
+function createOrder(
+  id: string,
+  type = 'colonization',
+  payload: Record<string, unknown> = { x: 2, y: 2 },
+) {
   return {
     id: toId<'OrderId'>(id),
     campaignId: toId<'CampaignId'>(campaignId),
@@ -70,7 +77,11 @@ function createRandom(values: readonly number[] = []): {
   return { source, calls };
 }
 
-function resolve(state: BaselineWorldState, orders: readonly ReturnType<typeof createOrder>[], random: RandomSource) {
+function resolve(
+  state: BaselineWorldState,
+  orders: readonly ReturnType<typeof createOrder>[],
+  random: RandomSource,
+) {
   const snapshot = {
     campaignId: toId<'CampaignId'>(campaignId),
     turnNumber: 1,
@@ -90,7 +101,11 @@ function resolve(state: BaselineWorldState, orders: readonly ReturnType<typeof c
 describe('baseline turn resolver', () => {
   it('colonizes every free land cell in the 3x3 square and rolls one d100 per cell', () => {
     const random = createRandom([1, 100, 2, 99, 45, 67, 88, 3, 52]);
-    const result = resolve(createState('l'.repeat(25)), [createOrder('40000000-0000-4000-8000-000000000004')], random.source);
+    const result = resolve(
+      createState('l'.repeat(25)),
+      [createOrder('40000000-0000-4000-8000-000000000004')],
+      random.source,
+    );
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'accepted',
@@ -101,9 +116,16 @@ describe('baseline turn resolver', () => {
     expect(result.events.filter((event) => event.type === 'territory.colonized')).toHaveLength(9);
     expect(result.events.filter((event) => event.type === 'discovery.discovered')).toHaveLength(9);
     expect(random.calls).toHaveLength(9);
-    expect(random.calls.every((call) => call.domain === 'discovery' && call.min === 1 && call.max === 100)).toBe(true);
+    expect(
+      random.calls.every(
+        (call) => call.domain === 'discovery' && call.min === 1 && call.max === 100,
+      ),
+    ).toBe(true);
 
-    const discoveries = result.orderResults[0]?.data?.['discoveries'] as Array<{ roll: number; type: string }>;
+    const discoveries = result.orderResults[0]?.data?.['discoveries'] as Array<{
+      roll: number;
+      type: string;
+    }>;
     expect(discoveries.map((item) => [item.roll, item.type]).slice(0, 3)).toEqual([
       [1, 'ruins'],
       [100, 'gold'],
@@ -115,15 +137,23 @@ describe('baseline turn resolver', () => {
     const terrain = Array.from({ length: 25 }, () => 'w');
     terrain[2 * 5 + 2] = 'l';
     const random = createRandom([100]);
-    const result = resolve(createState(terrain.join('')), [createOrder('40000000-0000-4000-8000-000000000005')], random.source);
+    const result = resolve(
+      createState(terrain.join('')),
+      [createOrder('40000000-0000-4000-8000-000000000005')],
+      random.source,
+    );
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'accepted',
       data: { colonizedCount: 9, colonizedLandCount: 1, colonizedWaterCount: 8, residentsAdded: 9 },
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(9);
-    expect(result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population).toBe(9);
-    expect(result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0)).toHaveLength(8);
+    expect(
+      result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population,
+    ).toBe(9);
+    expect(
+      result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0),
+    ).toHaveLength(8);
     expect(random.calls).toHaveLength(1);
   });
 
@@ -162,7 +192,11 @@ describe('baseline turn resolver', () => {
 
   it('rejects a square with no free land and makes no random draws', () => {
     const random = createRandom();
-    const result = resolve(createState('w'.repeat(25)), [createOrder('40000000-0000-4000-8000-000000000006')], random.source);
+    const result = resolve(
+      createState('w'.repeat(25)),
+      [createOrder('40000000-0000-4000-8000-000000000006')],
+      random.source,
+    );
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'rejected',
@@ -222,7 +256,9 @@ describe('baseline turn resolver', () => {
       random.source,
     );
 
-    expect(result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.id).toBe(discovery.cellId);
+    expect(
+      result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.id,
+    ).toBe(discovery.cellId);
     const capturedEvent = result.events.find((event) => event.type === 'discovery.captured');
     expect(capturedEvent).toBeDefined();
     expect(capturedEvent?.visibility).toBe('private');
