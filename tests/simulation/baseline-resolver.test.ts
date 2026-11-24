@@ -485,6 +485,8 @@ describe('baseline turn resolver', () => {
       unitUpkeep: 0,
       expenses: 7,
       unpaidExpenses: 0,
+      budgetDeficit: false,
+      unitMovementAllowed: true,
       food: 15,
       foodDemand: 8,
       goods: 10,
@@ -528,6 +530,8 @@ describe('baseline turn resolver', () => {
       income: 0,
       expenses: 0,
       unpaidExpenses: 0,
+      budgetDeficit: true,
+      unitMovementAllowed: false,
     });
     expect(economy?.['disabledBuildings']).toHaveLength(3);
     expect(random.calls.filter((call) => call.domain === 'economy')).toHaveLength(3);
