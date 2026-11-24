@@ -32,6 +32,7 @@
     toastTimer: null,
     chatModalOpen: false,
     chatDockView: 'list',
+    chatSearchQuery: '',
     chatScope: 'world',
     chatCampaignId: null,
     chatCampaigns: [],
@@ -512,17 +513,45 @@
     $('#chat-conversation-view')?.classList.toggle('hidden', view !== 'conversation');
   }
 
+  function filterChatRooms() {
+    const query = state.chatSearchQuery.trim().toLocaleLowerCase('ru-RU');
+    const host = $('#chat-room-list');
+    if (!host) return;
+    let hasMatch = false;
+    $('.chat-room-section', host).forEach((section) => {
+      const entries = $('.chat-room-entry', section);
+      let sectionHasMatch = false;
+      for (const entry of entries) {
+        const matches = !query || entry.textContent.toLocaleLowerCase('ru-RU').includes(query);
+        entry.classList.toggle('hidden', !matches);
+        sectionHasMatch ||= matches;
+      }
+      const empty = $('.chat-room-empty', section);
+      if (empty) empty.classList.toggle('hidden', Boolean(query));
+      const visibleEmpty = Boolean(empty && !query && entries.length === 0);
+      section.classList.toggle('hidden', !sectionHasMatch && !visibleEmpty);
+      hasMatch ||= sectionHasMatch;
+    });
+    const noResults = $('#chat-no-results', host);
+    if (noResults) {
+      noResults.classList.toggle('hidden', !query || hasMatch);
+      noResults.textContent = 'Ничего не найдено';
+    }
+  }
+
   function renderChatRooms() {
     const host = $('#chat-room-list');
     if (!host) return;
     host.replaceChildren();
 
+    const generalSection = document.createElement('section');
+    generalSection.className = 'chat-room-section';
     const generalLabel = document.createElement('div');
     generalLabel.className = 'chat-room-section-label';
     generalLabel.textContent = 'ОБЩИЙ КАНАЛ';
-    host.append(generalLabel);
+    generalSection.append(generalLabel);
 
-    appendChatRoom(host, {
+    appendChatRoom(generalSection, {
       scope: 'world',
       title: 'Мировой чат',
       subtitle: 'Все игроки Paper Wars',
@@ -538,21 +567,24 @@
         void loadChatMessages();
       },
     });
+    host.append(generalSection);
 
+    const campaignSection = document.createElement('section');
+    campaignSection.className = 'chat-room-section';
     const campaignLabel = document.createElement('div');
     campaignLabel.className = 'chat-room-section-label';
     campaignLabel.textContent = 'ТВОИ КАМПАНИИ';
-    host.append(campaignLabel);
+    campaignSection.append(campaignLabel);
 
     if (state.chatCampaigns.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'chat-room-empty';
       empty.textContent = 'Ты пока не состоишь ни в одной кампании.';
-      host.append(empty);
+      campaignSection.append(empty);
     }
 
     for (const campaign of state.chatCampaigns) {
-      appendChatRoom(host, {
+      appendChatRoom(campaignSection, {
         scope: 'campaign',
         campaignId: campaign.id,
         title: campaign.name,
@@ -570,6 +602,13 @@
         },
       });
     }
+    host.append(campaignSection);
+
+    const noResults = document.createElement('div');
+    noResults.id = 'chat-no-results';
+    noResults.className = 'chat-room-empty hidden';
+    host.append(noResults);
+    filterChatRooms();
   }
 
   async function loadChatMessages() {
@@ -3581,6 +3620,13 @@
     $('#chat-close-button').addEventListener('click', closeChatModal);
     $('#chat-conversation-close-button').addEventListener('click', closeChatModal);
     $('#chat-back-button').addEventListener('click', returnToChatList);
+    $('#chat-search').addEventListener('input', (event) => {
+      state.chatSearchQuery = event.target.value;
+      filterChatRooms();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && state.chatModalOpen) closeChatModal();
+    });
     $('#chat-compose-form').addEventListener('submit', sendChatMessage);
     $('#chat-message-input').addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
