@@ -805,10 +805,16 @@ describe('baseline turn resolver', () => {
   });
 
   it('allows greenhouse and dam overlays on cells but prevents installing both on one cell', () => {
-    const state = createEconomyState([
+    const baseState = createEconomyState([
       economyCell('gold', 0, 0, 10, 'gold_mine'),
       economyCell('field', 1, 0, 1, 'field'),
+      economyCell('science-1', 3, 0, 0, 'science'),
+      economyCell('science-2', 4, 0, 0, 'science'),
+      economyCell('science-3', 5, 0, 0, 'science'),
     ]);
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 1] = 'w';
+    const state = { ...baseState, map: { ...baseState.map, terrain: terrain.join('') } };
     const result = resolve(
       state,
       [
@@ -942,7 +948,7 @@ describe('baseline turn resolver', () => {
     ]);
     const country = second.nextState.countries[0];
     expect(country?.cells.find((cell) => cell.id === 'empty-a')?.structureType).toBe('dam');
-    expect(country?.cells.find((cell) => cell.id === 'empty-b')?.structureType).toBeNull();
+    expect(country?.cells.find((cell) => cell.id === 'empty-b')?.structureType ?? null).toBeNull();
     expect(country?.cells.filter((cell) => cell.buildingType === 'science')).toHaveLength(2);
   });
 
