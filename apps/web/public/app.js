@@ -46,6 +46,7 @@
     chatSending: false,
     adminModeEnabled: false,
     adminUsers: [],
+    adminCampaigns: [],
     adminCampaignDiscoveries: [],
     adminSelectedCountry: null,
     mapView: null,
@@ -1161,17 +1162,54 @@
     if (!isAdminMode()) return;
     const select = $('#admin-campaign-select');
     const previous = select.value || state.campaign?.id || '';
-    select.replaceChildren();
-    for (const campaign of state.campaigns || []) {
-      const option = document.createElement('option');
-      option.value = campaign.id;
-      option.textContent = campaign.name + ' · ход ' + campaign.currentTurn;
-      select.append(option);
-    }
-    if (previous && [...select.options].some((option) => option.value === previous)) {
-      select.value = previous;
+    try {
+      const data = await request('/admin/campaigns');
+      state.adminCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+      select.replaceChildren();
+      for (const campaign of state.adminCampaigns) {
+        const option = document.createElement('option');
+        option.value = campaign.id;
+        option.textContent =
+          campaign.name + ' · ход ' + campaign.currentTurn + ' · игроков ' + campaign.playerCount;
+        if (campaign.status !== 'active') option.textContent += ' · завершена';
+        select.append(option);
+      }
+      if (previous && [...select.options].some((option) => option.value === previous)) {
+        select.value = previous;
+      } else if (select.options.length > 0) {
+        select.selectedIndex = 0;
+      }
+    } catch (error) {
+      $('#admin-discoveries-list').textContent = userErrorMessage(error);
+      return;
     }
     await Promise.all([loadAdminUsers(), loadAdminDiscoveries()]);
+  }
+
+  function openAdminCampaignMap() {
+    if (!isAdminMode()) return;
+    const campaignId = adminSelectedCampaignId();
+    const selected = state.adminCampaigns.find((campaign) => campaign.id === campaignId);
+    if (!selected) {
+      showToast('Сначала выбери кампанию.', true);
+      return;
+    }
+    if (state.campaign?.id !== selected.id) {
+      state.campaign = {
+        id: selected.id,
+        name: selected.name,
+        status: selected.status,
+        currentTurn: selected.currentTurn,
+        ordersLocked: selected.ordersLocked,
+        countryId: null,
+      };
+      state.mapOrders = [];
+      state.turnStatus = null;
+      state.mapView = null;
+    }
+    state.mapTransform = null;
+    showScreen('game');
+    openMap();
   }
 
   async function toggleAdminMode() {
@@ -2974,6 +3012,7 @@
     $('#admin-code-form').addEventListener('submit', submitAdminCode);
     $('#admin-mode-toggle').addEventListener('click', toggleAdminMode);
     $('#admin-campaign-select').addEventListener('change', () => { void loadAdminDiscoveries(); });
+    $('#admin-open-map').addEventListener('click', openAdminCampaignMap);
     $('#admin-force-end-turn').addEventListener('click', adminForceEndTurn);
     $('#admin-rollback-turn').addEventListener('click', adminRollbackTurn);
     $('#profile-form').addEventListener('submit', async (event) => {

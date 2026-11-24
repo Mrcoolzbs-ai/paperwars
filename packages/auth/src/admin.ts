@@ -28,12 +28,25 @@ export interface AdminUserView {
   readonly createdAt: Date;
 }
 
+export interface AdminCampaignView {
+  readonly id: string;
+  readonly name: string;
+  readonly status: string;
+  readonly currentTurn: number;
+  readonly ordersLocked: boolean;
+  readonly mapWidth: number | null;
+  readonly mapHeight: number | null;
+  readonly playerCount: number;
+  readonly createdAt: Date;
+}
+
 export interface AdminService {
   isAdmin(userId: string): Promise<boolean>;
   isAdminModeEnabled(userId: string): Promise<boolean>;
   setAdminMode(userId: string, enabled: unknown): Promise<boolean>;
   grantWithCode(userId: string, code: unknown): Promise<void>;
   listUsers(adminUserId: string): Promise<readonly AdminUserView[]>;
+  listCampaigns(adminUserId: string): Promise<readonly AdminCampaignView[]>;
   renameUser(
     adminUserId: string,
     targetUserId: string,
@@ -241,6 +254,41 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         email: row.email,
         status: row.status,
         isAdmin: row.is_admin,
+        createdAt: row.created_at,
+      }));
+    },
+
+    async listCampaigns(adminUserId) {
+      await requireAdmin(adminUserId);
+      const result = await pool.query<{
+        id: string;
+        name: string;
+        status: string;
+        current_turn: number;
+        orders_locked: boolean;
+        map_width: number | null;
+        map_height: number | null;
+        player_count: number;
+        created_at: Date;
+      }>(
+        `SELECT campaign.id, campaign.name, campaign.status, campaign.current_turn,
+                campaign.orders_locked, campaign.map_width, campaign.map_height,
+                count(membership.user_id) FILTER (WHERE membership.status = 'active')::integer AS player_count,
+                campaign.created_at
+         FROM campaigns AS campaign
+         LEFT JOIN campaign_memberships AS membership ON membership.campaign_id = campaign.id
+         GROUP BY campaign.id
+         ORDER BY campaign.created_at DESC, campaign.id`,
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        currentTurn: row.current_turn,
+        ordersLocked: row.orders_locked,
+        mapWidth: row.map_width,
+        mapHeight: row.map_height,
+        playerCount: row.player_count,
         createdAt: row.created_at,
       }));
     },

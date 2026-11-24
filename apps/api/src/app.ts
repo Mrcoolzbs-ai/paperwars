@@ -842,6 +842,16 @@ function registerAdminRoutes(
   countrySetupService: CountrySetupService,
   adminService: AdminService,
 ): void {
+  app.get('/admin/campaigns', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const campaigns = await adminService.listCampaigns(user.id);
+      return reply.send({ campaigns });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
   app.get('/admin/users', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
