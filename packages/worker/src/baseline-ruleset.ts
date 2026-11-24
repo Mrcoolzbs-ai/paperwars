@@ -589,8 +589,8 @@ export function createBaselineTurnResolver(): TurnResolver<
       if (!country.economyEnabled) continue;
 
       const population = country.cells.reduce((sum, cell) => sum + Math.max(0, cell.population), 0);
-      const gold = country.cells.filter((cell) => cell.buildingType === 'gold_mine').length;
-      const income = gold * population;
+      let gold = country.cells.filter((cell) => cell.buildingType === 'gold_mine').length;
+      let income = gold * population;
       const unitCount = country.units?.length ?? 0;
       const unitUpkeep = unitCount;
       const buildings = country.cells.filter((cell) => cell.buildingType !== null);
@@ -607,7 +607,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         type: string;
         upkeepSaved: number;
       }> = [];
-      const disableCandidates = buildings.filter((cell) => cell.buildingType !== 'gold_mine');
+      const disableCandidates = [...buildings];
 
       while (income < remainingBuildingUpkeep + unitUpkeep && disableCandidates.length > 0) {
         const drawIndex = random.uniform(
@@ -621,6 +621,10 @@ export function createBaselineTurnResolver(): TurnResolver<
         const saved = buildingUpkeep(disabled.buildingType);
         disabledCellIds.add(disabled.id);
         remainingBuildingUpkeep -= saved;
+        if (disabled.buildingType === 'gold_mine') {
+          gold -= 1;
+          income = gold * population;
+        }
         disabledBuildings.push({
           x: disabled.x,
           y: disabled.y,
