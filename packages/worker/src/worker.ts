@@ -421,21 +421,25 @@ async function persistWorldProjectionEvent(
       );
     }
 
-    const orderGeometry = await client.query<{ center_x: number; center_y: number }>(
-      `SELECT (payload->>'x')::integer AS center_x, (payload->>'y')::integer AS center_y
-       FROM orders
-       WHERE campaign_id = $1 AND country_id = $2 AND id = $3
-         AND order_type = 'colonization'`,
-      [campaignId, countryId, orderId],
-    );
-    const centerX =
+    let centerX =
       typeof payload['centerX'] === 'number'
         ? projectionInteger(payload, 'centerX')
-        : orderGeometry.rows[0]?.center_x;
-    const centerY =
+        : undefined;
+    let centerY =
       typeof payload['centerY'] === 'number'
         ? projectionInteger(payload, 'centerY')
-        : orderGeometry.rows[0]?.center_y;
+        : undefined;
+    if (centerX === undefined || centerY === undefined) {
+      const orderGeometry = await client.query<{ center_x: number; center_y: number }>(
+        `SELECT (payload->>'x')::integer AS center_x, (payload->>'y')::integer AS center_y
+         FROM orders
+         WHERE campaign_id = $1 AND country_id = $2 AND id = $3
+           AND order_type = 'colonization'`,
+        [campaignId, countryId, orderId],
+      );
+      centerX ??= orderGeometry.rows[0]?.center_x;
+      centerY ??= orderGeometry.rows[0]?.center_y;
+    }
     const width = typeof payload['width'] === 'number' ? projectionInteger(payload, 'width') : 3;
     const height =
       typeof payload['height'] === 'number' ? projectionInteger(payload, 'height') : 3;
