@@ -533,6 +533,36 @@ describe('baseline turn resolver', () => {
     expect(random.calls.filter((call) => call.domain === 'economy')).toHaveLength(3);
   });
 
+  it('allows colonization when projected population fits both food and goods capacity', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 1, 1, 'gold_mine'),
+      economyCell('field-one', 0, 2, 0, 'field'),
+      economyCell('factory', 0, 3, 0, 'factory'),
+      economyCell('field-two', 0, 4, 0, 'field'),
+    ]);
+    const result = resolve(
+      state,
+      [createOrder('40000000-0000-4000-8000-000000000103')],
+      createRandom().source,
+    );
+    const economy = (result.economicReport['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'COLONIZATION_ACCEPTED',
+    });
+    expect(economy).toMatchObject({
+      population: 10,
+      food: 10,
+      goods: 10,
+      foodShortage: false,
+      goodsShortage: false,
+      starvedColonies: 0,
+      fledColonies: 0,
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(13);
+  });
+
   it('blocks colonization when projected population would exceed food capacity', () => {
     const state = createEconomyState([
       economyCell('gold', 0, 1, 1, 'gold_mine'),
