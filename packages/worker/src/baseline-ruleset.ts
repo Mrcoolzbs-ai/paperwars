@@ -518,7 +518,6 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
 
         for (const key of neighbors.sort()) {
-          const [x, y] = key.split(',').map(Number);
           const roll = random.uniform(
             'flood-spread',
             `autumn:${nextTurnNumber}:cell:${key}`,
