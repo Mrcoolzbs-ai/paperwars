@@ -377,7 +377,7 @@ describe('baseline turn resolver', () => {
     };
     const random = createRandom();
     const result = resolve(
-      createState(terrain.join(''), [discovery]),
+      createState(terrain.join(''), [discovery], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000007')],
       random.source,
     );
@@ -394,6 +394,28 @@ describe('baseline turn resolver', () => {
     expect(result.events.some((event) => event.type === 'discovery.discovered')).toBe(false);
     expect(result.orderResults[0]?.data?.['discoveries']).toEqual([]);
     expect(random.calls).toHaveLength(0);
+  });
+
+  it('does not apply the action-point cap to administrator countries', () => {
+    const orders = [
+      createOrder('40000000-0000-4000-8000-000000000021', 'unsupported'),
+      createOrder('40000000-0000-4000-8000-000000000022', 'unsupported'),
+      createOrder('40000000-0000-4000-8000-000000000023', 'unsupported'),
+      createOrder('40000000-0000-4000-8000-000000000024', 'unsupported'),
+    ];
+    const result = resolve(
+      { ...createState('l'.repeat(25)), adminCountryIds: [countryId] },
+      orders,
+      createRandom().source,
+    );
+
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'UNSUPPORTED_ORDER_TYPE',
+      'UNSUPPORTED_ORDER_TYPE',
+      'UNSUPPORTED_ORDER_TYPE',
+      'UNSUPPORTED_ORDER_TYPE',
+    ]);
+    expect(result.nextState).not.toHaveProperty('adminCountryIds');
   });
 
   it('limits each country to three actions in the resolved turn', () => {
