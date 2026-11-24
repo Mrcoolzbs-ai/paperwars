@@ -407,7 +407,9 @@ async function persistWorldProjectionEvent(
     const countryId = projectionString(payload, 'countryId');
     const orderId = projectionString(payload, 'orderId');
     const territoryId =
-      typeof payload['territoryId'] === 'string' ? projectionString(payload, 'territoryId') : orderId;
+      typeof payload['territoryId'] === 'string'
+        ? projectionString(payload, 'territoryId')
+        : orderId;
     const x = projectionInteger(payload, 'x');
     const y = projectionInteger(payload, 'y');
     const population = projectionInteger(payload, 'population');
