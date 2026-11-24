@@ -38,7 +38,6 @@ export const users = pgTable(
   },
   (table) => [
     uniqueIndex('users_email_ci_unique').on(sql`lower(${table.email})`),
-    uniqueIndex('users_display_name_ci_unique').on(sql`lower(btrim(${table.displayName}))`),
     check(
       'users_email_normalized_check',
       sql`${table.email} is null or ${table.email} = lower(btrim(${table.email}))`,
@@ -904,3 +903,33 @@ export const chatMessages = pgTable(
     ),
   ],
 );
+
+export const userAdmins = pgTable('user_admins', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: createdAt(),
+});
+
+export const adminCodeAttempts = pgTable(
+  'admin_code_attempts',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    attempts: integer('attempts').notNull().default(0),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    blockedUntil: timestamp('blocked_until', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [check('admin_code_attempts_count_check', sql`${table.attempts} between 0 and 5`)],
+);
+
+export const userAdminSettings = pgTable('user_admin_settings', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => userAdmins.userId, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+});

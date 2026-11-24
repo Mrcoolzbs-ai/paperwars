@@ -9,7 +9,6 @@ import {
 } from './password.js';
 import {
   AuthValidationError,
-  DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
   ExternalIdentityAlreadyLinkedError,
   InvalidCredentialsError,
@@ -27,6 +26,8 @@ export interface AuthUser {
 export interface AuthProfile extends AuthUser {
   readonly hasPassword: boolean;
   readonly hasVk: boolean;
+  readonly isAdmin: boolean;
+  readonly adminModeEnabled: boolean;
 }
 
 export interface AuthSession {
@@ -246,13 +247,23 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         display_name: string;
         has_password: boolean;
         has_vk: boolean;
+        is_admin: boolean;
+        admin_mode_enabled: boolean;
       }>(
         `SELECT u.id, u.email, u.display_name,
                 (u.password_hash IS NOT NULL) AS has_password,
                 EXISTS (
                   SELECT 1 FROM auth_identities ai
                   WHERE ai.user_id = u.id AND ai.provider = 'vk'
-                ) AS has_vk
+                ) AS has_vk,
+                EXISTS (
+                  SELECT 1 FROM user_admins admin
+                  WHERE admin.user_id = u.id
+                ) AS is_admin,
+                EXISTS (
+                  SELECT 1 FROM user_admin_settings setting
+                  WHERE setting.user_id = u.id AND setting.enabled = TRUE
+                ) AS admin_mode_enabled
          FROM users u
          WHERE u.id = $1 AND u.status = 'active'`,
         [userId],
@@ -265,6 +276,8 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         displayName: row.display_name,
         hasPassword: row.has_password,
         hasVk: row.has_vk,
+        isAdmin: row.is_admin,
+        adminModeEnabled: row.admin_mode_enabled,
       };
     },
 
@@ -292,12 +305,6 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           databaseError.constraint === 'users_email_ci_unique'
         ) {
           throw new EmailAlreadyRegisteredError();
-        }
-        if (
-          databaseError.code === '23505' &&
-          databaseError.constraint === 'users_display_name_ci_unique'
-        ) {
-          throw new DisplayNameAlreadyTakenError();
         }
         throw error;
       }

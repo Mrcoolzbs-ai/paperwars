@@ -134,6 +134,43 @@
           </div>
         </section>
       </div>
+      <section id="admin-code-panel" class="panel profile-panel admin-access-panel">
+        <div class="panel-kicker">ДОПОЛНИТЕЛЬНЫЙ ДОСТУП</div>
+        <h2>Супер-код администратора</h2>
+        <p class="profile-description">Введи код, выданный владельцем сервера. Он проверяется только на сервере и не сохраняется в браузере.</p>
+        <form id="admin-code-form" class="form-stack">
+          <label class="field">
+            <span>Супер-код</span>
+            <input id="admin-code-input" type="password" maxlength="1024" autocomplete="off" placeholder="Введи супер-код" required>
+          </label>
+          <button id="admin-code-submit" class="button button-primary" type="submit">Получить права администратора ↗</button>
+        </form>
+        <p id="admin-code-message" class="form-message" role="status"></p>
+      </section>
+      <section id="admin-tools-panel" class="panel profile-panel admin-access-panel hidden">
+        <div class="panel-kicker">АДМИНИСТРАТИВНЫЙ РЕЖИМ</div>
+        <h2>Инструменты администратора</h2>
+        <p class="profile-description">Включай режим только тогда, когда нужно управлять миром. Выключение возвращает обычные игровые ограничения, но не отзывает право администратора.</p>
+        <button id="admin-mode-toggle" class="button button-outline" type="button">Включить инструменты администратора</button>
+        <div id="admin-tools-content" class="admin-tools-content hidden">
+          <label class="field">
+            <span>Кампания для управления</span>
+            <select id="admin-campaign-select"></select>
+          </label>
+          <button id="admin-open-map" class="button button-outline" type="button">Открыть карту выбранной кампании</button>
+          <div class="admin-tools-actions">
+            <button id="admin-force-end-turn" class="button button-primary" type="button">Принудительно завершить ход</button>
+            <button id="admin-rollback-turn" class="button button-outline" type="button">Откатить последний ход</button>
+          </div>
+          <h3>Результаты колонизации · d100</h3>
+          <div id="admin-discoveries-list" class="admin-data-list">Выбери кампанию, чтобы увидеть результаты бросков.</div>
+          <h3>Карточка государства и учения</h3>
+          <div id="admin-country-card" class="admin-data-list">Открой карту, выбери клетку чужой территории и запроси карточку государства.</div>
+          <h3>Игроки</h3>
+          <div id="admin-users-list" class="admin-data-list">Загрузка списка игроков…</div>
+        </div>
+        <p id="admin-tools-message" class="form-message" role="status"></p>
+      </section>
     </section>
 
     <section id="game-screen" class="hidden">
@@ -236,6 +273,7 @@
       </div>
       <canvas id="map-canvas" class="map-canvas" aria-label="Интерактивная стратегическая карта"></canvas>
       <div id="map-context-menu" class="map-context-menu hidden" role="menu" aria-label="Действия на клетке"></div>
+      <section id="admin-map-country-card" class="admin-map-country-card hidden" aria-live="polite" aria-label="Карточка государства"></section>
       <div class="map-modal-footer"><span>ЛКМ — выбрать / перетащить</span><span>Колесо мыши — масштаб</span><span>ПКМ — действие на клетке · касание на телефоне</span><span>С — строительство · К — колонизация · жёлтый — подтверждено</span></div>
     </div>
 

@@ -274,25 +274,37 @@ async function loadTurnInput<
       }
       terrain = snapshotTerrain;
     }
-    const discoveryResult = await config.pool.query<{
-      readonly id: string;
-      readonly cell_id: string;
-      readonly x: number;
-      readonly y: number;
-      readonly discovered_by_country_id: string;
-      readonly discovery_type: 'ruins' | 'gold' | 'empty';
-    }>(
-      `SELECT discovery.id, discovery.cell_id, discovery.discovered_by_country_id,
+    const [discoveryResult, adminCountryResult] = await Promise.all([
+      config.pool.query<{
+        readonly id: string;
+        readonly cell_id: string;
+        readonly x: number;
+        readonly y: number;
+        readonly discovered_by_country_id: string;
+        readonly discovery_type: 'ruins' | 'gold' | 'empty';
+      }>(
+        `SELECT discovery.id, discovery.cell_id, discovery.discovered_by_country_id,
               cell.x, cell.y, discovery.discovery_type
        FROM discovery_records AS discovery
        JOIN cells AS cell
          ON cell.campaign_id = discovery.campaign_id AND cell.id = discovery.cell_id
        WHERE discovery.campaign_id = $1
        ORDER BY cell.y, cell.x`,
-      [job.campaignId],
-    );
+        [job.campaignId],
+      ),
+      config.pool.query<{ country_id: string }>(
+        `SELECT country.id AS country_id
+         FROM countries AS country
+         JOIN user_admins AS admin ON admin.user_id = country.owner_user_id
+         JOIN user_admin_settings AS setting
+           ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+         WHERE country.campaign_id = $1`,
+        [job.campaignId],
+      ),
+    ]);
     const hydratedState = {
       ...snapshot.state,
+      adminCountryIds: adminCountryResult.rows.map((row) => row.country_id),
       map: {
         ...stateMap,
         width: campaign.map_width,

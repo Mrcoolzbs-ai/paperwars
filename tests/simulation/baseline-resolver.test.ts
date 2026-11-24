@@ -16,14 +16,25 @@ function createState(
   discoveredCells: BaselineWorldState['discoveredCells'] = [],
   width = 5,
   includeStartingTerritory = true,
+  fullStartingSide = false,
 ): BaselineWorldState {
-  const startingCell = {
-    id: '60000000-0000-4000-8000-000000000099',
-    x: 0,
-    y: 2,
-    population: terrain[2 * width] === 'l' ? 1 : 0,
-    buildingType: null,
-  };
+  const startingCells = fullStartingSide
+    ? [1, 2, 3].map((y) => ({
+        id: `60000000-0000-4000-8000-0000000000${y}0`,
+        x: 0,
+        y,
+        population: terrain[y * width] === 'l' ? 1 : 0,
+        buildingType: null,
+      }))
+    : [
+        {
+          id: '60000000-0000-4000-8000-000000000099',
+          x: 0,
+          y: 2,
+          population: terrain[2 * width] === 'l' ? 1 : 0,
+          buildingType: null,
+        },
+      ];
   return {
     campaignId,
     turnNumber: 1,
@@ -37,7 +48,7 @@ function createState(
         government: 'republic',
         flagDataUrl: null,
         officialSystem: {},
-        cells: includeStartingTerritory ? [startingCell] : [],
+        cells: includeStartingTerritory ? startingCells : [],
       },
     ],
     discoveredCells,
@@ -113,7 +124,7 @@ describe('baseline turn resolver', () => {
   it('colonizes every free land cell in the 3x3 square and rolls one d100 per cell', () => {
     const random = createRandom([1, 100, 2, 99, 45, 67, 88, 3, 52]);
     const result = resolve(
-      createState('l'.repeat(25)),
+      createState('l'.repeat(25), [], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000004')],
       random.source,
     );
@@ -123,7 +134,7 @@ describe('baseline turn resolver', () => {
       resultCode: 'COLONIZATION_ACCEPTED',
       data: { width: 3, height: 3, colonizedCount: 9, residentsAdded: 9 },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(12);
     const colonyEvents = result.events.filter((event) => event.type === 'territory.colonized');
     expect(colonyEvents).toHaveLength(9);
     expect(new Set(colonyEvents.map((event) => event.payload['territoryId'])).size).toBe(1);
@@ -157,7 +168,7 @@ describe('baseline turn resolver', () => {
     terrain[2 * 5 + 2] = 'l';
     const random = createRandom([100]);
     const result = resolve(
-      createState(terrain.join('')),
+      createState(terrain.join(''), [], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000005')],
       random.source,
     );
@@ -171,13 +182,13 @@ describe('baseline turn resolver', () => {
         residentsAdded: 1,
       },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(12);
     expect(
       result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population,
     ).toBe(1);
     expect(
       result.nextState.countries[0]?.cells.filter((cell) => cell.population === 0),
-    ).toHaveLength(9);
+    ).toHaveLength(11);
     expect(random.calls).toHaveLength(1);
   });
 
@@ -191,7 +202,7 @@ describe('baseline turn resolver', () => {
     ])
       terrain[y! * 5 + x!] = 'l';
     const result = resolve(
-      createState(terrain.join('')),
+      createState(terrain.join(''), [], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000015')],
       createRandom().source,
     );
@@ -215,6 +226,21 @@ describe('baseline turn resolver', () => {
     expect(result.orderResults[0]).toMatchObject({
       status: 'rejected',
       resultCode: 'COLONIZATION_OUT_OF_BOUNDS',
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
+    expect(random.calls).toHaveLength(0);
+  });
+
+  it('rejects a colony that touches the country at only one cell', () => {
+    const random = createRandom();
+    const result = resolve(
+      createState('l'.repeat(25)),
+      [createOrder('40000000-0000-4000-8000-000000000016')],
+      random.source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_NOT_ADJACENT',
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(1);
     expect(random.calls).toHaveLength(0);
@@ -273,7 +299,7 @@ describe('baseline turn resolver', () => {
   it('allows a later colony to touch an earlier colony in the same turn', () => {
     const random = createRandom();
     const result = resolve(
-      createState('l'.repeat(45), [], 9),
+      createState('l'.repeat(45), [], 9, true, true),
       [
         createOrder('40000000-0000-4000-8000-000000000019', 'colonization', { x: 2, y: 2 }),
         createOrder('40000000-0000-4000-8000-000000000020', 'colonization', { x: 5, y: 2 }),
@@ -284,7 +310,7 @@ describe('baseline turn resolver', () => {
       'COLONIZATION_ACCEPTED',
       'COLONIZATION_ACCEPTED',
     ]);
-    expect(result.nextState.countries[0]?.cells).toHaveLength(19);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(21);
     expect(random.calls).toHaveLength(18);
   });
 
@@ -353,7 +379,7 @@ describe('baseline turn resolver', () => {
     };
     const random = createRandom();
     const result = resolve(
-      createState(terrain.join(''), [discovery]),
+      createState(terrain.join(''), [discovery], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000007')],
       random.source,
     );
@@ -370,6 +396,28 @@ describe('baseline turn resolver', () => {
     expect(result.events.some((event) => event.type === 'discovery.discovered')).toBe(false);
     expect(result.orderResults[0]?.data?.['discoveries']).toEqual([]);
     expect(random.calls).toHaveLength(0);
+  });
+
+  it('does not apply the action-point cap to administrator countries', () => {
+    const orders = [
+      createOrder('40000000-0000-4000-8000-000000000021', 'unsupported'),
+      createOrder('40000000-0000-4000-8000-000000000022', 'unsupported'),
+      createOrder('40000000-0000-4000-8000-000000000023', 'unsupported'),
+      createOrder('40000000-0000-4000-8000-000000000024', 'unsupported'),
+    ];
+    const result = resolve(
+      { ...createState('l'.repeat(25)), adminCountryIds: [countryId] },
+      orders,
+      createRandom().source,
+    );
+
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'UNSUPPORTED_ORDER_TYPE',
+      'UNSUPPORTED_ORDER_TYPE',
+      'UNSUPPORTED_ORDER_TYPE',
+      'UNSUPPORTED_ORDER_TYPE',
+    ]);
+    expect(result.nextState).not.toHaveProperty('adminCountryIds');
   });
 
   it('limits each country to three actions in the resolved turn', () => {

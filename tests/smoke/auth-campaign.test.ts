@@ -5,7 +5,6 @@ import {
   createAuthService,
   createCampaignService,
   hashPassword,
-  DisplayNameAlreadyTakenError,
   AuthValidationError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
@@ -185,9 +184,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(emailLogin.user.displayName).toBe(nickname);
 
       const another = await auth.signInWithVk(`vk-${randomUUID()}`);
-      await expect(auth.updateProfile(another.user.id, nickname, null)).rejects.toBeInstanceOf(
-        DisplayNameAlreadyTakenError,
-      );
+      const duplicateNickname = await auth.updateProfile(another.user.id, nickname, null);
+      expect(duplicateNickname.displayName).toBe(nickname);
       expect(await auth.authenticateAccessToken(session.accessToken)).toMatchObject({
         id: session.user.id,
         email,

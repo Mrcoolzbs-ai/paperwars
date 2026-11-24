@@ -36,7 +36,21 @@
     chatCampaigns: [],
     chatRequestId: 0,
     chatPollingTimer: null,
+    chatNotificationPollingTimer: null,
+    chatNotificationPollingBusy: false,
+    chatNotificationsPrimed: false,
+    chatPreferencesUserId: null,
+    chatSeenMessageIds: {},
+    chatAlerts: new Set(),
+    chatMutedRooms: new Set(),
     chatSending: false,
+    adminModeEnabled: false,
+    adminUsers: [],
+    adminCampaigns: [],
+    adminMapPreviousCampaign: null,
+    adminMapOpened: false,
+    adminCampaignDiscoveries: [],
+    adminSelectedCountry: null,
     mapView: null,
     mapSelectedCenter: null,
     mapTransform: null,
@@ -411,6 +425,105 @@
       : 'Закрытый канал участников кампании';
   }
 
+  function chatRoomKey(scope, campaignId = null) {
+    return scope === 'world' ? 'world' : 'campaign:' + String(campaignId || '');
+  }
+
+  function loadChatPreferences() {
+    if (!state.user?.id || state.chatPreferencesUserId === state.user.id) return;
+    state.chatPreferencesUserId = state.user.id;
+    try {
+      const stored = JSON.parse(localStorage.getItem('pw_chat_mutes:' + state.user.id) || '[]');
+      state.chatMutedRooms = new Set(Array.isArray(stored) ? stored.filter((item) => typeof item === 'string') : []);
+    } catch {
+      state.chatMutedRooms = new Set();
+    }
+    state.chatSeenMessageIds = {};
+    state.chatNotificationsPrimed = false;
+    state.chatAlerts.clear();
+    updateChatAlertButton();
+  }
+
+  function saveChatPreferences() {
+    if (!state.user?.id) return;
+    localStorage.setItem('pw_chat_mutes:' + state.user.id, JSON.stringify([...state.chatMutedRooms]));
+  }
+
+  function updateChatAlertButton() {
+    const button = $('#chat-open-button');
+    if (!button) return;
+    const active = state.chatAlerts.size > 0;
+    button.classList.toggle('chat-new-message-alert', active);
+    button.setAttribute('aria-label', active ? 'Чаты: есть новые сообщения' : 'Чаты');
+  }
+
+  function clearChatAlert(roomKey) {
+    state.chatAlerts.delete(roomKey);
+    updateChatAlertButton();
+  }
+
+  function markChatRoomSeen(roomKey, messages) {
+    state.chatSeenMessageIds[roomKey] = (messages || []).map((message) => message.id).filter(Boolean);
+    clearChatAlert(roomKey);
+  }
+
+  function toggleChatRoomMute(roomKey) {
+    if (state.chatMutedRooms.has(roomKey)) {
+      state.chatMutedRooms.delete(roomKey);
+    } else {
+      state.chatMutedRooms.add(roomKey);
+      clearChatAlert(roomKey);
+    }
+    saveChatPreferences();
+    renderChatRooms();
+  }
+
+  function appendChatRoom(host, options) {
+    const { scope, campaignId = null, title, subtitle, icon, active, onSelect } = options;
+    const roomKey = chatRoomKey(scope, campaignId);
+    const entry = document.createElement('div');
+    entry.className = 'chat-room-entry';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chat-room-button';
+    button.classList.toggle('active', Boolean(active));
+    button.classList.toggle('has-alert', state.chatAlerts.has(roomKey));
+    button.setAttribute('data-chat-room-scope', scope);
+    if (campaignId) button.dataset.chatCampaignId = campaignId;
+    if (active) button.setAttribute('aria-current', 'true');
+    const iconNode = document.createElement('span');
+    iconNode.className = 'chat-room-icon';
+    iconNode.textContent = icon;
+    const label = document.createElement('span');
+    const name = document.createElement('strong');
+    name.textContent = title;
+    const hint = document.createElement('small');
+    hint.textContent = subtitle;
+    label.append(name, hint);
+    button.append(iconNode, label);
+    button.addEventListener('click', () => {
+      if (active) {
+        clearChatAlert(roomKey);
+        return;
+      }
+      clearChatAlert(roomKey);
+      onSelect();
+    });
+
+    const muted = state.chatMutedRooms.has(roomKey);
+    const mute = document.createElement('button');
+    mute.type = 'button';
+    mute.className = 'chat-room-mute';
+    mute.textContent = muted ? '🔕' : '🔔';
+    mute.title = muted ? 'Включить уведомления для этого чата' : 'Отключить уведомления для этого чата';
+    mute.setAttribute('aria-label', mute.title);
+    mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    mute.addEventListener('click', () => toggleChatRoomMute(roomKey));
+    entry.append(button, mute);
+    host.append(entry);
+  }
+
   function renderChatRooms() {
     const host = $('#chat-room-list');
     if (!host) return;
@@ -421,31 +534,20 @@
     generalLabel.textContent = 'ОБЩИЙ КАНАЛ';
     host.append(generalLabel);
 
-    const worldButton = document.createElement('button');
-    worldButton.type = 'button';
-    worldButton.className = 'chat-room-button';
-    worldButton.classList.toggle('active', state.chatScope === 'world');
-    worldButton.setAttribute('data-chat-room-scope', 'world');
-    if (state.chatScope === 'world') worldButton.setAttribute('aria-current', 'true');
-    const worldIcon = document.createElement('span');
-    worldIcon.className = 'chat-room-icon';
-    worldIcon.textContent = '◎';
-    const worldText = document.createElement('span');
-    const worldTitle = document.createElement('strong');
-    worldTitle.textContent = 'Мировой чат';
-    const worldHint = document.createElement('small');
-    worldHint.textContent = 'Все игроки Paper Wars';
-    worldText.append(worldTitle, worldHint);
-    worldButton.append(worldIcon, worldText);
-    worldButton.addEventListener('click', () => {
-      if (state.chatScope === 'world') return;
-      state.chatScope = 'world';
-      state.chatCampaignId = null;
-      renderChatRooms();
-      updateChatRoomHeader();
-      void loadChatMessages();
+    appendChatRoom(host, {
+      scope: 'world',
+      title: 'Мировой чат',
+      subtitle: 'Все игроки Paper Wars',
+      icon: '◎',
+      active: state.chatScope === 'world',
+      onSelect: () => {
+        state.chatScope = 'world';
+        state.chatCampaignId = null;
+        renderChatRooms();
+        updateChatRoomHeader();
+        void loadChatMessages();
+      },
     });
-    host.append(worldButton);
 
     const campaignLabel = document.createElement('div');
     campaignLabel.className = 'chat-room-section-label';
@@ -460,34 +562,21 @@
     }
 
     for (const campaign of state.chatCampaigns) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'chat-room-button';
-      const active = state.chatScope === 'campaign' && state.chatCampaignId === campaign.id;
-      button.classList.toggle('active', active);
-      button.dataset.chatCampaignId = campaign.id;
-      button.setAttribute('data-chat-room-scope', 'campaign');
-      if (active) button.setAttribute('aria-current', 'true');
-
-      const icon = document.createElement('span');
-      icon.className = 'chat-room-icon';
-      icon.textContent = '⌂';
-      const label = document.createElement('span');
-      const name = document.createElement('strong');
-      name.textContent = campaign.name;
-      const subtitle = document.createElement('small');
-      subtitle.textContent = 'Ход ' + String(campaign.currentTurn).padStart(2, '0');
-      label.append(name, subtitle);
-      button.append(icon, label);
-      button.addEventListener('click', () => {
-        if (state.chatScope === 'campaign' && state.chatCampaignId === campaign.id) return;
-        state.chatScope = 'campaign';
-        state.chatCampaignId = campaign.id;
-        renderChatRooms();
-        updateChatRoomHeader();
-        void loadChatMessages();
+      appendChatRoom(host, {
+        scope: 'campaign',
+        campaignId: campaign.id,
+        title: campaign.name,
+        subtitle: 'Ход ' + String(campaign.currentTurn).padStart(2, '0'),
+        icon: '⌂',
+        active: state.chatScope === 'campaign' && state.chatCampaignId === campaign.id,
+        onSelect: () => {
+          state.chatScope = 'campaign';
+          state.chatCampaignId = campaign.id;
+          renderChatRooms();
+          updateChatRoomHeader();
+          void loadChatMessages();
+        },
       });
-      host.append(button);
     }
   }
 
@@ -508,7 +597,9 @@
         scope !== state.chatScope ||
         campaignId !== state.chatCampaignId
       ) return;
-      renderChatMessages(Array.isArray(data.messages) ? data.messages : []);
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      renderChatMessages(messages);
+      markChatRoomSeen(chatRoomKey(scope, campaignId), messages);
       setChatStatus('');
     } catch (error) {
       if (!state.chatModalOpen || requestId !== state.chatRequestId) return;
@@ -547,6 +638,74 @@
     state.chatPollingTimer = setInterval(() => {
       if (state.chatModalOpen && !document.hidden) void loadChatMessages();
     }, 5000);
+  }
+
+  async function pollChatNotifications() {
+    if (!state.user?.id || !state.token || state.chatNotificationPollingBusy || document.hidden) return;
+    state.chatNotificationPollingBusy = true;
+    try {
+      const campaignData = await request('/campaigns');
+      const campaigns = Array.isArray(campaignData.campaigns) ? campaignData.campaigns : [];
+      state.chatCampaigns = campaigns;
+      const rooms = [
+        { key: 'world', path: '/chat/world' },
+        ...campaigns.map((campaign) => ({
+          key: chatRoomKey('campaign', campaign.id),
+          path: '/campaigns/' + encodeURIComponent(campaign.id) + '/chat',
+        })),
+      ];
+      const results = await Promise.all(rooms.map(async (room) => {
+        try {
+          const response = await request(room.path);
+          return { room, messages: Array.isArray(response.messages) ? response.messages : [] };
+        } catch (error) {
+          if (error.status === 403 || error.status === 404) return { room, messages: [] };
+          throw error;
+        }
+      }));
+      for (const { room, messages } of results) {
+        const previous = new Set(state.chatSeenMessageIds[room.key] || []);
+        const currentRoom = state.chatModalOpen &&
+          chatRoomKey(state.chatScope, state.chatCampaignId) === room.key;
+        if (
+          state.chatNotificationsPrimed &&
+          !currentRoom &&
+          !state.chatMutedRooms.has(room.key) &&
+          messages.some((message) => message.id && !previous.has(message.id) && !message.isMine)
+        ) {
+          state.chatAlerts.add(room.key);
+        }
+        state.chatSeenMessageIds[room.key] = messages.map((message) => message.id).filter(Boolean);
+      }
+      state.chatNotificationsPrimed = true;
+      if (state.chatScope === 'campaign' && !campaigns.some((campaign) => campaign.id === state.chatCampaignId)) {
+        state.chatScope = 'world';
+        state.chatCampaignId = null;
+      }
+      updateChatAlertButton();
+      if (state.chatModalOpen) renderChatRooms();
+    } catch (error) {
+      if (error.status === 401) stopChatNotificationPolling();
+    } finally {
+      state.chatNotificationPollingBusy = false;
+    }
+  }
+
+  function startChatNotificationPolling() {
+    if (state.chatNotificationPollingTimer !== null) return;
+    void pollChatNotifications();
+    state.chatNotificationPollingTimer = setInterval(() => {
+      void pollChatNotifications();
+    }, 20000);
+  }
+
+  function stopChatNotificationPolling() {
+    if (state.chatNotificationPollingTimer !== null) clearInterval(state.chatNotificationPollingTimer);
+    state.chatNotificationPollingTimer = null;
+    state.chatNotificationsPrimed = false;
+    state.chatSeenMessageIds = {};
+    state.chatAlerts.clear();
+    updateChatAlertButton();
   }
 
   function closeChatModal() {
@@ -803,6 +962,16 @@
     $('#profile-current-password').value = '';
     $('#profile-new-password').value = '';
     $('#profile-confirm-password').value = '';
+    state.adminModeEnabled = profile.adminModeEnabled === true;
+    $('#admin-code-panel').classList.toggle('hidden', profile.isAdmin === true);
+    $('#admin-tools-panel').classList.toggle('hidden', profile.isAdmin !== true);
+    $('#admin-mode-toggle').textContent = state.adminModeEnabled
+      ? 'Выключить инструменты администратора'
+      : 'Включить инструменты администратора';
+    $('#admin-tools-content').classList.toggle('hidden', !state.adminModeEnabled);
+    if (profile.isAdmin && state.adminModeEnabled && state.activeScreen === 'profile') {
+      void refreshAdminTools();
+    }
   }
 
   async function loadProfile() {
@@ -815,6 +984,382 @@
     };
     $('#user-label').textContent = state.user.displayName || state.user.email || '';
     renderProfile();
+  }
+
+  function isAdminMode() {
+    return state.profile?.isAdmin === true && state.adminModeEnabled === true;
+  }
+
+  function adminSelectedCampaignId() {
+    return $('#admin-campaign-select')?.value || state.campaign?.id || '';
+  }
+
+  function renderAdminDiscoveries(discoveries) {
+    const host = $('#admin-discoveries-list');
+    if (!host) return;
+    host.replaceChildren();
+    if (!discoveries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'chat-room-empty';
+      empty.textContent = 'Для этой кампании пока нет результатов колонизации.';
+      host.append(empty);
+      return;
+    }
+    for (const item of discoveries) {
+      const card = document.createElement('article');
+      card.className = 'admin-data-card';
+      const title = document.createElement('strong');
+      const roll = item.d100 === null || item.d100 === undefined ? 'бросок не записан' : 'd100: ' + item.d100;
+      title.textContent = roll + ' · ' + (item.type === 'gold' ? 'Золото' : item.type === 'ruins' ? 'Руины' : 'Обычная клетка');
+      const detail = document.createElement('span');
+      detail.textContent = 'Координаты ' + item.x + ', ' + item.y + ' · ход ' + item.discoveredAtTurn;
+      card.append(title, detail);
+      host.append(card);
+    }
+  }
+
+  async function loadAdminDiscoveries() {
+    const campaignId = adminSelectedCampaignId();
+    const host = $('#admin-discoveries-list');
+    if (!host) return;
+    if (!campaignId) {
+      host.textContent = 'Сначала выбери кампанию.';
+      return;
+    }
+    host.textContent = 'Загрузка результатов…';
+    try {
+      const data = await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/discoveries');
+      state.adminCampaignDiscoveries = Array.isArray(data.discoveries) ? data.discoveries : [];
+      renderAdminDiscoveries(state.adminCampaignDiscoveries);
+    } catch (error) {
+      host.textContent = userErrorMessage(error);
+    }
+  }
+
+  function renderAdminCountryCard(country) {
+    const hosts = [$('#admin-country-card'), $('#admin-map-country-card')].filter(Boolean);
+    for (const host of hosts) {
+      host.replaceChildren();
+      host.classList.toggle('hidden', !country);
+      if (!country) {
+        host.textContent = 'Государство не найдено.';
+        continue;
+      }
+      const card = document.createElement('article');
+      card.className = 'admin-data-card';
+      const heading = document.createElement('div');
+      heading.className = 'admin-country-card-heading';
+      const title = document.createElement('strong');
+      title.textContent = country.name;
+      heading.append(title);
+      if (host.id === 'admin-map-country-card') {
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'button button-quiet button-small';
+        close.textContent = 'Закрыть';
+        close.addEventListener('click', () => host.classList.add('hidden'));
+        heading.append(close);
+      }
+      const meta = document.createElement('span');
+      meta.textContent = 'Население: ' + country.residentCount + ' · Построек: ' +
+        (country.buildings || []).reduce((total, item) => total + Number(item.count || 0), 0);
+      const details = document.createElement('span');
+      details.textContent = 'Правление: ' + (country.government || 'не указано') +
+        ' · Культура: ' + ((country.culture || []).join(', ') || 'не указана');
+      const system = document.createElement('div');
+      system.className = 'admin-data-card';
+      const systemTitle = document.createElement('strong');
+      systemTitle.textContent = (country.officialSystem?.type === 'religion' ? 'Официальная религия: ' : 'Официальная идеология: ') +
+        (country.officialSystem?.name || 'не указана');
+      system.append(systemTitle);
+      for (const principle of country.officialSystem?.principles || []) {
+        const row = document.createElement('span');
+        row.textContent = principle.name + ' — ' + (principle.effect || principle.description || '');
+        system.append(row);
+      }
+      card.append(heading, meta, details, system);
+      host.append(card);
+    }
+  }
+
+  async function loadAdminCountryCard(countryId) {
+    const campaignId = state.campaign?.id;
+    if (!campaignId || !countryId) return;
+    const hosts = [$('#admin-country-card'), $('#admin-map-country-card')].filter(Boolean);
+    for (const host of hosts) {
+      host.classList.remove('hidden');
+      host.textContent = 'Загрузка карточки государства…';
+    }
+    try {
+      const data = await request(
+        '/admin/campaigns/' + encodeURIComponent(campaignId) +
+        '/countries/' + encodeURIComponent(countryId),
+      );
+      state.adminSelectedCountry = data.country || null;
+      renderAdminCountryCard(state.adminSelectedCountry);
+      if (!data.country) showToast('Государство не найдено.', true);
+    } catch (error) {
+      for (const host of hosts) host.textContent = userErrorMessage(error);
+    }
+  }
+
+  function renderAdminUsers(users) {
+    const host = $('#admin-users-list');
+    if (!host) return;
+    host.replaceChildren();
+    if (!users.length) {
+      host.textContent = 'Игроков пока нет.';
+      return;
+    }
+    for (const user of users) {
+      const row = document.createElement('div');
+      row.className = 'admin-user-row';
+      const identity = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = user.displayName;
+      const email = document.createElement('small');
+      email.textContent = user.email || 'Без email';
+      identity.append(name, email);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 32;
+      input.value = user.displayName;
+      input.setAttribute('aria-label', 'Новый никнейм игрока ' + user.displayName);
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'button button-outline button-small';
+      rename.textContent = 'Переименовать';
+      rename.addEventListener('click', async () => {
+        rename.disabled = true;
+        try {
+          await request('/admin/users/' + encodeURIComponent(user.id), {
+            method: 'PATCH',
+            body: JSON.stringify({ displayName: input.value }),
+          });
+          showToast('Никнейм игрока изменён.');
+          await loadAdminUsers();
+        } catch (error) {
+          showToast(userErrorMessage(error), true);
+        } finally {
+          rename.disabled = false;
+        }
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'button button-outline button-small';
+      remove.textContent = 'Удалить аккаунт';
+      const protectedUser = user.isAdmin || user.id === state.user?.id || user.status !== 'active';
+      remove.disabled = protectedUser;
+      remove.title = protectedUser ? 'Аккаунт администратора защищён' : 'Деактивировать аккаунт игрока';
+      remove.addEventListener('click', async () => {
+        if (!window.confirm('Деактивировать аккаунт игрока «' + user.displayName + '»? Доступ будет закрыт, а никнейм заменён на «Удалённый игрок».')) return;
+        remove.disabled = true;
+        try {
+          await request('/admin/users/' + encodeURIComponent(user.id), { method: 'DELETE' });
+          showToast('Аккаунт игрока деактивирован.');
+          await loadAdminUsers();
+        } catch (error) {
+          showToast(userErrorMessage(error), true);
+        } finally {
+          remove.disabled = false;
+        }
+      });
+      row.append(identity, input, rename, remove);
+      host.append(row);
+    }
+  }
+
+  async function loadAdminUsers() {
+    const host = $('#admin-users-list');
+    if (!host) return;
+    host.textContent = 'Загрузка списка игроков…';
+    try {
+      const data = await request('/admin/users');
+      state.adminUsers = Array.isArray(data.users) ? data.users : [];
+      renderAdminUsers(state.adminUsers);
+    } catch (error) {
+      host.textContent = userErrorMessage(error);
+    }
+  }
+
+  async function refreshAdminTools() {
+    if (!isAdminMode()) return;
+    const select = $('#admin-campaign-select');
+    const previous = select.value || state.campaign?.id || '';
+    try {
+      const data = await request('/admin/campaigns');
+      state.adminCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+      select.replaceChildren();
+      for (const campaign of state.adminCampaigns) {
+        const option = document.createElement('option');
+        option.value = campaign.id;
+        option.textContent =
+          campaign.name + ' · ход ' + campaign.currentTurn + ' · игроков ' + campaign.playerCount;
+        if (campaign.status !== 'active') option.textContent += ' · завершена';
+        select.append(option);
+      }
+      if (previous && [...select.options].some((option) => option.value === previous)) {
+        select.value = previous;
+      } else if (select.options.length > 0) {
+        select.selectedIndex = 0;
+      }
+    } catch (error) {
+      $('#admin-discoveries-list').textContent = userErrorMessage(error);
+      return;
+    }
+    await Promise.all([loadAdminUsers(), loadAdminDiscoveries()]);
+  }
+
+  function openAdminCampaignMap() {
+    if (!isAdminMode()) return;
+    const campaignId = adminSelectedCampaignId();
+    const selected = state.adminCampaigns.find((campaign) => campaign.id === campaignId);
+    if (!selected) {
+      showToast('Сначала выбери кампанию.', true);
+      return;
+    }
+    if (state.campaign?.id !== selected.id) {
+      if (!state.adminMapOpened) {
+        state.adminMapPreviousCampaign = state.campaign;
+        state.adminMapOpened = true;
+      }
+      state.campaign = {
+        id: selected.id,
+        name: selected.name,
+        status: selected.status,
+        currentTurn: selected.currentTurn,
+        ordersLocked: selected.ordersLocked,
+        countryId: null,
+      };
+      state.mapOrders = [];
+      state.turnStatus = null;
+      state.mapView = null;
+    }
+    state.mapTransform = null;
+    showScreen('game');
+    openMap();
+  }
+
+  async function toggleAdminMode() {
+    if (!state.profile?.isAdmin) return;
+    const enabled = !state.adminModeEnabled;
+    const button = $('#admin-mode-toggle');
+    button.disabled = true;
+    try {
+      await request('/auth/admin-mode', {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      });
+      await loadProfile();
+      showToast(enabled ? 'Административный режим включён.' : 'Административный режим выключен.');
+    } catch (error) {
+      setMessage('#admin-tools-message', userErrorMessage(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function submitAdminCode(event) {
+    event.preventDefault();
+    const input = $('#admin-code-input');
+    const button = $('#admin-code-submit');
+    const code = input.value;
+    if (!code) return;
+    button.disabled = true;
+    setMessage('#admin-code-message', '');
+    try {
+      await request('/auth/admin-code', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      input.value = '';
+      await loadProfile();
+      setMessage('#admin-code-message', 'Права администратора получены. Инструменты включены.', true);
+      showToast('Права администратора активированы.');
+    } catch (error) {
+      setMessage('#admin-code-message', userErrorMessage(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function adminDeleteBuilding(x, y) {
+    const campaignId = state.campaign?.id;
+    if (!campaignId) return;
+    try {
+      await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/buildings', {
+        method: 'DELETE',
+        body: JSON.stringify({ x, y }),
+      });
+      await loadCampaignMap();
+      await loadTurnRoom();
+      await loadMapOrders();
+      showToast('Постройка удалена.');
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    }
+  }
+
+  async function adminDeleteColony(territoryId) {
+    const campaignId = state.campaign?.id;
+    if (!campaignId || !territoryId) return;
+    try {
+      await request(
+        '/admin/campaigns/' + encodeURIComponent(campaignId) +
+        '/colonies/' + encodeURIComponent(territoryId),
+        { method: 'DELETE' },
+      );
+      await loadCampaignMap();
+      await loadTurnRoom();
+      await loadMapOrders();
+      showToast('Колония удалена.');
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    }
+  }
+
+  async function adminForceEndTurn() {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId) return;
+    if (!window.confirm('Принудительно завершить приём приказов и отправить текущий ход на обработку?')) return;
+    const button = $('#admin-force-end-turn');
+    button.disabled = true;
+    try {
+      await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/force-end-turn', {
+        method: 'POST',
+      });
+      showToast('Ход принудительно закрыт и отправлен на обработку.');
+      await loadCampaigns();
+      await loadTurnRoom();
+      await loadMapOrders();
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function adminRollbackTurn() {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId) return;
+    if (!window.confirm('Откатить последний завершённый ход? Это удалит его результаты и вернёт мир к предыдущему состоянию.')) return;
+    const button = $('#admin-rollback-turn');
+    button.disabled = true;
+    try {
+      const data = await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/rollback', {
+        method: 'POST',
+      });
+      showToast('Ход ' + data.turnNumber + ' отменён. Приказы можно отправить заново.');
+      await loadCampaigns();
+      await loadCampaignMap();
+      await loadTurnRoom();
+      await loadMapOrders();
+      await loadAdminDiscoveries();
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function openProfile() {
@@ -907,6 +1452,8 @@
     }
     renderCampaigns();
     await loadOpenCampaigns();
+    loadChatPreferences();
+    startChatNotificationPolling();
   }
 
   async function loadOpenCampaigns() {
@@ -1134,11 +1681,15 @@
     if (!region.some((cell) => mapIsLand(cell.x, cell.y))) {
       return { allowed: false, reason: 'no-land' };
     }
-    const borderOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-    const touchesOwnTerritory = region.some((cell) => borderOffsets.some(([dx, dy]) => {
-      const key = (cell.x + dx) + ',' + (cell.y + dy);
-      return ownCoordinates.has(key) || plannedCoordinates.has(key);
-    }));
+    const adjacentSides = [
+      [[centerX - 1, centerY - 2], [centerX, centerY - 2], [centerX + 1, centerY - 2]],
+      [[centerX - 1, centerY + 2], [centerX, centerY + 2], [centerX + 1, centerY + 2]],
+      [[centerX - 2, centerY - 1], [centerX - 2, centerY], [centerX - 2, centerY + 1]],
+      [[centerX + 2, centerY - 1], [centerX + 2, centerY], [centerX + 2, centerY + 1]],
+    ];
+    const touchesOwnTerritory = adjacentSides.some((side) =>
+      side.every(([x, y]) => ownCoordinates.has(x + ',' + y) || plannedCoordinates.has(x + ',' + y)),
+    );
     if (!touchesOwnTerritory) return { allowed: false, reason: 'not-adjacent' };
     return { allowed: true, reason: 'available' };
   }
@@ -1147,7 +1698,7 @@
     if (reason === 'bounds') return 'Квадрат 3×3 должен полностью находиться в пределах карты.';
     if (reason === 'overlap') return 'Новая колония не должна пересекать существующие или уже запланированные территории.';
     if (reason === 'no-land') return 'В квадрате 3×3 должна быть хотя бы одна свободная клетка суши.';
-    if (reason === 'not-adjacent') return 'Колония 3×3 должна примыкать стороной к твоей территории или ранее поставленной колонии.';
+    if (reason === 'not-adjacent') return 'Колония 3×3 должна полностью примыкать одной стороной из трёх клеток к твоей территории или предыдущей колонии.';
     return 'Эту область нельзя колонизировать.';
   }
 
@@ -1161,11 +1712,12 @@
     if (!summary || !confirm) return;
     const activeOrders = state.mapOrders.filter((order) => order.status !== 'discarded');
     const actionCount = activeOrders.length;
-    const remainingActions = Math.max(0, 3 - actionCount);
+    const unlimitedActions = isAdminMode();
+    const remainingActions = unlimitedActions ? '∞' : Math.max(0, 3 - actionCount);
     const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
     const confirmedCount = actionCount - draftCount;
     summary.hidden = !state.campaign?.countryId;
-    summary.textContent = `ОД: ${actionCount}/3 · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
+    summary.textContent = `ОД: ${actionCount}/${unlimitedActions ? '∞' : '3'} · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
     confirm.disabled =
       state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
@@ -1199,7 +1751,7 @@
       showToast('Сейчас приём приказов закрыт.', true);
       return;
     }
-    if (mapActionCount() >= 3) {
+    if (!isAdminMode() && mapActionCount() >= 3) {
       showToast('На этот ход уже использованы все 3 очка действий.', true);
       return;
     }
@@ -1317,11 +1869,25 @@
     const existingOrders = mapOrdersAt(cell.x, cell.y);
     const colonizationAvailability = mapColonizationAvailability(cell.x, cell.y);
     const canColonizeRegion = colonizationAvailability.allowed;
-    const actionsRemaining = Math.max(0, 3 - mapActionCount());
+    const adminMode = isAdminMode();
+    const actionsRemaining = adminMode ? Infinity : Math.max(0, 3 - mapActionCount());
+    const countryAtCell = (state.mapView.countries || []).find((country) =>
+      country.cells.some((item) => item.x === cell.x && item.y === cell.y),
+    );
+    const buildingAtCell = countryAtCell?.cells.find(
+      (item) => item.x === cell.x && item.y === cell.y && item.buildingType,
+    );
+    const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
+      if (territory.type !== 'colony') return false;
+      const minX = territory.centerX - Math.floor(territory.width / 2);
+      const minY = territory.centerY - Math.floor(territory.height / 2);
+      return cell.x >= minX && cell.x < minX + territory.width &&
+        cell.y >= minY && cell.y < minY + territory.height;
+    });
     let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
     content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
 
-    if (!state.campaign?.countryId) {
+    if (!state.campaign?.countryId && !adminMode) {
       content += '<button class="map-context-action" type="button" data-map-action="choose-spawn" ' +
         (isLand ? '' : 'disabled') + '>Выбрать центр основания страны</button>';
       content += '<small>Для регистрации государства сначала выбери стартовую территорию 5×5.</small>';
@@ -1370,6 +1936,24 @@
     if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
       content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
     }
+    if (adminMode) {
+      content += '<div class="map-context-group"><span>АДМИНИСТРАТОР</span>';
+      if (countryAtCell) {
+        content += '<button class="map-context-action" type="button" data-map-action="admin-country-card" data-country-id="' +
+          escapeHtml(countryAtCell.id) + '">Открыть карточку государства и учения</button>';
+      }
+      if (buildingAtCell) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="admin-delete-building">Удалить постройку</button>';
+      }
+      if (colonyAtCell) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="admin-delete-colony" data-territory-id="' +
+          escapeHtml(colonyAtCell.id) + '">Удалить эту колонию целиком</button>';
+      }
+      if (!countryAtCell && !buildingAtCell && !colonyAtCell) {
+        content += '<small>На этой клетке нет государства, постройки или колонии.</small>';
+      }
+      content += '</div>';
+    }
     menu.innerHTML = content;
     menu.classList.remove('hidden');
     menu.style.left = Math.max(10, Math.min(clientX, window.innerWidth - 300)) + 'px';
@@ -1394,6 +1978,16 @@
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
           await returnMapOrderToDraft(button.dataset.orderId);
+        } else if (action === 'admin-country-card') {
+          await loadAdminCountryCard(button.dataset.countryId);
+        } else if (action === 'admin-delete-building') {
+          if (window.confirm('Удалить постройку на этой клетке?')) {
+            await adminDeleteBuilding(cell.x, cell.y);
+          }
+        } else if (action === 'admin-delete-colony') {
+          if (window.confirm('Удалить всю колонию и все её клетки?')) {
+            await adminDeleteColony(button.dataset.territoryId);
+          }
         }
       });
     });
@@ -1476,7 +2070,7 @@
         const countryBorderTop = top + minY * cellSize;
         ctx.strokeStyle = territory.type === 'core' ? '#050505' : '#253b55';
         ctx.lineWidth = territory.type === 'core' ? 3 : 2.2;
-        ctx.setLineDash(territory.type === 'core' ? [] : [Math.max(3, cellSize * 0.28), Math.max(2, cellSize * 0.16)]);
+        ctx.setLineDash([]);
         ctx.strokeRect(
           left + minX * cellSize + 1,
           countryBorderTop + 1,
@@ -1564,12 +2158,14 @@
       : null;
     state.mapTransform = null;
     $('#confirm-spawn').disabled = !state.mapSelectedCenter;
-    $('#map-selection-label').textContent = state.campaign.countryId
-      ? 'Зажми ЛКМ для перемещения. ПКМ по клетке — строительство или колонизация.'
-      : existingReservation
-        ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
-        : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
-    $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId));
+    $('#map-selection-label').textContent = isAdminMode() && !state.campaign.countryId
+      ? 'Административный просмотр: ПКМ по клетке — карточка государства или инструменты управления.'
+      : state.campaign.countryId
+        ? 'Зажми ЛКМ для перемещения. ПКМ по клетке — строительство, колонизация или действия администратора.'
+        : existingReservation
+          ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
+          : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
+    $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId) || isAdminMode());
     $('#confirm-map-orders').classList.toggle('hidden', !state.campaign.countryId);
     closeMapContextMenu();
     $('#map-modal').classList.remove('hidden');
@@ -2406,6 +3002,7 @@
         let campaignLoadError = null;
         try {
           await loadCampaigns();
+          await loadProfile();
         } catch (error) {
           campaignLoadError = error;
         }
@@ -2440,6 +3037,12 @@
 
     $('#profile-button').addEventListener('click', () => { void openProfile(); });
     $('#profile-back').addEventListener('click', closeProfile);
+    $('#admin-code-form').addEventListener('submit', submitAdminCode);
+    $('#admin-mode-toggle').addEventListener('click', toggleAdminMode);
+    $('#admin-campaign-select').addEventListener('change', () => { void loadAdminDiscoveries(); });
+    $('#admin-open-map').addEventListener('click', openAdminCampaignMap);
+    $('#admin-force-end-turn').addEventListener('click', adminForceEndTurn);
+    $('#admin-rollback-turn').addEventListener('click', adminRollbackTurn);
     $('#profile-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!state.profile) return;
@@ -2468,11 +3071,9 @@
         setMessage('#profile-form-message', 'Данные профиля сохранены.', true);
         showToast('Профиль обновлён.');
       } catch (error) {
-        const message = error.code === 'NICKNAME_ALREADY_TAKEN'
-          ? 'Этот никнейм уже занят. Выбери другой.'
-          : error.code === 'EMAIL_ALREADY_REGISTERED'
-            ? 'Этот email уже используется другим аккаунтом.'
-            : userErrorMessage(error) || 'Не удалось сохранить профиль.';
+        const message = error.code === 'EMAIL_ALREADY_REGISTERED'
+          ? 'Этот email уже используется другим аккаунтом.'
+          : userErrorMessage(error) || 'Не удалось сохранить профиль.';
         setMessage('#profile-form-message', message);
       } finally {
         button.disabled = false;
@@ -2590,18 +3191,36 @@
       }
     });
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && state.chatModalOpen) void loadChatMessages();
+      if (!document.hidden) {
+        if (state.chatModalOpen) void loadChatMessages();
+        void pollChatNotifications();
+      }
     });
 
     $('#logout-button').addEventListener('click', async () => {
       closeChatModal();
+      stopChatNotificationPolling();
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
       state.profile = null;
+      state.chatPreferencesUserId = null;
+      state.adminModeEnabled = false;
       sessionStorage.removeItem('pw_access_token');
       showScreen('auth');
       showToast('Сессия завершена.');
+    });
+
+    const clampWorldDimension = (input) => {
+      const value = Number(input.value);
+      if (Number.isFinite(value) && value > 200) input.value = '200';
+    };
+    ['#map-width', '#map-height'].forEach((selector) => {
+      const input = $(selector);
+      input.max = '200';
+      input.addEventListener('input', () => clampWorldDimension(input));
+      input.addEventListener('change', () => clampWorldDimension(input));
+      input.addEventListener('paste', () => requestAnimationFrame(() => clampWorldDimension(input)));
     });
 
     $('#campaign-form').addEventListener('submit', async (event) => {
@@ -2680,6 +3299,12 @@
     $('#close-map').addEventListener('click', () => {
       closeMapContextMenu();
       $('#map-modal').classList.add('hidden');
+      if (state.adminMapOpened) {
+        state.campaign = state.adminMapPreviousCampaign;
+        state.adminMapPreviousCampaign = null;
+        state.adminMapOpened = false;
+        state.mapView = null;
+      }
     });
     $('#confirm-spawn').addEventListener('click', confirmSpawn);
     $('#confirm-map-orders').addEventListener('click', confirmMapOrders);
@@ -2719,14 +3344,14 @@
       if (!drag || drag.moved) return;
       const cell = mapCellAt(event.clientX, event.clientY);
       if (!cell) return;
-      if (state.campaign?.countryId) {
+      if (state.campaign?.countryId || isAdminMode()) {
         if (event.pointerType === 'touch') openMapContextMenu(cell, event.clientX, event.clientY);
         return;
       }
       chooseSpawnCenter(cell.x, cell.y);
     });
     $('#map-canvas').addEventListener('contextmenu', (event) => {
-      if (!state.campaign?.countryId) return;
+      if (!state.campaign?.countryId && !isAdminMode()) return;
       event.preventDefault();
       const cell = mapCellAt(event.clientX, event.clientY);
       if (cell) openMapContextMenu(cell, event.clientX, event.clientY);
@@ -2792,6 +3417,11 @@
         await loadCampaigns();
       } catch (error) {
         showToast('Сессия активна, но список кампаний не загрузился: ' + userErrorMessage(error), true);
+      }
+      try {
+        await loadProfile();
+      } catch (error) {
+        showToast('Сессия активна, но профиль не загрузился: ' + userErrorMessage(error), true);
       }
       if (vkLinked && await openProfile()) {
         setMessage('#profile-page-message', 'Аккаунт VK ID успешно подключён.', true);

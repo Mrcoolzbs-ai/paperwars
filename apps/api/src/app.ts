@@ -5,6 +5,8 @@ import {
   ChatServiceError,
   DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
+  AdminServiceError,
+  type AdminService,
   ExternalIdentityAlreadyLinkedError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
@@ -51,6 +53,7 @@ export interface CreateAppOptions {
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
   readonly chatService?: ChatService;
+  readonly adminService?: AdminService;
   readonly vkId?: VkIdOptions;
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
@@ -127,6 +130,17 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
   );
 }
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof AdminServiceError) {
+    const status =
+      error.code === 'ADMIN_CODE_UNAVAILABLE'
+        ? 503
+        : error.code === 'ADMIN_CODE_RATE_LIMITED'
+          ? 429
+          : error.code === 'ADMIN_NOT_FOUND'
+            ? 403
+            : 400;
+    return reply.code(status).send({ error: error.code, message: error.message });
+  }
   const messages: Record<string, string> = {
     INVALID_ORDER: 'Приказ заполнен неверно. Проверьте его параметры.',
     CAMPAIGN_NOT_FOUND: 'Кампания не найдена.',
@@ -267,6 +281,7 @@ function registerAuthRoutes(
   app: FastifyInstance,
   authService: AuthService,
   secureCookies: boolean,
+  adminService?: AdminService,
 ): void {
   app.post('/auth/login', async (request, reply) => {
     try {
@@ -341,6 +356,30 @@ function registerAuthRoutes(
       return sendAuthError(error, reply);
     }
   });
+
+  if (adminService !== undefined) {
+    app.post('/auth/admin-mode', async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const enabled = await adminService.setAdminMode(user.id, body['enabled']);
+        return reply.send({ enabled });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    });
+
+    app.post('/auth/admin-code', async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        await adminService.grantWithCode(user.id, body['code']);
+        return reply.send({ isAdmin: true });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    });
+  }
 
   app.post('/auth/password', async (request, reply) => {
     try {
@@ -796,6 +835,142 @@ function registerCountryRoutes(
     }
   });
 }
+function registerAdminRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  campaignService: CampaignService,
+  countrySetupService: CountrySetupService,
+  adminService: AdminService,
+): void {
+  app.get('/admin/campaigns', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const campaigns = await adminService.listCampaigns(user.id);
+      return reply.send({ campaigns });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/admin/users', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const users = await adminService.listUsers(user.id);
+      return reply.send({ users });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.patch<{ Params: { userId: string } }>('/admin/users/:userId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const updated = await adminService.renameUser(
+        user.id,
+        request.params.userId,
+        body['displayName'],
+      );
+      return reply.send({ user: updated });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete<{ Params: { userId: string } }>('/admin/users/:userId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await adminService.deleteUser(user.id, request.params.userId);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/campaigns/:campaignId/force-end-turn', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turnJob = await campaignService.forceEndTurn(user.id, getCampaignId(request));
+      return reply.send({ turnJob });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/campaigns/:campaignId/rollback', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turnNumber = await campaignService.rollbackLastTurn(user.id, getCampaignId(request));
+      return reply.send({ turnNumber });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/admin/campaigns/:campaignId/discoveries', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const discoveries = await countrySetupService.listAccessibleDiscoveries(
+        user.id,
+        getCampaignId(request),
+      );
+      return reply.send({ discoveries });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get<{ Params: { campaignId: string; countryId: string } }>(
+    '/admin/campaigns/:campaignId/countries/:countryId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const country = await countrySetupService.getCountryProfileForAdmin(
+          user.id,
+          request.params.campaignId,
+          request.params.countryId,
+        );
+        return reply.send({ country });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
+  app.delete('/admin/campaigns/:campaignId/buildings', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      await countrySetupService.deleteBuildingForAdmin(
+        user.id,
+        getCampaignId(request),
+        parseCoordinate(body['x'], 'x'),
+        parseCoordinate(body['y'], 'y'),
+      );
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete<{ Params: { campaignId: string; territoryId: string } }>(
+    '/admin/campaigns/:campaignId/colonies/:territoryId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await countrySetupService.deleteColonyForAdmin(
+          user.id,
+          request.params.campaignId,
+          request.params.territoryId,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+}
+
 function sendChatError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof ChatServiceError) {
     const status = error.code === 'NOT_ACTIVE_CAMPAIGN_MEMBER' ? 403 : 429;
@@ -942,7 +1117,12 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   }));
 
   if (options.authService !== undefined) {
-    registerAuthRoutes(app, options.authService, options.secureCookies ?? false);
+    registerAuthRoutes(
+      app,
+      options.authService,
+      options.secureCookies ?? false,
+      options.adminService,
+    );
     registerVkRoutes(app, options.authService, options.secureCookies ?? false, options.vkId);
   }
 
@@ -952,6 +1132,21 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.countrySetupService !== undefined) {
     registerCountryRoutes(app, options.authService, options.countrySetupService);
+  }
+
+  if (
+    options.authService !== undefined &&
+    options.campaignService !== undefined &&
+    options.countrySetupService !== undefined &&
+    options.adminService !== undefined
+  ) {
+    registerAdminRoutes(
+      app,
+      options.authService,
+      options.campaignService,
+      options.countrySetupService,
+      options.adminService,
+    );
   }
 
   if (options.authService !== undefined && options.chatService !== undefined) {

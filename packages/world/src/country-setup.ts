@@ -798,8 +798,26 @@ export function createCountrySetupService(options: {
   readonly socialSystemAdminUserIds?: readonly string[];
 }): CountrySetupService {
   const adminUserIds = new Set(options.socialSystemAdminUserIds ?? []);
-  const requireAdmin = (userId: string): void => {
-    if (!adminUserIds.has(userId)) throw new SocialSystemAdminRequiredError();
+  const requireAdmin = async (userId: string): Promise<void> => {
+    if (adminUserIds.has(userId)) return;
+    const role = await options.pool.query(
+      `SELECT 1 FROM user_admins AS admin
+       JOIN user_admin_settings AS setting
+         ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+       WHERE admin.user_id = $1`,
+      [userId],
+    );
+    if (role.rows.length === 0) throw new SocialSystemAdminRequiredError();
+  };
+  const requireSuperAdmin = async (userId: string): Promise<void> => {
+    const role = await options.pool.query(
+      `SELECT 1 FROM user_admins AS admin
+       JOIN user_admin_settings AS setting
+         ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+       WHERE admin.user_id = $1`,
+      [userId],
+    );
+    if (role.rows.length === 0) throw new SocialSystemAdminRequiredError();
   };
   const availabilityPolicy: SocialSystemAvailabilityPolicy = options.systemAvailabilityPolicy ?? {
     async listAvailable(tx, query) {
@@ -824,7 +842,18 @@ export function createCountrySetupService(options: {
         `SELECT 1 FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
         [campaignId, userId],
       );
-      if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
+      if (member.rows.length === 0) {
+        const administrator = await options.pool.query(
+          `SELECT 1 FROM user_admins AS admin
+           JOIN user_admin_settings AS setting
+             ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+           WHERE admin.user_id = $1`,
+          [userId],
+        );
+        if (administrator.rows.length === 0) {
+          throw new NotActiveCampaignMemberError();
+        }
+      }
       const dims = await options.pool.query<{
         map_width: number | null;
         map_height: number | null;
@@ -948,42 +977,83 @@ export function createCountrySetupService(options: {
     },
 
     async listAccessibleDiscoveries(userId, campaignId) {
-      const member = await options.pool.query<{ country_id: string | null }>(
-        `SELECT country_id
-         FROM campaign_memberships
-         WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
-        [campaignId, userId],
-      );
+      const [member, administrator] = await Promise.all([
+        options.pool.query<{ country_id: string | null }>(
+          `SELECT country_id FROM campaign_memberships
+           WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
+          [campaignId, userId],
+        ),
+        options.pool.query(
+          `SELECT 1 FROM user_admins AS admin
+           JOIN user_admin_settings AS setting
+             ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+           WHERE admin.user_id = $1`,
+          [userId],
+        ),
+      ]);
       const countryId = member.rows[0]?.country_id;
-      if (member.rows.length === 0) throw new NotActiveCampaignMemberError();
-      if (countryId === null || countryId === undefined) return [];
+      const isAdmin = administrator.rows.length > 0;
+      if (member.rows.length === 0 && !isAdmin) throw new NotActiveCampaignMemberError();
+      if (!isAdmin && (countryId === null || countryId === undefined)) return [];
 
-      const result = await options.pool.query<{
-        id: string;
-        discovery_type: 'ruins' | 'gold' | 'empty';
-        x: number;
-        y: number;
-        discovered_at_turn: number;
-      }>(
-        `SELECT discovery.id, discovery.discovery_type, cell.x, cell.y,
-                discovery.discovered_at_turn
-         FROM campaign_memberships AS membership
-         JOIN discovery_access AS access
-           ON access.country_id = membership.country_id
-          AND access.status = 'active'
-         JOIN discovery_records AS discovery
-           ON discovery.id = access.discovery_id
-          AND discovery.campaign_id = membership.campaign_id
-         JOIN cells AS cell
-           ON cell.campaign_id = discovery.campaign_id
-          AND cell.id = discovery.cell_id
-         WHERE membership.campaign_id = $1
-           AND membership.user_id = $2
-           AND membership.status = 'active'
-           AND membership.country_id = $3
-         ORDER BY discovery.discovered_at_turn DESC, cell.y, cell.x, discovery.id`,
-        [campaignId, userId, countryId],
-      );
+      const result = isAdmin
+        ? await options.pool.query<{
+            id: string;
+            discovery_type: 'ruins' | 'gold' | 'empty';
+            x: number;
+            y: number;
+            discovered_at_turn: number;
+            d100: number | null;
+          }>(
+            `SELECT discovery.id, discovery.discovery_type, cell.x, cell.y,
+                    discovery.discovered_at_turn,
+                    (
+                      SELECT CASE
+                        WHEN event.payload->>'d100' ~ '^[0-9]{1,3}$'
+                        THEN (event.payload->>'d100')::integer
+                        ELSE NULL
+                      END
+                      FROM game_events AS event
+                      WHERE event.campaign_id = discovery.campaign_id
+                        AND event.event_type = 'discovery.discovered'
+                        AND event.payload->>'cellId' = discovery.cell_id::text
+                      ORDER BY event.turn_number DESC, event.created_at DESC
+                      LIMIT 1
+                    ) AS d100
+             FROM discovery_records AS discovery
+             JOIN cells AS cell
+               ON cell.campaign_id = discovery.campaign_id AND cell.id = discovery.cell_id
+             WHERE discovery.campaign_id = $1
+             ORDER BY discovery.discovered_at_turn DESC, cell.y, cell.x, discovery.id`,
+            [campaignId],
+          )
+        : await options.pool.query<{
+            id: string;
+            discovery_type: 'ruins' | 'gold' | 'empty';
+            x: number;
+            y: number;
+            discovered_at_turn: number;
+            d100: number | null;
+          }>(
+            `SELECT discovery.id, discovery.discovery_type, cell.x, cell.y,
+                    discovery.discovered_at_turn, NULL::integer AS d100
+             FROM campaign_memberships AS membership
+             JOIN discovery_access AS access
+               ON access.country_id = membership.country_id
+              AND access.status = 'active'
+             JOIN discovery_records AS discovery
+               ON discovery.id = access.discovery_id
+              AND discovery.campaign_id = membership.campaign_id
+             JOIN cells AS cell
+               ON cell.campaign_id = discovery.campaign_id
+              AND cell.id = discovery.cell_id
+             WHERE membership.campaign_id = $1
+               AND membership.user_id = $2
+               AND membership.status = 'active'
+               AND membership.country_id = $3
+             ORDER BY discovery.discovered_at_turn DESC, cell.y, cell.x, discovery.id`,
+            [campaignId, userId, countryId],
+          );
 
       return result.rows.map((row) => ({
         id: row.id,
@@ -991,6 +1061,7 @@ export function createCountrySetupService(options: {
         x: row.x,
         y: row.y,
         discoveredAtTurn: row.discovered_at_turn,
+        ...(isAdmin ? { d100: row.d100 } : {}),
       }));
     },
 
@@ -1222,7 +1293,7 @@ export function createCountrySetupService(options: {
     },
 
     async listPendingSocialSystems(adminUserId, campaignId) {
-      requireAdmin(adminUserId);
+      await requireAdmin(adminUserId);
       const client = await options.pool.connect();
       let transactionOpen = false;
       try {
@@ -1253,7 +1324,7 @@ export function createCountrySetupService(options: {
     },
 
     async reviewSocialSystem(adminUserId, campaignId, systemId, input: SocialSystemReviewInput) {
-      requireAdmin(adminUserId);
+      await requireAdmin(adminUserId);
       if (
         input === null ||
         typeof input !== 'object' ||
@@ -1462,6 +1533,284 @@ export function createCountrySetupService(options: {
         buildings: buildings.rows,
         residentCount: population.rows[0]?.resident_count ?? 0,
       } satisfies CountryProfileView;
+    },
+
+    async getCountryProfileForAdmin(adminUserId, campaignId, countryId) {
+      await requireSuperAdmin(adminUserId);
+      const result = await options.pool.query<CountryProfileRow>(
+        `SELECT country.id AS country_id, country.campaign_id, country.name AS country_name,
+                country.culture, country.government, country.flag_data_url,
+                system.id AS system_id, system.system_type, system.name AS system_name,
+                system.principles AS system_principles,
+                system.emblem_data_url AS system_emblem_data_url,
+                core.center_x, core.center_y
+         FROM countries AS country
+         JOIN social_systems AS system
+           ON system.campaign_id = country.campaign_id AND system.id = country.official_system_id
+         LEFT JOIN country_territories AS core
+           ON core.campaign_id = country.campaign_id
+          AND core.country_id = country.id
+          AND core.territory_type = 'core'
+         WHERE country.campaign_id = $1 AND country.id = $2 AND country.status = 'active'`,
+        [campaignId, countryId],
+      );
+      const country = result.rows[0];
+      if (!country) return null;
+      const [population, buildings] = await Promise.all([
+        options.pool.query<{ resident_count: number }>(
+          `SELECT COALESCE(sum(population), 0)::integer AS resident_count
+           FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
+          [campaignId, country.country_id],
+        ),
+        options.pool.query<{ type: StartBuildingType; count: number }>(
+          `SELECT building_type AS type, count(*)::integer AS count
+           FROM country_buildings WHERE campaign_id = $1 AND country_id = $2
+           GROUP BY building_type ORDER BY building_type`,
+          [campaignId, country.country_id],
+        ),
+      ]);
+      return {
+        id: country.country_id,
+        campaignId: country.campaign_id,
+        name: country.country_name,
+        culture: country.culture,
+        government: country.government,
+        flagDataUrl: country.flag_data_url,
+        officialSystem: {
+          id: country.system_id,
+          type: country.system_type,
+          name: country.system_name,
+          principles: country.system_principles,
+          emblemDataUrl: country.system_emblem_data_url,
+        },
+        territory: {
+          centerX: country.center_x,
+          centerY: country.center_y,
+          width: 5 as const,
+          height: 5 as const,
+        },
+        buildings: buildings.rows,
+        residentCount: population.rows[0]?.resident_count ?? 0,
+      } satisfies CountryProfileView;
+    },
+
+    async deleteBuildingForAdmin(adminUserId, campaignId, x, y) {
+      await requireSuperAdmin(adminUserId);
+      validateInteger(x, 'x');
+      validateInteger(y, 'y');
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const campaignResult = await client.query<CampaignSetupRow>(
+          `SELECT id, status, current_turn, orders_locked, map_width, map_height, map_seed, ruleset_version
+           FROM campaigns WHERE id = $1 FOR UPDATE`,
+          [campaignId],
+        );
+        const campaign = campaignResult.rows[0];
+        if (
+          !campaign ||
+          campaign.status !== 'active' ||
+          campaign.map_width === null ||
+          campaign.map_height === null
+        ) {
+          throw new CampaignSetupNotReadyError();
+        }
+        if (x < 0 || y < 0 || x >= campaign.map_width || y >= campaign.map_height) {
+          throw new CountrySetupValidationError(
+            'Координаты постройки находятся за пределами карты.',
+          );
+        }
+        const snapshot = await client.query<{ state: Record<string, unknown> }>(
+          'SELECT state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, campaign.current_turn],
+        );
+        const currentState = snapshot.rows[0]?.state;
+        if (!currentState) throw new CampaignSetupNotReadyError();
+        const jobs = await client.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, campaign.current_turn],
+        );
+        if (jobs.rows.some((row) => row.status === 'pending' || row.status === 'processing')) {
+          throw new CampaignSetupNotReadyError();
+        }
+        const target = await client.query<{
+          country_id: string;
+          cell_id: string;
+          population: number;
+        }>(
+          `SELECT owned.country_id, owned.cell_id, owned.population
+           FROM country_cells AS owned
+           JOIN cells AS cell
+             ON cell.campaign_id = owned.campaign_id AND cell.id = owned.cell_id
+           JOIN country_buildings AS building
+             ON building.campaign_id = owned.campaign_id
+            AND building.country_id = owned.country_id
+            AND building.cell_id = owned.cell_id
+           WHERE owned.campaign_id = $1 AND cell.x = $2 AND cell.y = $3
+           FOR UPDATE OF owned, building`,
+          [campaignId, x, y],
+        );
+        const cell = target.rows[0];
+        if (!cell) {
+          throw new CountrySetupValidationError('На этой клетке нет постройки для удаления.');
+        }
+        await client.query(
+          `UPDATE country_cells SET population = population + 1
+           WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+          [campaignId, cell.country_id, cell.cell_id],
+        );
+        await client.query(
+          'DELETE FROM country_buildings WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
+          [campaignId, cell.country_id, cell.cell_id],
+        );
+        const countries = currentState['countries'];
+        if (!Array.isArray(countries)) throw new CampaignSetupNotReadyError();
+        let changed = false;
+        const updatedCountries = countries.map((countryValue: unknown) => {
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('id' in countryValue) ||
+            countryValue.id !== cell.country_id ||
+            !('cells' in countryValue) ||
+            !Array.isArray(countryValue.cells)
+          ) {
+            return countryValue;
+          }
+          return {
+            ...countryValue,
+            cells: countryValue.cells.map((cellValue: unknown) => {
+              if (
+                typeof cellValue !== 'object' ||
+                cellValue === null ||
+                !('id' in cellValue) ||
+                cellValue.id !== cell.cell_id
+              ) {
+                return cellValue;
+              }
+              changed = true;
+              return { ...cellValue, population: cell.population + 1, buildingType: null };
+            }),
+          };
+        });
+        if (!changed) throw new CampaignSetupNotReadyError();
+        await client.query(
+          'UPDATE world_snapshots SET version = version + 1, state = $3 WHERE campaign_id = $1 AND turn_number = $2',
+          [campaignId, campaign.current_turn, { ...currentState, countries: updatedCountries }],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async deleteColonyForAdmin(adminUserId, campaignId, territoryId) {
+      await requireSuperAdmin(adminUserId);
+      const client = await options.pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const campaignResult = await client.query<CampaignSetupRow>(
+          `SELECT id, status, current_turn, orders_locked, map_width, map_height, map_seed, ruleset_version
+           FROM campaigns WHERE id = $1 FOR UPDATE`,
+          [campaignId],
+        );
+        const campaign = campaignResult.rows[0];
+        if (!campaign || campaign.status !== 'active') throw new CampaignSetupNotReadyError();
+        const snapshot = await client.query<{ state: Record<string, unknown> }>(
+          'SELECT state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, campaign.current_turn],
+        );
+        const state = snapshot.rows[0]?.state;
+        if (!state) throw new CampaignSetupNotReadyError();
+        const territoryResult = await client.query<{
+          id: string;
+          country_id: string;
+          center_x: number;
+          center_y: number;
+          width: number;
+          height: number;
+        }>(
+          `SELECT id, country_id, center_x, center_y, width, height
+           FROM country_territories
+           WHERE campaign_id = $1 AND id = $2 AND territory_type = 'colony'
+           FOR UPDATE`,
+          [campaignId, territoryId],
+        );
+        const territory = territoryResult.rows[0];
+        if (!territory) throw new CountrySetupValidationError('Колония не найдена.');
+        const jobs = await client.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+          [campaignId, campaign.current_turn],
+        );
+        if (jobs.rows.some((row) => row.status === 'pending' || row.status === 'processing')) {
+          throw new CampaignSetupNotReadyError();
+        }
+        const countries = state['countries'];
+        if (!Array.isArray(countries)) throw new CampaignSetupNotReadyError();
+        const minX = territory.center_x - Math.floor(territory.width / 2);
+        const minY = territory.center_y - Math.floor(territory.height / 2);
+        let removedCount = 0;
+        const updatedCountries = countries.map((countryValue: unknown) => {
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('id' in countryValue) ||
+            countryValue.id !== territory.country_id ||
+            !('cells' in countryValue) ||
+            !Array.isArray(countryValue.cells)
+          ) {
+            return countryValue;
+          }
+          return {
+            ...countryValue,
+            cells: countryValue.cells.filter((cellValue: unknown) => {
+              if (
+                typeof cellValue !== 'object' ||
+                cellValue === null ||
+                !('x' in cellValue) ||
+                !('y' in cellValue) ||
+                typeof cellValue.x !== 'number' ||
+                typeof cellValue.y !== 'number'
+              ) {
+                return true;
+              }
+              const inside =
+                cellValue.x >= minX &&
+                cellValue.x < minX + territory.width &&
+                cellValue.y >= minY &&
+                cellValue.y < minY + territory.height;
+              if (inside) removedCount += 1;
+              return !inside;
+            }),
+          };
+        });
+        if (removedCount === 0) {
+          throw new CountrySetupValidationError('В колонии нет клеток для удаления.');
+        }
+        await client.query(
+          'UPDATE world_snapshots SET version = version + 1, state = $3 WHERE campaign_id = $1 AND turn_number = $2',
+          [campaignId, campaign.current_turn, { ...state, countries: updatedCountries }],
+        );
+        await client.query(
+          'DELETE FROM country_territories WHERE campaign_id = $1 AND country_id = $2 AND id = $3',
+          [campaignId, territory.country_id, territory.id],
+        );
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async createCountry(userId, campaignId, input) {

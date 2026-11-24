@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createAccessTokenSigner,
+  createAdminService,
   createAuthService,
   createCampaignService,
   hashPassword,
@@ -9,6 +10,7 @@ import {
 import { createApp } from '@paper-wars/api';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import type { SeedKeyProvider } from '@paper-wars/randomness';
+import { createCountrySetupService } from '@paper-wars/world';
 
 const databaseUrl = process.env['DATABASE_URL'];
 
@@ -16,13 +18,14 @@ async function createBackupAccount(
   pool: ReturnType<typeof createPostgresPersistence>['pool'],
   email: string,
   password: string,
-): Promise<void> {
+): Promise<string> {
   const id = randomUUID();
   await pool.query(
     `INSERT INTO users (id, email, password_hash, display_name)
      VALUES ($1, $2, $3, $4)`,
     [id, email.toLowerCase(), await hashPassword(password), `API-${id.slice(0, 8)}`],
   );
+  return id;
 }
 
 describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
@@ -63,12 +66,20 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
             rulesetVersion: 'baseline-v1',
             rngVersion: 'rng-v1',
           });
+    const admin =
+      persistence === undefined
+        ? undefined
+        : createAdminService({ pool: persistence.pool, adminCode: 'paper-wars-test-super-code' });
+    const countrySetup =
+      persistence === undefined ? undefined : createCountrySetupService({ pool: persistence.pool });
     const app = createApp({
       rulesetVersion: 'baseline-v1',
       rngVersion: 'rng-v1',
       secureCookies: false,
       ...(auth === undefined ? {} : { authService: auth }),
       ...(campaigns === undefined ? {} : { campaignService: campaigns }),
+      ...(admin === undefined ? {} : { adminService: admin }),
+      ...(countrySetup === undefined ? {} : { countrySetupService: countrySetup }),
     });
 
     beforeAll(async () => {
@@ -369,6 +380,194 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(refreshed.statusCode).toBe(200);
       expect(refreshed.headers['set-cookie']).toContain('HttpOnly');
       expect(refreshed.body).not.toContain('refreshToken');
+    });
+
+    it('grants and revokes the protected super-admin mode without exposing the server code', async () => {
+      const email = `super-admin-${randomUUID()}@example.test`;
+      const password = 'an api integration test password';
+      await createBackupAccount(persistence!.pool, email, password);
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const { accessToken } = login.json<{ accessToken: string }>();
+      const headers = { authorization: `Bearer ${accessToken}` };
+
+      const deniedBeforeGrant = await app.inject({
+        method: 'GET',
+        url: '/admin/users',
+        headers,
+      });
+      expect(deniedBeforeGrant.statusCode).toBe(403);
+
+      const grant = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-code',
+        headers,
+        payload: { code: 'paper-wars-test-super-code' },
+      });
+      expect(grant.statusCode).toBe(200);
+      expect(grant.json()).toEqual({ isAdmin: true });
+      expect(grant.body).not.toContain('paper-wars-test-super-code');
+
+      const profile = await app.inject({
+        method: 'GET',
+        url: '/auth/profile',
+        headers,
+      });
+      expect(profile.statusCode).toBe(200);
+      expect(
+        profile.json<{ profile: { isAdmin: boolean; adminModeEnabled: boolean } }>().profile,
+      ).toMatchObject({ isAdmin: true, adminModeEnabled: true });
+
+      const campaignsResponse = await app.inject({
+        method: 'GET',
+        url: '/admin/campaigns',
+        headers,
+      });
+      expect(campaignsResponse.statusCode).toBe(200);
+      expect(campaignsResponse.json<{ campaigns: unknown[] }>().campaigns).toBeInstanceOf(Array);
+
+      const usersResponse = await app.inject({
+        method: 'GET',
+        url: '/admin/users',
+        headers,
+      });
+      expect(usersResponse.statusCode).toBe(200);
+      expect(usersResponse.json<{ users: Array<{ id: string }> }>().users).toContainEqual(
+        expect.objectContaining({ id: login.json<{ user: { id: string } }>().user.id }),
+      );
+
+      const disabled = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-mode',
+        headers,
+        payload: { enabled: false },
+      });
+      expect(disabled.statusCode).toBe(200);
+      expect(disabled.json()).toEqual({ enabled: false });
+
+      const profileWhileDisabled = await app.inject({
+        method: 'GET',
+        url: '/auth/profile',
+        headers,
+      });
+      expect(
+        profileWhileDisabled.json<{ profile: { isAdmin: boolean; adminModeEnabled: boolean } }>()
+          .profile,
+      ).toMatchObject({ isAdmin: true, adminModeEnabled: false });
+
+      const deniedWhileDisabled = await app.inject({
+        method: 'GET',
+        url: '/admin/users',
+        headers,
+      });
+      expect(deniedWhileDisabled.statusCode).toBe(403);
+
+      const enabled = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-mode',
+        headers,
+        payload: { enabled: true },
+      });
+      expect(enabled.statusCode).toBe(200);
+      expect(enabled.json()).toEqual({ enabled: true });
+
+      const targetEmail = `deactivate-target-${randomUUID()}@example.test`;
+      const targetUserId = await createBackupAccount(persistence!.pool, targetEmail, password);
+      const vkSubject = `vk-test-${randomUUID()}`;
+      await persistence!.pool.query(
+        `INSERT INTO auth_identities (user_id, provider, provider_user_id)
+           VALUES ($1, 'vk', $2)`,
+        [targetUserId, vkSubject],
+      );
+      const targetLogin = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: targetEmail, password },
+      });
+      expect(targetLogin.statusCode).toBe(200);
+      const targetSession = targetLogin.json<{ accessToken: string }>();
+      const deleted = await app.inject({
+        method: 'DELETE',
+        url: '/admin/users/' + targetUserId,
+        headers,
+      });
+      expect(deleted.statusCode).toBe(204);
+
+      const deactivated = await persistence!.pool.query<{
+        status: string;
+        email: string | null;
+        display_name: string;
+      }>('SELECT status, email, display_name FROM users WHERE id = $1', [targetUserId]);
+      expect(deactivated.rows[0]).toEqual({
+        status: 'disabled',
+        email: null,
+        display_name: 'Удалённый игрок',
+      });
+      const remainingIdentity = await persistence!.pool.query(
+        'SELECT 1 FROM auth_identities WHERE provider = $1 AND provider_user_id = $2',
+        ['vk', vkSubject],
+      );
+      expect(remainingIdentity.rows).toHaveLength(0);
+      const revokedTokens = await persistence!.pool.query(
+        'SELECT 1 FROM refresh_tokens WHERE user_id = $1',
+        [targetUserId],
+      );
+      expect(revokedTokens.rows).toHaveLength(0);
+
+      const disabledSession = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { authorization: `Bearer ${targetSession.accessToken}` },
+      });
+      expect(disabledSession.statusCode).toBe(401);
+    });
+
+    it('rate limits failed super-code attempts per user account', async () => {
+      const email = `wrong-super-code-${randomUUID()}@example.test`;
+      const password = 'an api integration test password';
+      await createBackupAccount(persistence!.pool, email, password);
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const { accessToken } = login.json<{ accessToken: string }>();
+      const headers = { authorization: `Bearer ${accessToken}` };
+
+      for (let attempt = 1; attempt <= 4; attempt += 1) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/auth/admin-code',
+          headers,
+          payload: { code: 'incorrect-super-code' },
+        });
+        expect(response.statusCode).toBe(400);
+        expect(response.json<{ message: string }>().message).toBe('Неверный супер-код.');
+      }
+
+      const fifthAttempt = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-code',
+        headers,
+        payload: { code: 'incorrect-super-code' },
+      });
+      expect(fifthAttempt.statusCode).toBe(429);
+      expect(fifthAttempt.json<{ message: string }>().message).toBe(
+        'Слишком много неверных попыток. Повторите через 15 минут.',
+      );
+
+      const blockedAttempt = await app.inject({
+        method: 'POST',
+        url: '/auth/admin-code',
+        headers,
+        payload: { code: 'paper-wars-test-super-code' },
+      });
+      expect(blockedAttempt.statusCode).toBe(429);
     });
 
     it('rejects unauthenticated campaign requests and malformed refresh cookies', async () => {

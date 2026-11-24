@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import {
   CampaignTurnProcessingError,
   closeOrders,
+  rollbackCampaignTurn,
   confirmCampaignOrders,
   getCampaignTurnStatus,
   listCampaignEvents,
@@ -111,6 +112,8 @@ export interface CampaignService {
   ): Promise<CampaignOrderView>;
   deleteOrder(userId: string, campaignId: string, orderId: string): Promise<void>;
   confirmOrders(userId: string, campaignId: string): Promise<ClosedTurnJob | null>;
+  forceEndTurn(adminUserId: string, campaignId: string): Promise<ClosedTurnJob>;
+  rollbackLastTurn(adminUserId: string, campaignId: string): Promise<number>;
   listCampaignsForUser(userId: string): Promise<readonly CampaignSummary[]>;
   listOpenCampaigns(userId: string): Promise<readonly OpenCampaignSummary[]>;
 }
@@ -179,6 +182,32 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         }
         throw error;
       }
+    },
+
+    async forceEndTurn(adminUserId, campaignId) {
+      const role = await options.pool.query(
+        `SELECT 1 FROM user_admins AS admin
+         JOIN user_admin_settings AS setting ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+         WHERE admin.user_id = $1`,
+        [adminUserId],
+      );
+      if (role.rows.length === 0) {
+        throw new AuthValidationError('Для этого действия нужны права администратора.');
+      }
+      return closeOrders(options.pool, campaignId, true);
+    },
+
+    async rollbackLastTurn(adminUserId, campaignId) {
+      const role = await options.pool.query(
+        `SELECT 1 FROM user_admins AS admin
+         JOIN user_admin_settings AS setting ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+         WHERE admin.user_id = $1`,
+        [adminUserId],
+      );
+      if (role.rows.length === 0) {
+        throw new AuthValidationError('Для этого действия нужны права администратора.');
+      }
+      return rollbackCampaignTurn(options.pool, campaignId);
     },
     async createCampaign(ownerUserId, nameInput, mapSize) {
       const turnDurationHours = mapSize?.turnDurationHours ?? 24;

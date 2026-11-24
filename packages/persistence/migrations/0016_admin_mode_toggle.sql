@@ -1,0 +1,5 @@
+CREATE TABLE user_admin_settings (
+  user_id UUID PRIMARY KEY REFERENCES user_admins(user_id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
