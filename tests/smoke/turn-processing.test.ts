@@ -261,6 +261,36 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         );
         expect(stored.rows[0]?.status).toBe('confirmed');
 
+        const returnedToDraft = await updateCampaignOrder(
+          pool,
+          fixture.campaignId,
+          fixture.userIds[0]!,
+          order.id,
+          {
+            type: order.type,
+            schemaVersion: order.schemaVersion,
+            payload: order.payload,
+          },
+        );
+        expect(returnedToDraft).toMatchObject({ id: order.id, status: 'draft' });
+        const draftMembership = await pool.query<{ orders_confirmed: boolean }>(
+          'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+          [fixture.campaignId, fixture.userIds[0]],
+        );
+        expect(draftMembership.rows[0]?.orders_confirmed).toBe(false);
+        stored = await pool.query<{ status: string }>(
+          'SELECT status FROM orders WHERE id = $1',
+          [order.id],
+        );
+        expect(stored.rows[0]?.status).toBe('draft');
+
+        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+        stored = await pool.query<{ status: string }>(
+          'SELECT status FROM orders WHERE id = $1',
+          [order.id],
+        );
+        expect(stored.rows[0]?.status).toBe('confirmed');
+
         const second = await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
           type: 'colonization',
           payload: { centerX: 10, centerY: 10 },
