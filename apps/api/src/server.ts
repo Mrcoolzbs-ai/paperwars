@@ -8,7 +8,11 @@ import {
   createChatService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
-import { createBaselineRuleset, createBaselineTurnResolver, createTurnWorker } from '@paper-wars/worker';
+import {
+  createBaselineRuleset,
+  createBaselineTurnResolver,
+  createTurnWorker,
+} from '@paper-wars/worker';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createCountrySetupService, recalculateCountryPopulations } from '@paper-wars/world';
 import { createApp } from './app.js';
@@ -183,7 +187,8 @@ try {
   workerAbortController = new AbortController();
   workerRunPromise = turnWorker.run(workerAbortController.signal, {
     pollIntervalMs: integerEnv('TURN_WORKER_POLL_INTERVAL_MS', 1000),
-    onError: (error) => app?.log.error({ err: error }, 'Turn worker failed to process a queued turn'),
+    onError: (error) =>
+      app?.log.error({ err: error }, 'Turn worker failed to process a queued turn'),
   });
 } catch (error) {
   app?.log.error(error);
