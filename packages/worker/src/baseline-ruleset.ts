@@ -339,6 +339,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           continue;
         }
+
         if (overlapsExistingTerritory) {
           orderResults.push(
             rejection(
@@ -349,13 +350,19 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           continue;
         }
+
         const borderOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const;
-        const touchesOwnTerritory = candidates.some((cell) =>
-          borderOffsets.some(
-            ([dx, dy]) =>
-              ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id,
-          ),
-        );
+        let touchesOwnTerritory = false;
+        for (const cell of candidates) {
+          for (const [dx, dy] of borderOffsets) {
+            if (ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id) {
+              touchesOwnTerritory = true;
+              break;
+            }
+          }
+          if (touchesOwnTerritory) break;
+        }
+
         if (!touchesOwnTerritory) {
           orderResults.push(
             rejection(
