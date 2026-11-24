@@ -342,9 +342,6 @@ export function createBaselineTurnResolver(): TurnResolver<
           roll?: number;
           type?: string;
         }> = [];
-        const residentsPerLandCell = Math.floor(9 / landCandidates.length);
-        const extraResidents = 9 % landCandidates.length;
-        let landIndex = 0;
         for (const cell of candidates) {
           const key = coordinateKey(cell.x, cell.y);
           const isLand = cell.terrainCode === 'l';
@@ -352,10 +349,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           const cellId =
             previousDiscovery?.cellId ??
             stableUuid(`paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`);
-          const population = isLand
-            ? residentsPerLandCell + (landIndex < extraResidents ? 1 : 0)
-            : 0;
-          if (isLand) landIndex += 1;
+          const population = isLand ? 1 : 0;
           country.cells = [
             ...country.cells,
             { id: cellId, x: cell.x, y: cell.y, population, buildingType: null },
@@ -422,8 +416,8 @@ export function createBaselineTurnResolver(): TurnResolver<
           resultCode: 'COLONIZATION_ACCEPTED',
           message:
             `Захвачено клеток: ${candidates.length} (суша: ${landCandidates.length}, ` +
-            `вода/реки: ${candidates.length - landCandidates.length}). Добавлено 9 жителей, ` +
-            'распределённых по клеткам суши.',
+            `вода/реки: ${candidates.length - landCandidates.length}). Население увеличено ` +
+            `на ${landCandidates.length} жителей — по одному за каждую новую клетку суши.`,
           data: {
             centerX: x,
             centerY: y,
@@ -432,7 +426,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             colonizedCount: candidates.length,
             colonizedLandCount: landCandidates.length,
             colonizedWaterCount: candidates.length - landCandidates.length,
-            residentsAdded: 9,
+            residentsAdded: landCandidates.length,
             discoveries: orderDiscoveries,
           },
         });
