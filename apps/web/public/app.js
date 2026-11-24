@@ -1217,6 +1217,41 @@
     }
   }
 
+  async function adminDeleteBuilding(x, y) {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId) return;
+    try {
+      await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/buildings', {
+        method: 'DELETE',
+        body: JSON.stringify({ x, y }),
+      });
+      await loadCampaignMap();
+      await loadTurnRoom();
+      await loadMapOrders();
+      showToast('Постройка удалена.');
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    }
+  }
+
+  async function adminDeleteColony(territoryId) {
+    const campaignId = adminSelectedCampaignId();
+    if (!campaignId || !territoryId) return;
+    try {
+      await request(
+        '/admin/campaigns/' + encodeURIComponent(campaignId) +
+        '/colonies/' + encodeURIComponent(territoryId),
+        { method: 'DELETE' },
+      );
+      await loadCampaignMap();
+      await loadTurnRoom();
+      await loadMapOrders();
+      showToast('Колония удалена.');
+    } catch (error) {
+      showToast(userErrorMessage(error), true);
+    }
+  }
+
   async function adminForceEndTurn() {
     const campaignId = adminSelectedCampaignId();
     if (!campaignId) return;
@@ -1767,11 +1802,25 @@
     const existingOrders = mapOrdersAt(cell.x, cell.y);
     const colonizationAvailability = mapColonizationAvailability(cell.x, cell.y);
     const canColonizeRegion = colonizationAvailability.allowed;
-    const actionsRemaining = Math.max(0, 3 - mapActionCount());
+    const adminMode = isAdminMode();
+    const actionsRemaining = adminMode ? Infinity : Math.max(0, 3 - mapActionCount());
+    const countryAtCell = (state.mapView.countries || []).find((country) =>
+      country.cells.some((item) => item.x === cell.x && item.y === cell.y),
+    );
+    const buildingAtCell = countryAtCell?.cells.find(
+      (item) => item.x === cell.x && item.y === cell.y && item.buildingType,
+    );
+    const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
+      if (territory.type !== 'colony') return false;
+      const minX = territory.centerX - Math.floor(territory.width / 2);
+      const minY = territory.centerY - Math.floor(territory.height / 2);
+      return cell.x >= minX && cell.x < minX + territory.width &&
+        cell.y >= minY && cell.y < minY + territory.height;
+    });
     let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
     content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
 
-    if (!state.campaign?.countryId) {
+    if (!state.campaign?.countryId && !adminMode) {
       content += '<button class="map-context-action" type="button" data-map-action="choose-spawn" ' +
         (isLand ? '' : 'disabled') + '>Выбрать центр основания страны</button>';
       content += '<small>Для регистрации государства сначала выбери стартовую территорию 5×5.</small>';
@@ -1820,6 +1869,24 @@
     if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
       content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
     }
+    if (adminMode) {
+      content += '<div class="map-context-group"><span>АДМИНИСТРАТОР</span>';
+      if (countryAtCell) {
+        content += '<button class="map-context-action" type="button" data-map-action="admin-country-card" data-country-id="' +
+          escapeHtml(countryAtCell.id) + '">Открыть карточку государства и учения</button>';
+      }
+      if (buildingAtCell) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="admin-delete-building">Удалить постройку</button>';
+      }
+      if (colonyAtCell) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="admin-delete-colony" data-territory-id="' +
+          escapeHtml(colonyAtCell.id) + '">Удалить эту колонию целиком</button>';
+      }
+      if (!countryAtCell && !buildingAtCell && !colonyAtCell) {
+        content += '<small>На этой клетке нет государства, постройки или колонии.</small>';
+      }
+      content += '</div>';
+    }
     menu.innerHTML = content;
     menu.classList.remove('hidden');
     menu.style.left = Math.max(10, Math.min(clientX, window.innerWidth - 300)) + 'px';
@@ -1844,6 +1911,16 @@
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
           await returnMapOrderToDraft(button.dataset.orderId);
+        } else if (action === 'admin-country-card') {
+          await loadAdminCountryCard(button.dataset.countryId);
+        } else if (action === 'admin-delete-building') {
+          if (window.confirm('Удалить постройку на этой клетке?')) {
+            await adminDeleteBuilding(cell.x, cell.y);
+          }
+        } else if (action === 'admin-delete-colony') {
+          if (window.confirm('Удалить всю колонию и все её клетки?')) {
+            await adminDeleteColony(button.dataset.territoryId);
+          }
         }
       });
     });
