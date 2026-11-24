@@ -31,6 +31,7 @@
     authMode: 'login',
     toastTimer: null,
     chatModalOpen: false,
+    chatDockView: 'list',
     chatScope: 'world',
     chatCampaignId: null,
     chatCampaigns: [],
@@ -342,6 +343,11 @@
     if (!status) return;
     status.textContent = message || '';
     status.classList.toggle('error', isError);
+    const listStatus = $('#chat-list-status');
+    if (listStatus) {
+      listStatus.textContent = message || '';
+      listStatus.classList.toggle('error', isError);
+    }
   }
 
   function formatChatTimestamp(value) {
@@ -433,7 +439,8 @@
     if (!button) return;
     const active = state.chatAlerts.size > 0;
     button.classList.toggle('chat-new-message-alert', active);
-    button.setAttribute('aria-label', active ? 'Чаты: есть новые сообщения' : 'Чаты');
+    button.setAttribute('aria-label', active ? 'Чаты: есть новые сообщения' : 'Открыть чаты');
+    $('#chat-launcher-alert')?.classList.toggle('hidden', !active);
   }
 
   function clearChatAlert(roomKey) {
@@ -482,10 +489,6 @@
     label.append(name, hint);
     button.append(iconNode, label);
     button.addEventListener('click', () => {
-      if (active) {
-        clearChatAlert(roomKey);
-        return;
-      }
       clearChatAlert(roomKey);
       onSelect();
     });
@@ -501,6 +504,12 @@
     mute.addEventListener('click', () => toggleChatRoomMute(roomKey));
     entry.append(button, mute);
     host.append(entry);
+  }
+
+  function setChatDockView(view) {
+    state.chatDockView = view;
+    $('#chat-list-view')?.classList.toggle('hidden', view !== 'list');
+    $('#chat-conversation-view')?.classList.toggle('hidden', view !== 'conversation');
   }
 
   function renderChatRooms() {
@@ -522,8 +531,10 @@
       onSelect: () => {
         state.chatScope = 'world';
         state.chatCampaignId = null;
+        setChatDockView('conversation');
         renderChatRooms();
         updateChatRoomHeader();
+        startChatPolling();
         void loadChatMessages();
       },
     });
@@ -551,8 +562,10 @@
         onSelect: () => {
           state.chatScope = 'campaign';
           state.chatCampaignId = campaign.id;
+          setChatDockView('conversation');
           renderChatRooms();
           updateChatRoomHeader();
+          startChatPolling();
           void loadChatMessages();
         },
       });
@@ -560,7 +573,7 @@
   }
 
   async function loadChatMessages() {
-    if (!state.chatModalOpen || !state.token) return;
+    if (!state.chatModalOpen || state.chatDockView !== 'conversation' || !state.token) return;
     const scope = state.chatScope;
     const campaignId = state.chatCampaignId;
     if (scope === 'campaign' && !campaignId) return;
@@ -572,6 +585,7 @@
       const data = await request(path);
       if (
         !state.chatModalOpen ||
+        state.chatDockView !== 'conversation' ||
         requestId !== state.chatRequestId ||
         scope !== state.chatScope ||
         campaignId !== state.chatCampaignId
@@ -581,7 +595,11 @@
       markChatRoomSeen(chatRoomKey(scope, campaignId), messages);
       setChatStatus('');
     } catch (error) {
-      if (!state.chatModalOpen || requestId !== state.chatRequestId) return;
+      if (
+        !state.chatModalOpen ||
+        state.chatDockView !== 'conversation' ||
+        requestId !== state.chatRequestId
+      ) return;
       if (error.status === 401) {
         closeChatModal();
         state.user = null;
@@ -615,7 +633,11 @@
   function startChatPolling() {
     if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
     state.chatPollingTimer = setInterval(() => {
-      if (state.chatModalOpen && !document.hidden) void loadChatMessages();
+      if (
+        state.chatModalOpen &&
+        state.chatDockView === 'conversation' &&
+        !document.hidden
+      ) void loadChatMessages();
     }, 5000);
   }
 
@@ -645,6 +667,7 @@
       for (const { room, messages } of results) {
         const previous = new Set(state.chatSeenMessageIds[room.key] || []);
         const currentRoom = state.chatModalOpen &&
+          state.chatDockView === 'conversation' &&
           chatRoomKey(state.chatScope, state.chatCampaignId) === room.key;
         if (
           state.chatNotificationsPrimed &&
@@ -695,8 +718,17 @@
     if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
     state.chatPollingTimer = null;
     modal.classList.add('hidden');
-    document.body.classList.remove('chat-modal-open');
+    $('#chat-open-button')?.setAttribute('aria-expanded', 'false');
     $('#chat-open-button')?.focus();
+  }
+
+  function returnToChatList() {
+    if (!state.chatModalOpen) return;
+    state.chatRequestId += 1;
+    if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
+    state.chatPollingTimer = null;
+    setChatDockView('list');
+    renderChatRooms();
   }
 
   async function openChatModal() {
@@ -704,21 +736,14 @@
     const modal = $('#chat-modal');
     if (!modal) return;
     state.chatModalOpen = true;
+    setChatDockView('list');
     modal.classList.remove('hidden');
-    document.body.classList.add('chat-modal-open');
+    $('#chat-open-button')?.setAttribute('aria-expanded', 'true');
     setChatStatus('');
-    const messageHost = $('#chat-messages');
-    messageHost.replaceChildren();
-    const loading = document.createElement('div');
-    loading.className = 'chat-empty-state';
-    loading.textContent = 'Подключаемся к комнатам…';
-    messageHost.append(loading);
     try {
       await refreshChatCampaigns();
       if (!state.chatModalOpen) return;
-      startChatPolling();
-      await loadChatMessages();
-      $('#chat-message-input').focus();
+      renderChatRooms();
     } catch (error) {
       if (error.status === 401) {
         closeChatModal();
@@ -776,7 +801,7 @@
     } finally {
       state.chatSending = false;
       $('#chat-send-button').disabled = false;
-      if (state.chatModalOpen) input.focus();
+      if (state.chatModalOpen && state.chatDockView === 'conversation') input.focus();
     }
   }
 
@@ -3545,13 +3570,13 @@
 
     $('#refresh-open-campaigns').addEventListener('click', () => { void loadOpenCampaigns(); });
 
-    $('#chat-open-button').addEventListener('click', () => { void openChatModal(); });
-    $('#chat-close-button').addEventListener('click', closeChatModal);
-    $('#chat-modal').addEventListener('click', (event) => {
-      if (event.target === $('#chat-modal-backdrop') ||
-          event.target.classList.contains('chat-modal-backdrop') ||
-          event.target === $('#chat-modal')) closeChatModal();
+    $('#chat-open-button').addEventListener('click', () => {
+      if (state.chatModalOpen) closeChatModal();
+      else void openChatModal();
     });
+    $('#chat-close-button').addEventListener('click', closeChatModal);
+    $('#chat-conversation-close-button').addEventListener('click', closeChatModal);
+    $('#chat-back-button').addEventListener('click', returnToChatList);
     $('#chat-compose-form').addEventListener('submit', sendChatMessage);
     $('#chat-message-input').addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -3561,7 +3586,7 @@
     });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
-        if (state.chatModalOpen) void loadChatMessages();
+        if (state.chatModalOpen && state.chatDockView === 'conversation') void loadChatMessages();
         void pollChatNotifications();
       }
     });
