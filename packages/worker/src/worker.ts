@@ -349,6 +349,153 @@ function assertResolutionReports<TEvent>(
   };
 }
 
+function projectionString(payload: Readonly<Record<string, unknown>>, key: string): string {
+  const value = payload[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new TurnWorkerInvariantError(`World event payload field ${key} must be a non-empty string`);
+  }
+  return value;
+}
+
+function projectionInteger(payload: Readonly<Record<string, unknown>>, key: string): number {
+  const value = payload[key];
+  if (!Number.isSafeInteger(value)) {
+    throw new TurnWorkerInvariantError(`World event payload field ${key} must be an integer`);
+  }
+  return value as number;
+}
+
+async function persistWorldProjectionEvent(
+  client: PoolClient,
+  campaignId: string,
+  turnNumber: number,
+  event: DomainEvent<string, Readonly<Record<string, unknown>>>,
+): Promise<void> {
+  const payload = event.payload;
+  if (event.type === 'territory.colonized') {
+    const cellId = projectionString(payload, 'cellId');
+    const countryId = projectionString(payload, 'countryId');
+    const x = projectionInteger(payload, 'x');
+    const y = projectionInteger(payload, 'y');
+    const population = projectionInteger(payload, 'population');
+    if (population < 1) throw new TurnWorkerInvariantError('Newly colonized land must receive a resident');
+
+    const insertedCell = await client.query<{ id: string }>(
+      `INSERT INTO cells (id, campaign_id, x, y)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (campaign_id, x, y) DO NOTHING
+       RETURNING id`,
+      [cellId, campaignId, x, y],
+    );
+    let storedCellId = insertedCell.rows[0]?.id;
+    if (storedCellId === undefined) {
+      const existingCell = await client.query<{ id: string }>(
+        `SELECT id FROM cells
+         WHERE campaign_id = $1 AND x = $2 AND y = $3
+         FOR UPDATE`,
+        [campaignId, x, y],
+      );
+      storedCellId = existingCell.rows[0]?.id;
+    }
+    if (storedCellId !== cellId) {
+      throw new TurnWorkerInvariantError('Colonization cell identity conflicts with the world map');
+    }
+
+    const insertedOwnership = await client.query(
+      `INSERT INTO country_cells (campaign_id, country_id, cell_id, population)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (campaign_id, cell_id) DO NOTHING`,
+      [campaignId, countryId, cellId, population],
+    );
+    if (insertedOwnership.rowCount !== 1) {
+      throw new TurnWorkerInvariantError('A colonization event tried to claim an already owned cell');
+    }
+    return;
+  }
+
+  if (event.type === 'building.constructed') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const buildingType = projectionString(payload, 'buildingType');
+    const population = projectionInteger(payload, 'population');
+    const updated = await client.query(
+      `UPDATE country_cells
+       SET population = $4
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+      [campaignId, countryId, cellId, population],
+    );
+    if (updated.rowCount !== 1) {
+      throw new TurnWorkerInvariantError('A construction event references a cell not owned by its country');
+    }
+    await client.query(
+      `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
+       VALUES ($1, $2, $3, $4)`,
+      [campaignId, countryId, cellId, buildingType],
+    );
+    return;
+  }
+
+  if (event.type === 'discovery.discovered' || event.type === 'discovery.captured') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const discoveryType = projectionString(payload, 'discoveryType');
+    if (!['ruins', 'gold', 'empty'].includes(discoveryType)) {
+      throw new TurnWorkerInvariantError('A discovery event contains an unsupported discovery type');
+    }
+
+    let discoveryId: string;
+    if (event.type === 'discovery.discovered') {
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO discovery_records (
+           campaign_id, cell_id, discovered_by_country_id, discovered_at_turn, discovery_type
+         ) VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [campaignId, cellId, countryId, turnNumber, discoveryType],
+      );
+      const record = inserted.rows[0];
+      if (record === undefined) throw new TurnWorkerInvariantError('Discovery record was not created');
+      discoveryId = record.id;
+    } else {
+      discoveryId = projectionString(payload, 'discoveryId');
+      const existing = await client.query<{ id: string; discovery_type: string }>(
+        `SELECT id, discovery_type FROM discovery_records
+         WHERE campaign_id = $1 AND cell_id = $2
+         FOR UPDATE`,
+        [campaignId, cellId],
+      );
+      const record = existing.rows[0];
+      if (record === undefined || record.id !== discoveryId || record.discovery_type !== discoveryType) {
+        throw new TurnWorkerInvariantError('A captured discovery no longer matches its permanent record');
+      }
+    }
+
+    const eventType = event.type === 'discovery.discovered' ? 'discovered' : 'captured';
+    const history = await client.query<{ id: string }>(
+      `INSERT INTO discovery_history (
+         discovery_id, event_type, actor_country_id, turn_number, payload
+       ) VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [discoveryId, eventType, countryId, turnNumber, payload],
+    );
+    const historyId = history.rows[0]?.id;
+    if (historyId === undefined) throw new TurnWorkerInvariantError('Discovery history event was not created');
+
+    await client.query(
+      `INSERT INTO discovery_access (
+         discovery_id, country_id, status, granted_at_turn, granted_by_event_id
+       ) VALUES ($1, $2, 'active', $3, $4)
+       ON CONFLICT (discovery_id, country_id) DO UPDATE SET
+         status = 'active',
+         granted_at_turn = EXCLUDED.granted_at_turn,
+         granted_by_event_id = EXCLUDED.granted_by_event_id,
+         revoked_at_turn = NULL,
+         revoked_by_event_id = NULL,
+         updated_at = clock_timestamp()`,
+      [discoveryId, countryId, turnNumber, historyId],
+    );
+  }
+}
+
 async function persistResolution<
   TEvent extends DomainEvent<string, Readonly<Record<string, unknown>>>,
 >(
@@ -446,6 +593,10 @@ async function persistResolution<
           event.recipientCountryId ?? null,
         ],
       );
+    }
+
+    for (const event of resolution.events) {
+      await persistWorldProjectionEvent(client, lease.campaignId, lease.turnNumber, event);
     }
 
     for (const draw of resolution.randomDraws) {
