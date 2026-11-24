@@ -21,6 +21,7 @@
     <div class="topbar-right">
       <span class="server-state"><i></i> СЕРВЕР В СЕТИ</span>
       <span id="user-label" class="user-label hidden"></span>
+      <button id="profile-button" class="button button-quiet hidden" type="button">Профиль</button>
       <button id="chat-open-button" class="button button-outline hidden" type="button" aria-haspopup="dialog" aria-controls="chat-modal">Чаты</button>
       <button id="logout-button" class="button button-quiet hidden" type="button">Выйти</button>
     </div>
@@ -60,6 +61,78 @@
         </div>
         <a class="button button-outline button-wide" href="/auth/vk/start">Обычный вход через VK ID ↗</a>
         <div class="secure-note"><span>⌑</span> Защищённая сессия · локальный сервер</div>
+      </div>
+    </section>
+
+    <section id="profile-screen" class="hidden profile-screen">
+      <div class="profile-heading">
+        <div>
+          <button id="profile-back" class="back-link" type="button">← Назад</button>
+          <div class="eyebrow"><span class="eyebrow-line"></span> ЛИЧНЫЙ КАБИНЕТ</div>
+          <h1>Профиль <em>игрока.</em></h1>
+          <p class="muted">Настройки имени и способы безопасного входа в Paper Wars.</p>
+        </div>
+        <div class="profile-account-mark">
+          <span id="profile-avatar">PW</span>
+          <div><strong id="profile-user-title">Загрузка профиля…</strong><small>АККАУНТ PAPER WARS</small></div>
+        </div>
+      </div>
+      <p id="profile-page-message" class="form-message" role="status"></p>
+      <div class="profile-layout">
+        <section class="panel profile-panel">
+          <div class="panel-kicker">ЛИЧНЫЕ ДАННЫЕ</div>
+          <h2>Данные профиля</h2>
+          <p class="profile-description">Никнейм будет отображаться в игровом интерфейсе. Резервный email используется для входа по паролю.</p>
+          <form id="profile-form" class="form-stack">
+            <label class="field">
+              <span>Игровой никнейм</span>
+              <input id="profile-display-name" type="text" minlength="2" maxlength="32" autocomplete="nickname" placeholder="Например, СеверныйВетер" required>
+            </label>
+            <label class="field">
+              <span>Резервный email</span>
+              <input id="profile-email" type="email" maxlength="254" autocomplete="email" placeholder="commander@example.com">
+            </label>
+            <small id="profile-email-hint" class="profile-hint">Добавь email, чтобы можно было входить с помощью пароля.</small>
+            <button id="profile-save" class="button button-primary" type="submit">Сохранить изменения ↗</button>
+          </form>
+          <p id="profile-form-message" class="form-message" role="status"></p>
+        </section>
+        <section class="panel profile-panel">
+          <div class="panel-kicker">БЕЗОПАСНОСТЬ</div>
+          <h2>Способы входа</h2>
+          <div class="profile-security-list">
+            <div class="profile-security-row">
+              <div><strong>VK ID</strong><small>Вход через привязанный аккаунт VK</small></div>
+              <span id="profile-vk-status" class="profile-state-pill">Проверка…</span>
+            </div>
+            <div class="profile-security-row">
+              <div><strong>Резервный пароль</strong><small id="profile-password-status">Проверка…</small></div>
+              <span id="profile-password-pill" class="profile-state-pill">Проверка…</span>
+            </div>
+          </div>
+          <button id="profile-link-vk" class="button button-outline profile-vk-button" type="button">Привязать VK ID ↗</button>
+          <div class="profile-password-section">
+            <h3 id="profile-password-title">Резервный пароль</h3>
+            <p id="profile-password-caption" class="profile-description">Для резервного входа используй пароль длиной не менее 12 символов.</p>
+            <p id="profile-password-unavailable" class="profile-hint hidden">Сначала добавь резервный email в личных данных. После этого можно установить пароль.</p>
+            <form id="profile-password-form" class="form-stack">
+              <label id="profile-current-password-row" class="field">
+                <span>Текущий пароль</span>
+                <input id="profile-current-password" type="password" autocomplete="current-password">
+              </label>
+              <label class="field">
+                <span>Новый пароль</span>
+                <input id="profile-new-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="Не менее 12 символов" required>
+              </label>
+              <label class="field">
+                <span>Повтори новый пароль</span>
+                <input id="profile-confirm-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="Повтори пароль" required>
+              </label>
+              <button id="profile-password-submit" class="button button-primary" type="submit">Сохранить пароль ↗</button>
+            </form>
+            <p id="profile-password-message" class="form-message" role="status"></p>
+          </div>
+        </section>
       </div>
     </section>
 

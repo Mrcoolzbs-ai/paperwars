@@ -14,11 +14,20 @@ const ruleset = createBaselineRuleset('baseline-v1', 'rng-v1');
 function createState(
   terrain: string,
   discoveredCells: BaselineWorldState['discoveredCells'] = [],
+  width = 5,
+  includeStartingTerritory = true,
 ): BaselineWorldState {
+  const startingCell = {
+    id: '60000000-0000-4000-8000-000000000099',
+    x: 0,
+    y: 2,
+    population: terrain[2 * width] === 'l' ? 1 : 0,
+    buildingType: null,
+  };
   return {
     campaignId,
     turnNumber: 1,
-    map: { width: 5, height: 5, seed: 'test-seed', terrain },
+    map: { width, height: terrain.length / width, seed: 'test-seed', terrain },
     countries: [
       {
         id: countryId,
@@ -28,7 +37,7 @@ function createState(
         government: 'republic',
         flagDataUrl: null,
         officialSystem: {},
-        cells: [],
+        cells: includeStartingTerritory ? [startingCell] : [],
       },
     ],
     discoveredCells,
@@ -114,7 +123,7 @@ describe('baseline turn resolver', () => {
       resultCode: 'COLONIZATION_ACCEPTED',
       data: { width: 3, height: 3, colonizedCount: 9, residentsAdded: 9 },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(9);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
     expect(result.events.filter((event) => event.type === 'territory.colonized')).toHaveLength(9);
     expect(result.events.filter((event) => event.type === 'discovery.discovered')).toHaveLength(9);
     expect(random.calls).toHaveLength(9);
@@ -154,7 +163,7 @@ describe('baseline turn resolver', () => {
         residentsAdded: 1,
       },
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(9);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
     expect(
       result.nextState.countries[0]?.cells.find((cell) => cell.x === 2 && cell.y === 2)?.population,
     ).toBe(1);
@@ -199,8 +208,74 @@ describe('baseline turn resolver', () => {
       status: 'rejected',
       resultCode: 'COLONIZATION_OUT_OF_BOUNDS',
     });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
+    expect(random.calls).toHaveLength(0);
+  });
+
+  it('rejects a detached colony even when the 3x3 square contains free land', () => {
+    const random = createRandom();
+    const result = resolve(
+      createState('l'.repeat(25), [], 5, false),
+      [createOrder('40000000-0000-4000-8000-000000000017')],
+      random.source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_NOT_ADJACENT',
+    });
     expect(result.nextState.countries[0]?.cells).toHaveLength(0);
     expect(random.calls).toHaveLength(0);
+  });
+
+  it('rejects a colony square that overlaps existing territory', () => {
+    const state = createState('l'.repeat(25));
+    const country = state.countries[0]!;
+    const overlappingState: BaselineWorldState = {
+      ...state,
+      countries: [{
+        ...country,
+        cells: [
+          ...country.cells,
+          {
+            id: '60000000-0000-4000-8000-000000000098',
+            x: 2,
+            y: 2,
+            population: 1,
+            buildingType: null,
+          },
+        ],
+      }],
+    };
+    const random = createRandom();
+    const result = resolve(
+      overlappingState,
+      [createOrder('40000000-0000-4000-8000-000000000018')],
+      random.source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_OVERLAPS_EXISTING_TERRITORY',
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(2);
+    expect(random.calls).toHaveLength(0);
+  });
+
+  it('allows a later colony to touch an earlier colony in the same turn', () => {
+    const random = createRandom();
+    const result = resolve(
+      createState('l'.repeat(45), [], 9),
+      [
+        createOrder('40000000-0000-4000-8000-000000000019', 'colonization', { x: 2, y: 2 }),
+        createOrder('40000000-0000-4000-8000-000000000020', 'colonization', { x: 5, y: 2 }),
+      ],
+      random.source,
+    );
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'COLONIZATION_ACCEPTED',
+      'COLONIZATION_ACCEPTED',
+    ]);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(19);
+    expect(random.calls).toHaveLength(18);
   });
 
   it('rejects a square with no free land and makes no random draws', () => {
@@ -216,7 +291,7 @@ describe('baseline turn resolver', () => {
       resultCode: 'NO_COLONIZABLE_LAND',
     });
     expect(random.calls).toHaveLength(0);
-    expect(result.nextState.countries[0]?.cells).toHaveLength(0);
+    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
   });
 
   it('rejects a square when its only land cell is already owned, even if water is free', () => {
