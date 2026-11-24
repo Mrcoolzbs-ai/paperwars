@@ -289,6 +289,9 @@ export function createBaselineTurnResolver(): TurnResolver<
           type?: string;
           alreadyDiscovered?: boolean;
         }> = [];
+        const residentsPerLandCell = Math.floor(9 / landCandidates.length);
+        const extraResidents = 9 % landCandidates.length;
+        let landIndex = 0;
         for (const cell of candidates) {
           const key = coordinateKey(cell.x, cell.y);
           const isLand = cell.terrainCode === 'l';
@@ -296,14 +299,17 @@ export function createBaselineTurnResolver(): TurnResolver<
           const cellId = previousDiscovery?.cellId ?? stableUuid(
             `paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`,
           );
-          const population = isLand ? 1 : 0;
+          const population = isLand
+            ? residentsPerLandCell + (landIndex < extraResidents ? 1 : 0)
+            : 0;
+          if (isLand) landIndex += 1;
           country.cells = [
             ...country.cells,
             { id: cellId, x: cell.x, y: cell.y, population, buildingType: null },
           ];
           ownership.set(key, country.id);
           colonizedCells += 1;
-          if (isLand) residentsAdded += 1;
+          if (isLand) residentsAdded += population;
 
           emit(order.id, country.id, 'territory.colonized', {
             orderId: order.id,
@@ -348,7 +354,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           orderId: order.id,
           status: 'accepted',
           resultCode: 'COLONIZATION_ACCEPTED',
-          message: `Захвачено клеток: ${candidates.length} (суша: ${landCandidates.length}, вода/реки: ${candidates.length - landCandidates.length}). На каждой новой клетке суши появился один житель.`,
+          message: `Захвачено клеток: ${candidates.length} (суша: ${landCandidates.length}, вода/реки: ${candidates.length - landCandidates.length}). Добавлено 9 жителей, распределённых по клеткам суши.`,
           data: {
             centerX: x,
             centerY: y,
@@ -357,7 +363,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             colonizedCount: candidates.length,
             colonizedLandCount: landCandidates.length,
             colonizedWaterCount: candidates.length - landCandidates.length,
-            residentsAdded: landCandidates.length,
+            residentsAdded,
             discoveries: orderDiscoveries,
           },
         });
