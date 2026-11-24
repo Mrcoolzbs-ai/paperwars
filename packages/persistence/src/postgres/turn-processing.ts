@@ -543,6 +543,259 @@ export async function closeOrders(
 }
 
 /**
+ * Rolls back the most recently completed turn and reconstructs the relational
+ * world projection from the source snapshot. The original random seed is kept
+ * committed so the same turn can be played again.
+ */
+export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Promise<number> {
+  assertUuid(campaignId, 'campaign');
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const campaignResult = await client.query<{
+      status: 'active' | 'completed';
+      current_turn: number;
+      turn_duration_hours: number;
+    }>(
+      'SELECT status, current_turn, turn_duration_hours FROM campaigns WHERE id = $1 FOR UPDATE',
+      [campaignId],
+    );
+    const campaign = campaignResult.rows[0];
+    if (!campaign) {
+      throw new CampaignTurnProcessingError('CAMPAIGN_NOT_FOUND', 'Кампания не найдена.');
+    }
+
+    const turnNumber =
+      campaign.status === 'completed' ? campaign.current_turn : campaign.current_turn - 1;
+    if (turnNumber < 1) {
+      throw new CampaignTurnProcessingError(
+        'INVALID_ORDER',
+        'Откатить можно только уже обработанный ход.',
+      );
+    }
+
+    const jobResult = await client.query<{ id: string; status: string }>(
+      'SELECT id, status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+      [campaignId, turnNumber],
+    );
+    const job = jobResult.rows[0];
+    if (!job || job.status !== 'completed') {
+      throw new CampaignTurnProcessingError(
+        'ORDERS_ALREADY_LOCKED',
+        'Последний ход ещё не завершён или уже обрабатывается.',
+      );
+    }
+
+    const snapshotResult = await client.query<{ state: Record<string, unknown> }>(
+      'SELECT state FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
+      [campaignId, turnNumber],
+    );
+    const previousSnapshot = snapshotResult.rows[0]?.state;
+    if (!previousSnapshot || !Array.isArray(previousSnapshot['countries'])) {
+      throw new CampaignTurnProcessingError(
+        'SNAPSHOT_NOT_FOUND',
+        'Не удалось восстановить состояние мира перед последним ходом.',
+      );
+    }
+
+    // Remove discovery history from the undone turn before the dependent
+    // discovery records. Earlier discoveries remain intact.
+    await client.query(
+      'DELETE FROM discovery_records WHERE campaign_id = $1 AND discovered_at_turn >= $2',
+      [campaignId, turnNumber],
+    );
+    await client.query(
+      'DELETE FROM discovery_history WHERE turn_number >= $2 AND discovery_id IN (SELECT id FROM discovery_records WHERE campaign_id = $1)',
+      [campaignId, turnNumber],
+    );
+
+    // Clearing ownership cascades all projected buildings; cell identities
+    // themselves remain stable because they are part of the seeded world map.
+    await client.query('DELETE FROM country_cells WHERE campaign_id = $1', [campaignId]);
+    await client.query(
+      `DELETE FROM country_territories
+       WHERE campaign_id = $1
+         AND territory_type = 'colony'
+         AND source_order_id IN (
+           SELECT id FROM orders WHERE campaign_id = $1 AND turn_number >= $2
+         )`,
+      [campaignId, turnNumber],
+    );
+
+    const territories = await client.query<{
+      id: string;
+      country_id: string;
+      center_x: number;
+      center_y: number;
+      width: number;
+      height: number;
+    }>(
+      `SELECT id, country_id, center_x, center_y, width, height
+       FROM country_territories
+       WHERE campaign_id = $1`,
+      [campaignId],
+    );
+
+    const countries = previousSnapshot['countries'];
+    for (const countryValue of countries) {
+      if (
+        typeof countryValue !== 'object' ||
+        countryValue === null ||
+        !('id' in countryValue) ||
+        typeof countryValue.id !== 'string' ||
+        !('cells' in countryValue) ||
+        !Array.isArray(countryValue.cells)
+      ) {
+        throw new CampaignTurnProcessingError(
+          'SNAPSHOT_NOT_FOUND',
+          'Сохранённое состояние государства повреждено.',
+        );
+      }
+      const countryId = countryValue.id;
+      for (const cellValue of countryValue.cells) {
+        if (
+          typeof cellValue !== 'object' ||
+          cellValue === null ||
+          !('id' in cellValue) ||
+          typeof cellValue.id !== 'string' ||
+          !('x' in cellValue) ||
+          !Number.isSafeInteger(cellValue.x) ||
+          !('y' in cellValue) ||
+          !Number.isSafeInteger(cellValue.y) ||
+          !('population' in cellValue) ||
+          !Number.isSafeInteger(cellValue.population)
+        ) {
+          throw new CampaignTurnProcessingError(
+            'SNAPSHOT_NOT_FOUND',
+            'Сохранённая клетка территории повреждена.',
+          );
+        }
+        const x = cellValue.x as number;
+        const y = cellValue.y as number;
+        const territory = territories.rows.find((candidate) => {
+          if (candidate.country_id !== countryId) return false;
+          const minX = candidate.center_x - Math.floor(candidate.width / 2);
+          const minY = candidate.center_y - Math.floor(candidate.height / 2);
+          return (
+            x >= minX &&
+            x < minX + candidate.width &&
+            y >= minY &&
+            y < minY + candidate.height
+          );
+        });
+        if (!territory) {
+          throw new CampaignTurnProcessingError(
+            'SNAPSHOT_NOT_FOUND',
+            'Для клетки из сохранённого мира не найдена исходная территория.',
+          );
+        }
+        await client.query(
+          `INSERT INTO country_cells (
+             campaign_id, country_id, cell_id, population, territory_id
+           ) VALUES ($1, $2, $3, $4, $5)`,
+          [campaignId, countryId, cellValue.id, cellValue.population, territory.id],
+        );
+        const buildingType =
+          'buildingType' in cellValue ? cellValue.buildingType : null;
+        if (typeof buildingType === 'string') {
+          await client.query(
+            `INSERT INTO country_buildings (campaign_id, country_id, cell_id, building_type)
+             VALUES ($1, $2, $3, $4)`,
+            [campaignId, countryId, cellValue.id, buildingType],
+          );
+        }
+      }
+    }
+
+    await client.query(
+      'DELETE FROM discovery_history WHERE turn_number >= $2 AND discovery_id IN (SELECT id FROM discovery_records WHERE campaign_id = $1)',
+      [campaignId, turnNumber],
+    );
+    await client.query('DELETE FROM game_events WHERE campaign_id = $1 AND turn_number >= $2', [
+      campaignId,
+      turnNumber,
+    ]);
+    await client.query('DELETE FROM random_draws WHERE campaign_id = $1 AND turn_number >= $2', [
+      campaignId,
+      turnNumber,
+    ]);
+    await client.query('DELETE FROM economic_reports WHERE campaign_id = $1 AND turn_number >= $2', [
+      campaignId,
+      turnNumber,
+    ]);
+    await client.query('DELETE FROM battle_reports WHERE campaign_id = $1 AND turn_number >= $2', [
+      campaignId,
+      turnNumber,
+    ]);
+    await client.query(
+      'DELETE FROM world_snapshots WHERE campaign_id = $1 AND turn_number > $2',
+      [campaignId, turnNumber],
+    );
+    await client.query('DELETE FROM turn_jobs WHERE campaign_id = $1 AND turn_number >= $2', [
+      campaignId,
+      turnNumber,
+    ]);
+    await client.query('DELETE FROM random_seeds WHERE campaign_id = $1 AND turn_number > $2', [
+      campaignId,
+      turnNumber,
+    ]);
+    const seed = await client.query(
+      `UPDATE random_seeds
+       SET status = 'committed', revealed_at = NULL
+       WHERE campaign_id = $1 AND turn_number = $2`,
+      [campaignId, turnNumber],
+    );
+    if (seed.rowCount !== 1) {
+      throw new CampaignTurnProcessingError(
+        'SNAPSHOT_NOT_FOUND',
+        'Не удалось восстановить исходный ключ случайных событий.',
+      );
+    }
+
+    await client.query(
+      `UPDATE orders
+       SET status = CASE WHEN status = 'finalized' THEN 'confirmed' ELSE 'draft' END,
+           resolution_status = NULL,
+           result_code = NULL,
+           result_message = NULL,
+           result_data = NULL,
+           finalized_at = NULL,
+           updated_at = clock_timestamp()
+       WHERE campaign_id = $1 AND turn_number = $2
+         AND status IN ('finalized', 'discarded')`,
+      [campaignId, turnNumber],
+    );
+    await client.query(
+      'UPDATE campaign_memberships SET orders_confirmed = FALSE WHERE campaign_id = $1 AND status = \'active\'',
+      [campaignId],
+    );
+    await client.query(
+      `UPDATE campaigns
+       SET status = 'active',
+           completed_at = NULL,
+           current_turn = $2,
+           orders_locked = FALSE,
+           orders_locked_at = NULL,
+           deadline_at = clock_timestamp() + make_interval(hours => turn_duration_hours)
+       WHERE id = $1`,
+      [campaignId, turnNumber],
+    );
+
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return turnNumber;
+  } catch (error) {
+    if (transactionOpen) await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Lists the current participant's orders for the campaign's current turn.
  */
 export async function listCampaignOrders(
