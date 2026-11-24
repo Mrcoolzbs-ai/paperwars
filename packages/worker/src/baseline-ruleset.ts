@@ -351,8 +351,9 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
         const borderOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const;
         const touchesOwnTerritory = candidates.some((cell) =>
-          borderOffsets.some(([dx, dy]) =>
-            ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id,
+          borderOffsets.some(
+            ([dx, dy]) =>
+              ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id,
           ),
         );
         if (!touchesOwnTerritory) {

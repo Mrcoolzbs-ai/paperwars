@@ -232,19 +232,21 @@ describe('baseline turn resolver', () => {
     const country = state.countries[0]!;
     const overlappingState: BaselineWorldState = {
       ...state,
-      countries: [{
-        ...country,
-        cells: [
-          ...country.cells,
-          {
-            id: '60000000-0000-4000-8000-000000000098',
-            x: 2,
-            y: 2,
-            population: 1,
-            buildingType: null,
-          },
-        ],
-      }],
+      countries: [
+        {
+          ...country,
+          cells: [
+            ...country.cells,
+            {
+              id: '60000000-0000-4000-8000-000000000098',
+              x: 2,
+              y: 2,
+              population: 1,
+              buildingType: null,
+            },
+          ],
+        },
+      ],
     };
     const random = createRandom();
     const result = resolve(
