@@ -2092,12 +2092,14 @@
       : null;
     state.mapTransform = null;
     $('#confirm-spawn').disabled = !state.mapSelectedCenter;
-    $('#map-selection-label').textContent = state.campaign.countryId
-      ? 'Зажми ЛКМ для перемещения. ПКМ по клетке — строительство или колонизация.'
-      : existingReservation
-        ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
-        : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
-    $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId));
+    $('#map-selection-label').textContent = isAdminMode() && !state.campaign.countryId
+      ? 'Административный просмотр: ПКМ по клетке — карточка государства или инструменты управления.'
+      : state.campaign.countryId
+        ? 'Зажми ЛКМ для перемещения. ПКМ по клетке — строительство, колонизация или действия администратора.'
+        : existingReservation
+          ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
+          : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
+    $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId) || isAdminMode());
     $('#confirm-map-orders').classList.toggle('hidden', !state.campaign.countryId);
     closeMapContextMenu();
     $('#map-modal').classList.remove('hidden');
@@ -3268,14 +3270,14 @@
       if (!drag || drag.moved) return;
       const cell = mapCellAt(event.clientX, event.clientY);
       if (!cell) return;
-      if (state.campaign?.countryId) {
+      if (state.campaign?.countryId || isAdminMode()) {
         if (event.pointerType === 'touch') openMapContextMenu(cell, event.clientX, event.clientY);
         return;
       }
       chooseSpawnCenter(cell.x, cell.y);
     });
     $('#map-canvas').addEventListener('contextmenu', (event) => {
-      if (!state.campaign?.countryId) return;
+      if (!state.campaign?.countryId && !isAdminMode()) return;
       event.preventDefault();
       const cell = mapCellAt(event.clientX, event.clientY);
       if (cell) openMapContextMenu(cell, event.clientX, event.clientY);
