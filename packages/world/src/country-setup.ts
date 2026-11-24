@@ -904,7 +904,9 @@ export function createCountrySetupService(options: {
           };
           groups.set(row.country_id, country);
         }
-        if (!country.territories.some((territory) => territory.id === row.territory_id)) {
+        if (
+          !country.territories.some((territory) => territory.id === row.territory_id)
+        ) {
           country.territories.push({
             id: row.territory_id,
             type: row.territory_type,
@@ -1664,7 +1666,13 @@ export function createCountrySetupService(options: {
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
           const isDryLand = spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
-          return [campaignId, countryId, cellId, isDryLand && !hasBuilding ? 1 : 0, coreTerritoryId] as const;
+          return [
+            campaignId,
+            countryId,
+            cellId,
+            isDryLand && !hasBuilding ? 1 : 0,
+            coreTerritoryId,
+          ] as const;
         });
         const initialResidentCount = countryCellValues.reduce((sum, row) => sum + row[3], 0);
         const countryCellsInsert = makeValues(countryCellValues);

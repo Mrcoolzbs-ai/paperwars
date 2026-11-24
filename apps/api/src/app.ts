@@ -145,29 +145,46 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   };
   const safeMessage = (message: string, fallback: string) =>
     /[А-Яа-яЁё]/.test(message) ? message : fallback;
+
   if (error instanceof AuthValidationError) {
     return reply.code(400).send({
       error: 'INVALID_REQUEST',
       message: safeMessage(error.message, 'Проверьте введённые данные и попробуйте ещё раз.'),
     });
   }
+
   if (error instanceof CampaignTurnProcessingError) {
-    const status = error.code === 'INVALID_ORDER' ? 400
-      : error.code === 'CAMPAIGN_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND' ? 404
-        : error.code === 'NOT_ACTIVE_MEMBER' ? 403 : 409;
+    const status =
+      error.code === 'INVALID_ORDER'
+        ? 400
+        : error.code === 'CAMPAIGN_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND'
+          ? 404
+          : error.code === 'NOT_ACTIVE_MEMBER'
+            ? 403
+            : 409;
     return reply.code(status).send({
       error: error.code,
       message: messages[error.code] || 'Не удалось выполнить действие с приказами.',
     });
   }
+
   if (error instanceof EmailAlreadyRegisteredError) {
-    return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED', message: 'Аккаунт с этой почтой уже существует.' });
+    return reply.code(409).send({
+      error: 'EMAIL_ALREADY_REGISTERED',
+      message: 'Аккаунт с этой почтой уже существует.',
+    });
   }
   if (error instanceof DisplayNameAlreadyTakenError) {
-    return reply.code(409).send({ error: 'NICKNAME_ALREADY_TAKEN', message: 'Этот никнейм уже занят.' });
+    return reply.code(409).send({
+      error: 'NICKNAME_ALREADY_TAKEN',
+      message: 'Этот никнейм уже занят.',
+    });
   }
   if (error instanceof ExternalIdentityAlreadyLinkedError) {
-    return reply.code(409).send({ error: 'VK_IDENTITY_CONFLICT', message: 'Этот аккаунт VK ID уже привязан к другому профилю.' });
+    return reply.code(409).send({
+      error: 'VK_IDENTITY_CONFLICT',
+      message: 'Этот аккаунт VK ID уже привязан к другому профилю.',
+    });
   }
   if (
     error instanceof RefreshTokenReuseDetectedError ||
@@ -175,12 +192,19 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof InvalidCredentialsError ||
     error instanceof UnauthenticatedError
   ) {
-    return reply.code(401).send({ error: 'UNAUTHENTICATED', message: 'Сессия недействительна или истекла. Войдите снова.' });
+    return reply.code(401).send({
+      error: 'UNAUTHENTICATED',
+      message: 'Сессия недействительна или истекла. Войдите снова.',
+    });
   }
+
   if (error instanceof CountrySetupValidationError) {
     return reply.code(400).send({
       error: 'INVALID_COUNTRY_SETUP',
-      message: safeMessage(error.message, 'Некорректные данные государства. Проверьте выбранные параметры.'),
+      message: safeMessage(
+        error.message,
+        'Некорректные данные государства. Проверьте выбранные параметры.',
+      ),
     });
   }
   if (
@@ -192,13 +216,17 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
         error instanceof SocialSystemAdminRequiredError
           ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
           : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
-      message: error instanceof SocialSystemAdminRequiredError
-        ? 'Для этого действия нужны права администратора.'
-        : 'У вас больше нет доступа к этой кампании.',
+      message:
+        error instanceof SocialSystemAdminRequiredError
+          ? 'Для этого действия нужны права администратора.'
+          : 'У вас больше нет доступа к этой кампании.',
     });
   }
   if (error instanceof SocialSystemNotFoundError) {
-    return reply.code(404).send({ error: 'SOCIAL_SYSTEM_NOT_FOUND', message: 'Учение не найдено.' });
+    return reply.code(404).send({
+      error: 'SOCIAL_SYSTEM_NOT_FOUND',
+      message: 'Учение не найдено.',
+    });
   }
   if (
     error instanceof CampaignSetupNotReadyError ||
@@ -210,19 +238,31 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
   ) {
     return reply.code(409).send({
       error: 'COUNTRY_SETUP_CONFLICT',
-      message: safeMessage(error.message, 'Действие конфликтует с текущим состоянием государства или кампании.'),
+      message: safeMessage(
+        error.message,
+        'Действие конфликтует с текущим состоянием государства или кампании.',
+      ),
     });
   }
   if (error instanceof OfficialSystemNotAvailableError) {
-    return reply.code(422).send({ error: 'OFFICIAL_SYSTEM_NOT_AVAILABLE', message: 'Выбранное учение больше недоступно.' });
+    return reply.code(422).send({
+      error: 'OFFICIAL_SYSTEM_NOT_AVAILABLE',
+      message: 'Выбранное учение больше недоступно.',
+    });
   }
   if (error instanceof SystemAvailabilityNotConfiguredError) {
-    return reply.code(503).send({ error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED', message: 'Выбор учений временно недоступен.' });
+    return reply.code(503).send({
+      error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED',
+      message: 'Выбор учений временно недоступен.',
+    });
   }
-  reply.log.error({ err: error }, 'Unhandled API request error');
-  return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR', message: 'На сервере произошла ошибка. Попробуйте ещё раз позже.' });
-}
 
+  reply.log.error({ err: error }, 'Unhandled API request error');
+  return reply.code(500).send({
+    error: 'INTERNAL_SERVER_ERROR',
+    message: 'На сервере произошла ошибка. Попробуйте ещё раз позже.',
+  });
+}
 function registerAuthRoutes(
   app: FastifyInstance,
   authService: AuthService,

@@ -254,7 +254,7 @@
   }
 
   function userErrorMessage(error) {
-    const message = typeof error?.message === 'string' ? userErrorMessage(error).trim() : '';
+    const message = typeof error?.message === 'string' ? error.message.trim() : '';
     return /[А-Яа-яЁё]/.test(message) ? message : 'Произошла ошибка. Попробуйте ещё раз.';
   }
 
