@@ -809,6 +809,16 @@ export function createCountrySetupService(options: {
     );
     if (role.rows.length === 0) throw new SocialSystemAdminRequiredError();
   };
+  const requireSuperAdmin = async (userId: string): Promise<void> => {
+    const role = await options.pool.query(
+      `SELECT 1 FROM user_admins AS admin
+       JOIN user_admin_settings AS setting
+         ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+       WHERE admin.user_id = $1`,
+      [userId],
+    );
+    if (role.rows.length === 0) throw new SocialSystemAdminRequiredError();
+  };
   const availabilityPolicy: SocialSystemAvailabilityPolicy = options.systemAvailabilityPolicy ?? {
     async listAvailable(tx, query) {
       const nearby = await tx.query<SocialSystemRow>(
@@ -840,7 +850,7 @@ export function createCountrySetupService(options: {
            WHERE admin.user_id = $1`,
           [userId],
         );
-        if (administrator.rows.length === 0 && !adminUserIds.has(userId)) {
+        if (administrator.rows.length === 0) {
           throw new NotActiveCampaignMemberError();
         }
       }
@@ -982,7 +992,7 @@ export function createCountrySetupService(options: {
         ),
       ]);
       const countryId = member.rows[0]?.country_id;
-      const isAdmin = administrator.rows.length > 0 || adminUserIds.has(userId);
+      const isAdmin = administrator.rows.length > 0;
       if (member.rows.length === 0 && !isAdmin) throw new NotActiveCampaignMemberError();
       if (!isAdmin && (countryId === null || countryId === undefined)) return [];
 
@@ -1526,7 +1536,7 @@ export function createCountrySetupService(options: {
     },
 
     async getCountryProfileForAdmin(adminUserId, campaignId, countryId) {
-      await requireAdmin(adminUserId);
+      await requireSuperAdmin(adminUserId);
       const result = await options.pool.query<CountryProfileRow>(
         `SELECT country.id AS country_id, country.campaign_id, country.name AS country_name,
                 country.culture, country.government, country.flag_data_url,
@@ -1585,7 +1595,7 @@ export function createCountrySetupService(options: {
     },
 
     async deleteBuildingForAdmin(adminUserId, campaignId, x, y) {
-      await requireAdmin(adminUserId);
+      await requireSuperAdmin(adminUserId);
       validateInteger(x, 'x');
       validateInteger(y, 'y');
       const client = await options.pool.connect();
@@ -1699,7 +1709,7 @@ export function createCountrySetupService(options: {
     },
 
     async deleteColonyForAdmin(adminUserId, campaignId, territoryId) {
-      await requireAdmin(adminUserId);
+      await requireSuperAdmin(adminUserId);
       const client = await options.pool.connect();
       let transactionOpen = false;
       try {
