@@ -72,7 +72,13 @@ function stableUuid(value: string): string {
   chars[12] = '5';
   chars[16] = ((Number.parseInt(chars[16]!, 16) & 0x3) | 0x8).toString(16);
   const hex = chars.join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join('-');
 }
 
 function coordinateKey(x: number, y: number): string {
@@ -84,7 +90,12 @@ function isCoordinate(value: unknown): value is number {
 }
 
 function rejection(orderId: string, resultCode: string, message: string) {
-  return { orderId: orderId as BaselineOrder['id'], status: 'rejected' as const, resultCode, message };
+  return {
+    orderId: orderId as BaselineOrder['id'],
+    status: 'rejected' as const,
+    resultCode,
+    message,
+  };
 }
 
 export function createBaselineRuleset(
@@ -122,7 +133,9 @@ export function createBaselineTurnResolver(): TurnResolver<
       typeof terrain !== 'string' ||
       terrain.length !== (width as number) * (height as number)
     ) {
-      throw new Error('Baseline resolver requires map dimensions and row-major terrain in the snapshot');
+      throw new Error(
+        'Baseline resolver requires map dimensions and row-major terrain in the snapshot',
+      );
     }
 
     const mapWidth = width as number;
@@ -162,7 +175,15 @@ export function createBaselineTurnResolver(): TurnResolver<
     ): void => {
       const event = {
         eventId: toId<'EventId'>(stableUuid(
-          `paperwars:event:${snapshot.campaignId}:${snapshot.turnNumber}:${orderId}:${type}:${String(payload['x'] ?? '')}:${String(payload['y'] ?? '')}`,
+          [
+              'paperwars:event',
+              snapshot.campaignId,
+              snapshot.turnNumber,
+              orderId,
+              type,
+              String(payload['x'] ?? ''),
+              String(payload['y'] ?? ''),
+            ].join(':'),
         )),
         campaignId: snapshot.campaignId,
         turnNumber: snapshot.turnNumber,
@@ -180,7 +201,9 @@ export function createBaselineTurnResolver(): TurnResolver<
     for (const order of orders) {
       const country = countriesById.get(order.countryId);
       if (country === undefined) {
-        orderResults.push(rejection(order.id, 'COUNTRY_NOT_FOUND', 'Государство приказа не найдено.'));
+        orderResults.push(
+          rejection(order.id, 'COUNTRY_NOT_FOUND', 'Государство приказа не найдено.'),
+        );
         continue;
       }
 
@@ -198,7 +221,9 @@ export function createBaselineTurnResolver(): TurnResolver<
       const x = order.payload['x'];
       const y = order.payload['y'];
       if (!isCoordinate(x) || !isCoordinate(y) || x >= mapWidth || y >= mapHeight) {
-        orderResults.push(rejection(order.id, 'INVALID_COORDINATES', 'Координаты приказа находятся вне карты.'));
+        orderResults.push(
+          rejection(order.id, 'INVALID_COORDINATES', 'Координаты приказа находятся вне карты.'),
+        );
         continue;
       }
 
@@ -206,25 +231,39 @@ export function createBaselineTurnResolver(): TurnResolver<
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
         const buildingType = order.payload['buildingType'];
         if (!ADDITIONAL_BUILDING_TYPES.has(String(buildingType))) {
-          orderResults.push(rejection(order.id, 'INVALID_BUILDING_TYPE', 'Неизвестный тип постройки.'));
+          orderResults.push(
+            rejection(order.id, 'INVALID_BUILDING_TYPE', 'Неизвестный тип постройки.'),
+          );
           continue;
         }
         if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
-          orderResults.push(rejection(order.id, 'CELL_NOT_OWNED', 'Строить можно только на своей клетке суши.'));
+          orderResults.push(
+            rejection(order.id, 'CELL_NOT_OWNED', 'Строить можно только на своей клетке суши.'),
+          );
           continue;
         }
         if (cell.buildingType !== null) {
-          orderResults.push(rejection(order.id, 'BUILDING_ALREADY_EXISTS', 'На клетке уже есть постройка.'));
+          orderResults.push(
+            rejection(order.id, 'BUILDING_ALREADY_EXISTS', 'На клетке уже есть постройка.'),
+          );
           continue;
         }
         if (cell.population < 1) {
-          orderResults.push(rejection(order.id, 'NO_FREE_RESIDENT', 'Для строительства нужен один свободный житель.'));
+          orderResults.push(
+            rejection(order.id, 'NO_FREE_RESIDENT', 'Для строительства нужен один свободный житель.'),
+          );
           continue;
         }
 
         const remainingResidents = cell.population - 1;
-        const updatedCell = { ...cell, population: remainingResidents, buildingType: String(buildingType) };
-        country.cells = country.cells.map((candidate) => candidate.id === cell.id ? updatedCell : candidate);
+        const updatedCell = {
+          ...cell,
+          population: remainingResidents,
+          buildingType: String(buildingType),
+        };
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id ? updatedCell : candidate,
+        );
         emit(order.id, country.id, 'building.constructed', {
           orderId: order.id,
           countryId: country.id,
@@ -261,8 +300,16 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
         const candidates: Array<{ x: number; y: number; terrainCode: string }> = [];
-        for (let cellY = Math.max(0, y - radius); cellY <= Math.min(mapHeight - 1, y + radius); cellY += 1) {
-          for (let cellX = Math.max(0, x - radius); cellX <= Math.min(mapWidth - 1, x + radius); cellX += 1) {
+        for (
+          let cellY = Math.max(0, y - radius);
+          cellY <= Math.min(mapHeight - 1, y + radius);
+          cellY += 1
+        ) {
+          for (
+            let cellX = Math.max(0, x - radius);
+            cellX <= Math.min(mapWidth - 1, x + radius);
+            cellX += 1
+          ) {
             if (ownership.has(coordinateKey(cellX, cellY))) continue;
             candidates.push({
               x: cellX,
@@ -354,7 +401,10 @@ export function createBaselineTurnResolver(): TurnResolver<
           orderId: order.id,
           status: 'accepted',
           resultCode: 'COLONIZATION_ACCEPTED',
-          message: `Захвачено клеток: ${candidates.length} (суша: ${landCandidates.length}, вода/реки: ${candidates.length - landCandidates.length}). Добавлено 9 жителей, распределённых по клеткам суши.`,
+          message:
+            `Захвачено клеток: ${candidates.length} (суша: ${landCandidates.length}, ` +
+            `вода/реки: ${candidates.length - landCandidates.length}). Добавлено 9 жителей, ` +
+            'распределённых по клеткам суши.',
           data: {
             centerX: x,
             centerY: y,
@@ -370,7 +420,13 @@ export function createBaselineTurnResolver(): TurnResolver<
         continue;
       }
 
-      orderResults.push(rejection(order.id, 'UNSUPPORTED_ORDER_TYPE', 'Этот тип приказа пока не поддерживается обработчиком.'));
+      orderResults.push(
+        rejection(
+          order.id,
+          'UNSUPPORTED_ORDER_TYPE',
+          'Этот тип приказа пока не поддерживается обработчиком.',
+        ),
+      );
     }
 
     const { discoveredCells: _discoveredCells, ...persistentState } = state;
