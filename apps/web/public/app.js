@@ -138,35 +138,34 @@
   };
 
   const buildingMeta = {
-    factory:{label:'Фабрика',code:'Ф',required:2,asset:'/assets/buildings/factory.jpg'},
-    field:{label:'Поле',code:'П',required:2,asset:'/assets/buildings/field.jpg'},
-    gold_mine:{label:'Золотая шахта',code:'З',required:1},
-    capital:{label:'Столица',code:'★',required:1,asset:'/assets/buildings/capital.jpg'},
-    religious_building:{label:'Церковь',code:'☼',required:1},
-    science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg'},
-    barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg'},
-    tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg'},
-    rice_field:{label:'Рисовое поле',code:'Р',required:1},
-    field_level_2:{label:'Поле II уровня',code:'П²',required:2},
-    cotton_field:{label:'Хлопковое поле',code:'Х',required:1},
-    textile_workshop:{label:'Ткацкая мастерская',code:'ТМ',required:1},
-    textile_workshop_level_2:{label:'Ткацкая мастерская II уровня',code:'ТМ²',required:3},
-    hunter:{label:'Охотники',code:'О',required:1},
-    fisher:{label:'Рыбаки',code:'Р',required:1},
-    greenhouse:{label:'Теплица',code:'Т',required:1},
-    dam:{label:'Дамба',code:'Д',required:1},
+    factory:{label:'Фабрика',code:'Ф',required:2,asset:'/assets/buildings/factory.jpg',color:'#5b6570'},
+    field:{label:'Поле',code:'П',required:2,asset:'/assets/buildings/field.jpg',color:'#6c9344'},
+    gold_mine:{label:'Золотая шахта',code:'З',required:1,asset:'/assets/buildings/gold-mark.jpg',color:'#c99722'},
+    capital:{label:'Столица',code:'★',required:1,asset:'/assets/buildings/capital.jpg',color:'#6b477d'},
+    religious_building:{label:'Церковь',code:'☼',required:1,color:'#9271a8',iconSvg:'<path d="M50 12 78 34v52H22V34Z"/><path d="M50 12v-8M41 4h18M40 86V57h20v29M34 42h32M50 26v10"/> <path d="M16 86h68"/>'},
+    science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg',color:'#4c8298'},
+    barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg',color:'#9b634d'},
+    tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg',color:'#52677f'},
+    rice_field:{label:'Рисовое поле',code:'Р',required:1,color:'#4d9b9a',iconSvg:'<path d="M14 78h72M18 64h64M22 50h56"/><path d="M28 66V32m0 13-10-8m10 0 10-8M50 52V18m0 14-10-8m10 3 10-9M72 66V36m0 12-9-8m9 2 9-9"/><path d="M8 84q12-7 24 0t24 0 24 0"/>'},
+    field_level_2:{label:'Поле II уровня',code:'П²',required:2,asset:'/assets/buildings/field.jpg',color:'#6c9344'},
+    cotton_field:{label:'Хлопковое поле',code:'Х',required:1,color:'#8f9f55',iconSvg:'<path d="M50 88V48m0 22L30 54m20 9 20-18"/><path d="M30 54c-10-10 2-22 12-15 2-13 20-14 23-1 12 0 16 16 5 22-5 3-12 1-15-4-4 6-17 5-25-2Z"/><circle cx="38" cy="46" r="5"/><circle cx="60" cy="45" r="6"/>'},
+    textile_workshop:{label:'Ткацкая мастерская',code:'ТМ',required:1,color:'#9a7853',iconSvg:'<path d="M18 18h64v64H18Z"/><path d="M26 28h48M26 72h48M32 28v44m12-44v44m12-44v44m12-44v44"/><path d="M12 40h76M12 60h76"/>'},
+    textile_workshop_level_2:{label:'Ткацкая мастерская II уровня',code:'ТМ²',required:3,color:'#9a7853',iconSvg:'<path d="M18 18h64v64H18Z"/><path d="M26 28h48M26 72h48M32 28v44m12-44v44m12-44v44m12-44v44"/><path d="M12 40h76M12 60h76"/><path d="m68 10 5 5 9-9"/>'},
+    hunter:{label:'Охотники',code:'О',required:1,color:'#8a694a',iconSvg:'<path d="M18 24q32 54 64 0M18 24l64 52M82 24 18 76"/><path d="m44 49 12-12m-4 12 10-10"/>'},
+    fisher:{label:'Рыбаки',code:'Р',required:1,color:'#3d8da7',iconSvg:'<path d="M12 52q24-27 52 0-28 27-52 0Z"/><path d="m64 52 22-17v34Z"/><circle cx="30" cy="48" r="3" fill="#111"/><path d="M50 24q20-6 28-18M72 6l8 1-2 8"/>'},
+    greenhouse:{label:'Теплица',code:'Т',required:1,color:'#4b9d55',iconSvg:'<path d="M14 82V42Q50 2 86 42v40Z"/><path d="M50 18v64M28 31v51M72 31v51M18 58h64"/><path d="M40 82V66q10-17 20 0v16"/>'},
+    dam:{label:'Дамба',code:'Д',required:1,color:'#287db5',iconSvg:'<path d="M14 24h72v52H14Z"/><path d="m14 24 22 52m0-52 22 52m0-52 22 52"/><path d="M10 84q10-8 20 0t20 0 20 0 20 0"/>'},
   };
   function buildingIconHtml(type,extraClass='') {
     const meta=buildingMeta[type];if(!meta)return '';
-    if(type==='gold_mine')return '<span class="building-gold-symbol '+extraClass+'" data-building-type="gold_mine" title="Золотая шахта">З</span>';
     if(meta.asset)return '<img class="building-icon-img '+extraClass+'" data-building-type="'+type+'" src="'+meta.asset+'" alt="'+escapeHtml(meta.label)+'" draggable="false">';
-    return '<svg class="building-icon-svg '+extraClass+'" viewBox="0 0 100 100" aria-label="'+escapeHtml(meta.label)+'" fill="none" stroke="#111" stroke-width="6" stroke-linecap="round"><circle cx="50" cy="50" r="17"/><path d="M50 4v24M50 72v24M4 50h24M72 50h24M17 17l17 17M66 66l17 17M83 17 66 34M34 66 17 83"/></svg>';
+    if(meta.iconSvg)return '<svg class="building-icon-svg '+extraClass+'" viewBox="0 0 100 100" role="img" aria-label="'+escapeHtml(meta.label)+'" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">'+meta.iconSvg+'</svg>';
+    return '';
   }
   function drawBuildingMapIcon(ctx, type, x, y, size) {
     const meta = buildingMeta[type];
     if (!meta || size < 1.5) return;
 
-    const marker = type === 'gold_mine' ? 'З' : meta.code.slice(0, 1);
     const insetRatio = type === 'factory' || type === 'tower' ? 0.19 : 0.11;
     const inset = Math.max(0.35, size * insetRatio);
     const inner = Math.max(1, size - inset * 2);
@@ -178,44 +177,11 @@
     ctx.rect(x + 0.25, y + 0.25, Math.max(0.5, size - 0.5), Math.max(0.5, size - 0.5));
     ctx.clip();
 
-    if (type === 'gold_mine') {
-      ctx.fillStyle = '#d6a323';
-      ctx.font = '900 ' + Math.max(3, size * 0.82) + 'px Georgia,serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('З', x + size / 2, y + size / 2 + 0.3);
-      ctx.restore();
-      return;
-    }
-
     if (size < 5.5) {
-      const markerSize = Math.max(1.3, size * 0.72);
-      ctx.fillStyle = '#16251c';
-      ctx.fillRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
-      ctx.fillStyle = '#fff';
-      ctx.font = '900 ' + Math.max(3, size * 0.7) + 'px Arial,sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(marker, x + size / 2, y + size / 2 + 0.2);
-      ctx.restore();
-      return;
-    }
-
-    if (type === 'religious_building') {
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(left, top, inner, inner);
-      ctx.strokeStyle = '#111';
-      ctx.lineWidth = Math.max(0.7, size * 0.065);
+      ctx.fillStyle = meta.color || '#52616b';
       ctx.beginPath();
-      ctx.arc(x + size / 2, y + size / 2, inner * 0.22, 0, Math.PI * 2);
-      for (let i = 0; i < 8; i += 1) {
-        const angle = i * Math.PI / 4;
-        const cx = x + size / 2;
-        const cy = y + size / 2;
-        ctx.moveTo(cx + Math.cos(angle) * inner * 0.31, cy + Math.sin(angle) * inner * 0.31);
-        ctx.lineTo(cx + Math.cos(angle) * inner * 0.47, cy + Math.sin(angle) * inner * 0.47);
-      }
-      ctx.stroke();
+      ctx.arc(x + size / 2, y + size / 2, Math.max(0.8, size * 0.32), 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
       return;
     }
@@ -234,7 +200,10 @@
         const canvas = $('#map-canvas');
         if (canvas && !$('#map-modal').classList.contains('hidden')) drawMapCanvas(canvas, false);
       };
-      img.src = meta.asset;
+      const svgSource = meta.iconSvg
+        ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="#17201b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">' + meta.iconSvg + '</svg>'
+        : '';
+      img.src = meta.asset || ('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgSource));
       state.buildingIconCache[type] = cached;
     }
 
