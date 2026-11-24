@@ -1166,8 +1166,12 @@ describe('baseline turn resolver', () => {
     const actionPointsUsed = result.economicReport?.['actionPointsUsed'] as
       Record<string, number> | undefined;
     expect(actionPointsUsed?.[countryId] ?? 0).toBe(3);
-    expect(result.events.some((event) => event.type === 'structure.destroyed' &&
-      event.payload['reason'] === 'manual-removal')).toBe(true);
+    expect(
+      result.events.some(
+        (event) =>
+          event.type === 'structure.destroyed' && event.payload['reason'] === 'manual-removal',
+      ),
+    ).toBe(true);
   });
 
   it('removes a greenhouse overlay when its field is demolished', () => {
