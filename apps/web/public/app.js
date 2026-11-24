@@ -386,6 +386,9 @@
     $('#profile-password-submit').textContent = profile.hasPassword
       ? 'Изменить пароль ↗'
       : 'Установить пароль ↗';
+    $('#profile-current-password').value = '';
+    $('#profile-new-password').value = '';
+    $('#profile-confirm-password').value = '';
   }
 
   async function loadProfile() {
