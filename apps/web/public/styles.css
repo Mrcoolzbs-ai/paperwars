@@ -1189,7 +1189,7 @@ body.chat-modal-open {
   border-color: #a65f57 !important;
   color: #f0c5bb !important;
   box-shadow: 0 0 0 1px #9e534733, 0 0 12px #a34c4330;
-  animation: chat-soft-red-pulse 2.8s ease-in-out infinite;
+  animation: chat-soft-red-pulse 5.5s ease-in-out infinite;
 }
 @keyframes chat-soft-red-pulse {
   0%, 100% { box-shadow: 0 0 0 1px #9e534722, 0 0 5px #a34c4320; }
