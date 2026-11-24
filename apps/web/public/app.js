@@ -4,6 +4,9 @@
   const state = {
     token: sessionStorage.getItem('pw_access_token') || '',
     user: null,
+    profile: null,
+    activeScreen: 'auth',
+    profileReturnScreen: 'game',
     campaigns: [],
     openCampaigns: [],
     campaign: null,
@@ -690,13 +693,96 @@
   }
 
   function showScreen(name) {
+    state.activeScreen = name;
     $('#auth-screen').classList.toggle('hidden', name !== 'auth');
     $('#game-screen').classList.toggle('hidden', name !== 'game');
     $('#workspace-screen').classList.toggle('hidden', name !== 'workspace');
+    $('#profile-screen').classList.toggle('hidden', name !== 'profile');
+    $('#profile-button').classList.toggle('hidden', !state.user);
     $('#logout-button').classList.toggle('hidden', !state.user);
     $('#chat-open-button').classList.toggle('hidden', !state.user);
     $('#user-label').classList.toggle('hidden', !state.user);
-    $('#user-label').textContent = state.user?.email || '';
+    $('#user-label').textContent = state.user?.displayName || state.user?.email || '';
+  }
+
+  function renderProfile() {
+    const profile = state.profile;
+    if (!profile) return;
+    $('#profile-display-name').value = profile.displayName || '';
+    $('#profile-email').value = profile.email || '';
+    $('#profile-user-title').textContent = profile.displayName || 'Игрок';
+    const initials = String(profile.displayName || 'PW')
+      .trim()
+      .split(/\s+/u)
+      .slice(0, 2)
+      .map((part) => Array.from(part)[0] || '')
+      .join('')
+      .toLocaleUpperCase();
+    $('#profile-avatar').textContent = initials || 'PW';
+    const emailInput = $('#profile-email');
+    emailInput.required = Boolean(profile.email) || !profile.hasVk;
+    $('#profile-email-hint').textContent = profile.email
+      ? 'Укажи актуальный email: он используется для резервного входа по паролю.'
+      : profile.hasVk
+        ? 'Email необязателен для входа через VK ID. Добавь его, чтобы включить резервный пароль.'
+        : 'Укажи email, чтобы сохранить возможность входа в аккаунт.';
+    $('#profile-vk-status').textContent = profile.hasVk ? 'Подключён' : 'Не подключён';
+    $('#profile-vk-status').classList.toggle('connected', profile.hasVk);
+    $('#profile-link-vk').classList.toggle('hidden', profile.hasVk);
+    $('#profile-password-status').textContent = profile.hasPassword
+      ? 'Пароль настроен для резервного входа'
+      : 'Пароль ещё не установлен';
+    $('#profile-password-pill').textContent = profile.hasPassword ? 'Задан' : 'Не задан';
+    $('#profile-password-pill').classList.toggle('connected', profile.hasPassword);
+    $('#profile-current-password-row').classList.toggle('hidden', !profile.hasPassword);
+    $('#profile-current-password').required = profile.hasPassword;
+    $('#profile-password-form').classList.toggle('hidden', !profile.email);
+    $('#profile-password-unavailable').classList.toggle('hidden', Boolean(profile.email));
+    $('#profile-password-title').textContent = profile.hasPassword ? 'Изменить пароль' : 'Установить пароль';
+    $('#profile-password-caption').textContent = profile.hasPassword
+      ? 'Для смены пароля введи текущий, затем задай новый длиной не менее 12 символов.'
+      : 'Задай резервный пароль длиной не менее 12 символов. Текущий пароль не требуется.';
+    $('#profile-password-submit').textContent = profile.hasPassword
+      ? 'Изменить пароль ↗'
+      : 'Установить пароль ↗';
+    $('#profile-current-password').value = '';
+    $('#profile-new-password').value = '';
+    $('#profile-confirm-password').value = '';
+  }
+
+  async function loadProfile() {
+    const data = await request('/auth/profile');
+    state.profile = data.profile;
+    state.user = {
+      id: data.profile.id,
+      email: data.profile.email,
+      displayName: data.profile.displayName,
+    };
+    $('#user-label').textContent = state.user.displayName || state.user.email || '';
+    renderProfile();
+  }
+
+  async function openProfile() {
+    if (!state.user) return false;
+    if (state.activeScreen !== 'profile') {
+      state.profileReturnScreen = state.activeScreen || (state.campaign ? 'workspace' : 'game');
+    }
+    showScreen('profile');
+    setMessage('#profile-page-message', '');
+    try {
+      await loadProfile();
+      return true;
+    } catch (error) {
+      setMessage('#profile-page-message', error.message || 'Не удалось загрузить профиль.');
+      return false;
+    }
+  }
+
+  function closeProfile() {
+    const destination = ['game', 'workspace'].includes(state.profileReturnScreen)
+      ? state.profileReturnScreen
+      : (state.campaign ? 'workspace' : 'game');
+    showScreen(destination);
   }
 
   function authMode(mode) {
@@ -953,20 +1039,61 @@
     });
   }
 
-  function mapFreeLandCellsInBox(centerX, centerY) {
+  function mapColonizationRegion(centerX, centerY) {
     if (!state.mapView || centerX < 1 || centerY < 1 ||
-        centerX >= state.mapView.width - 1 || centerY >= state.mapView.height - 1) return [];
-    const ownedCoordinates = new Set();
-    for (const country of state.mapView.countries || []) {
-      for (const cell of country.cells) ownedCoordinates.add(cell.x + ',' + cell.y);
+        centerX >= state.mapView.width - 1 || centerY >= state.mapView.height - 1) return null;
+    const cells = [];
+    for (let y = centerY - 1; y <= centerY + 1; y += 1) {
+      for (let x = centerX - 1; x <= centerX + 1; x += 1) cells.push({ x, y });
     }
-    const freeLand = [];
-    for (let y = Math.max(0, centerY - 1); y <= Math.min(state.mapView.height - 1, centerY + 1); y += 1) {
-      for (let x = Math.max(0, centerX - 1); x <= Math.min(state.mapView.width - 1, centerX + 1); x += 1) {
-        if (mapIsLand(x, y) && !ownedCoordinates.has(x + ',' + y)) freeLand.push({ x, y });
+    return cells;
+  }
+
+  function mapColonizationAvailability(centerX, centerY) {
+    const region = mapColonizationRegion(centerX, centerY);
+    if (!region) return { allowed: false, reason: 'bounds' };
+    const occupiedCoordinates = new Set();
+    const ownCoordinates = new Set();
+    for (const country of state.mapView.countries || []) {
+      for (const cell of country.cells || []) {
+        const key = cell.x + ',' + cell.y;
+        occupiedCoordinates.add(key);
+        if (country.isMine) ownCoordinates.add(key);
       }
     }
-    return freeLand;
+    const plannedCoordinates = new Set();
+    for (const order of state.mapOrders || []) {
+      if (order.type !== 'colonization' || order.status === 'discarded') continue;
+      const point = mapOrderCoordinates(order);
+      if (!point) continue;
+      const plannedRegion = mapColonizationRegion(point.x, point.y);
+      if (!plannedRegion) continue;
+      for (const cell of plannedRegion) plannedCoordinates.add(cell.x + ',' + cell.y);
+    }
+    for (const cell of region) {
+      const key = cell.x + ',' + cell.y;
+      if (occupiedCoordinates.has(key) || plannedCoordinates.has(key)) {
+        return { allowed: false, reason: 'overlap' };
+      }
+    }
+    if (!region.some((cell) => mapIsLand(cell.x, cell.y))) {
+      return { allowed: false, reason: 'no-land' };
+    }
+    const borderOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    const touchesOwnTerritory = region.some((cell) => borderOffsets.some(([dx, dy]) => {
+      const key = (cell.x + dx) + ',' + (cell.y + dy);
+      return ownCoordinates.has(key) || plannedCoordinates.has(key);
+    }));
+    if (!touchesOwnTerritory) return { allowed: false, reason: 'not-adjacent' };
+    return { allowed: true, reason: 'available' };
+  }
+
+  function mapColonizationMessage(reason) {
+    if (reason === 'bounds') return 'Квадрат 3×3 должен полностью находиться в пределах карты.';
+    if (reason === 'overlap') return 'Новая колония не должна пересекать существующие или уже запланированные территории.';
+    if (reason === 'no-land') return 'В квадрате 3×3 должна быть хотя бы одна свободная клетка суши.';
+    if (reason === 'not-adjacent') return 'Колония 3×3 должна примыкать стороной к твоей территории или ранее поставленной колонии.';
+    return 'Эту область нельзя колонизировать.';
   }
 
   function mapActionCount() {
@@ -1020,6 +1147,13 @@
     if (mapActionCount() >= 3) {
       showToast('На этот ход уже использованы все 3 очка действий.', true);
       return;
+    }
+    if (type === 'colonization') {
+      const availability = mapColonizationAvailability(payload.x, payload.y);
+      if (!availability.allowed) {
+        showToast(mapColonizationMessage(availability.reason), true);
+        return;
+      }
     }
     const campaignId = state.campaign.id;
     try {
@@ -1097,8 +1231,8 @@
     );
     const isLand = mapIsLand(cell.x, cell.y);
     const existingOrders = mapOrdersAt(cell.x, cell.y);
-    const freeLandInBox = mapFreeLandCellsInBox(cell.x, cell.y);
-    const canColonizeRegion = freeLandInBox.length > 0;
+    const colonizationAvailability = mapColonizationAvailability(cell.x, cell.y);
+    const canColonizeRegion = colonizationAvailability.allowed;
     const actionsRemaining = Math.max(0, 3 - mapActionCount());
     let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
     content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
@@ -1134,15 +1268,15 @@
       }
       if (canColonizeRegion) {
         content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
-        content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
+        content += '<small>В квадрат 3×3 войдут новые клетки суши и воды. d100 бросается для каждой новой клетки суши.</small>';
+      } else {
+        content += '<small>' + mapColonizationMessage(colonizationAvailability.reason) + '</small>';
       }
     } else if (canColonizeRegion) {
       content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
-      content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
-    } else if (anyCountryOwnsCell) {
-      content += '<p class="map-context-note">Квадрат 3×3 должен целиком помещаться на карте и содержать свободную клетку суши.</p>';
+      content += '<small>В квадрат 3×3 войдут новые клетки суши и воды. d100 бросается для каждой новой клетки суши.</small>';
     } else {
-      content += '<p class="map-context-note">Квадрат 3×3 должен целиком помещаться на карте и содержать свободную клетку суши.</p>';
+      content += '<p class="map-context-note">' + mapColonizationMessage(colonizationAvailability.reason) + '</p>';
     }
 
     if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
@@ -1276,6 +1410,24 @@
       for (const order of state.mapOrders || []) {
         const point = mapOrderCoordinates(order);
         if (!point || point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) continue;
+        if (order.type === 'colonization') {
+          const region = mapColonizationRegion(point.x, point.y);
+          if (!region) continue;
+          const regionLeft = left + (point.x - 1) * cellSize;
+          const regionTop = top + (point.y - 1) * cellSize;
+          const regionSize = cellSize * 3;
+          const confirmed = order.status === 'confirmed';
+          ctx.save();
+          ctx.fillStyle = confirmed ? 'rgba(241, 211, 124, 0.08)' : 'rgba(241, 155, 104, 0.08)';
+          ctx.strokeStyle = confirmed ? 'rgba(241, 211, 124, 0.82)' : 'rgba(241, 155, 104, 0.82)';
+          ctx.lineWidth = Math.max(1.5, cellSize * 0.12);
+          ctx.setLineDash(confirmed ? [] : [Math.max(2, cellSize * 0.35), Math.max(1, cellSize * 0.16)]);
+          ctx.fillRect(regionLeft, regionTop, regionSize, regionSize);
+          ctx.strokeRect(regionLeft + 1, regionTop + 1, regionSize - 2, regionSize - 2);
+          ctx.restore();
+          continue;
+        }
+        if (order.type !== 'construction') continue;
         const px = left + point.x * cellSize;
         const py = top + point.y * cellSize;
         ctx.save();
@@ -1291,7 +1443,7 @@
           ctx.font = 'bold ' + Math.max(7, Math.min(11, cellSize * 0.58)) + 'px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(order.type === 'colonization' ? 'К' : 'С', px + cellSize / 2, py + cellSize / 2);
+          ctx.fillText('С', px + cellSize / 2, py + cellSize / 2);
         }
         ctx.restore();
       }
@@ -2199,6 +2351,102 @@
       }
     });
 
+    $('#profile-button').addEventListener('click', () => { void openProfile(); });
+    $('#profile-back').addEventListener('click', closeProfile);
+    $('#profile-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.profile) return;
+      const displayName = $('#profile-display-name').value.trim();
+      const email = $('#profile-email').value.trim();
+      if (!email && (state.profile.email || state.profile.hasPassword || !state.profile.hasVk)) {
+        setMessage('#profile-form-message', 'Не удаляй единственный резервный способ входа. Укажи email или сначала подключи VK ID.');
+        return;
+      }
+      const button = $('#profile-save');
+      button.disabled = true;
+      setMessage('#profile-form-message', '');
+      try {
+        const data = await request('/auth/profile', {
+          method: 'PUT',
+          body: JSON.stringify({ displayName, email: email || null }),
+        });
+        state.profile = data.profile;
+        state.user = {
+          id: data.profile.id,
+          email: data.profile.email,
+          displayName: data.profile.displayName,
+        };
+        $('#user-label').textContent = state.user.displayName || state.user.email || '';
+        renderProfile();
+        setMessage('#profile-form-message', 'Данные профиля сохранены.', true);
+        showToast('Профиль обновлён.');
+      } catch (error) {
+        const message = error.code === 'NICKNAME_ALREADY_TAKEN'
+          ? 'Этот никнейм уже занят. Выбери другой.'
+          : error.code === 'EMAIL_ALREADY_REGISTERED'
+            ? 'Этот email уже используется другим аккаунтом.'
+            : error.message || 'Не удалось сохранить профиль.';
+        setMessage('#profile-form-message', message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('#profile-password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.profile?.email) {
+        setMessage('#profile-password-message', 'Сначала добавь резервный email.');
+        return;
+      }
+      const newPassword = $('#profile-new-password').value;
+      const confirmPassword = $('#profile-confirm-password').value;
+      if (newPassword.length < 12) {
+        setMessage('#profile-password-message', 'Пароль должен содержать не менее 12 символов.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setMessage('#profile-password-message', 'Новые пароли не совпадают.');
+        return;
+      }
+      const button = $('#profile-password-submit');
+      button.disabled = true;
+      setMessage('#profile-password-message', '');
+      try {
+        await request('/auth/password', {
+          method: 'POST',
+          body: JSON.stringify({
+            currentPassword: $('#profile-current-password').value,
+            newPassword,
+          }),
+        });
+        await loadProfile();
+        setMessage('#profile-password-message', 'Резервный пароль сохранён.', true);
+        showToast('Настройки пароля обновлены.');
+      } catch (error) {
+        const message = error.code === 'UNAUTHENTICATED'
+          ? 'Текущий пароль указан неверно.'
+          : error.message || 'Не удалось изменить пароль.';
+        setMessage('#profile-password-message', message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('#profile-link-vk').addEventListener('click', async () => {
+      const button = $('#profile-link-vk');
+      button.disabled = true;
+      try {
+        const data = await request('/auth/vk/link', { method: 'POST' });
+        if (typeof data.authorizationUrl !== 'string') throw new Error('Сервер не вернул адрес привязки VK ID.');
+        window.location.assign(data.authorizationUrl);
+      } catch (error) {
+        showToast(error.code === 'VK_ID_NOT_CONFIGURED'
+          ? 'Привязка VK ID пока не настроена на сервере.'
+          : error.message || 'Не удалось начать привязку VK ID.', true);
+        button.disabled = false;
+      }
+    });
+
     $('#leave-campaign').addEventListener('click', () => {
       if (state.campaign) leaveCampaign(state.campaign.id);
     });
@@ -2263,6 +2511,7 @@
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
+      state.profile = null;
       sessionStorage.removeItem('pw_access_token');
       showScreen('auth');
       showToast('Сессия завершена.');
@@ -2433,6 +2682,8 @@
   }
 
   async function init() {
+    const vkLinked = new URLSearchParams(window.location.search).get('vk') === 'linked';
+    if (vkLinked) window.history.replaceState({}, document.title, window.location.pathname);
     bindEvents();
     buildWorldPreview();
     renderPrincipleCatalog();
@@ -2454,6 +2705,9 @@
         await loadCampaigns();
       } catch (error) {
         showToast('Сессия активна, но список кампаний не загрузился: ' + error.message, true);
+      }
+      if (vkLinked && await openProfile()) {
+        setMessage('#profile-page-message', 'Аккаунт VK ID успешно подключён.', true);
       }
     } catch (error) {
       showScreen('auth');

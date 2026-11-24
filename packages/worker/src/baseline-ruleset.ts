@@ -305,6 +305,7 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
         const candidates: Array<{ x: number; y: number; terrainCode: string }> = [];
+        let overlapsExistingTerritory = false;
         for (
           let cellY = Math.max(0, y - radius);
           cellY <= Math.min(mapHeight - 1, y + radius);
@@ -315,7 +316,10 @@ export function createBaselineTurnResolver(): TurnResolver<
             cellX <= Math.min(mapWidth - 1, x + radius);
             cellX += 1
           ) {
-            if (ownership.has(coordinateKey(cellX, cellY))) continue;
+            if (ownership.has(coordinateKey(cellX, cellY))) {
+              overlapsExistingTerritory = true;
+              continue;
+            }
             candidates.push({
               x: cellX,
               y: cellY,
@@ -331,6 +335,45 @@ export function createBaselineTurnResolver(): TurnResolver<
               order.id,
               'NO_COLONIZABLE_LAND',
               'Для колонизации в квадрате 3×3 нужно захватить хотя бы одну свободную клетку суши.',
+            ),
+          );
+          continue;
+        }
+
+        if (overlapsExistingTerritory) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'COLONIZATION_OVERLAPS_EXISTING_TERRITORY',
+              'Новая колония не должна пересекать уже принадлежащую кому-либо территорию.',
+            ),
+          );
+          continue;
+        }
+
+        const borderOffsets = [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [0, 1],
+        ] as const;
+        let touchesOwnTerritory = false;
+        for (const cell of candidates) {
+          for (const [dx, dy] of borderOffsets) {
+            if (ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id) {
+              touchesOwnTerritory = true;
+              break;
+            }
+          }
+          if (touchesOwnTerritory) break;
+        }
+
+        if (!touchesOwnTerritory) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'COLONIZATION_NOT_ADJACENT',
+              'Новая колония должна примыкать стороной к твоей территории или ранее поставленной колонии.',
             ),
           );
           continue;
