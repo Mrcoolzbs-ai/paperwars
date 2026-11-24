@@ -120,6 +120,32 @@ function resolve(
   });
 }
 
+function createEconomyState(
+  cells: BaselineWorldState['countries'][number]['cells'],
+): BaselineWorldState {
+  const base = createState('l'.repeat(45), [], 9, false);
+  return {
+    ...base,
+    countries: base.countries.map((country) => ({
+      ...country,
+      economyEnabled: true,
+      cells: [...cells],
+    })),
+  };
+}
+
+function economyCell(
+  id: string,
+  x: number,
+  y: number,
+  population: number,
+  buildingType: string | null = null,
+  territoryType: 'core' | 'colony' = 'core',
+  territoryId = 'core-territory',
+) {
+  return { id, x, y, population, buildingType, territoryType, territoryId };
+}
+
 describe('baseline turn resolver', () => {
   it('colonizes every free land cell in the 3x3 square and rolls one d100 per cell', () => {
     const random = createRandom([1, 100, 2, 99, 45, 67, 88, 3, 52]);
@@ -436,4 +462,174 @@ describe('baseline turn resolver', () => {
       'ACTION_POINTS_EXHAUSTED',
     ]);
   });
+
+  it('calculates gold income as gold mines multiplied by population and applies building upkeep', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 8, 'gold_mine'),
+      economyCell('capital', 1, 0, 0, 'capital'),
+      economyCell('tower', 2, 0, 0, 'tower'),
+      economyCell('field-near-factory', 0, 1, 0, 'field'),
+      economyCell('factory', 1, 1, 0, 'factory'),
+      economyCell('field-clear', 4, 4, 0, 'field'),
+    ]);
+    const result = resolve(state, [], createRandom().source);
+    const economy = (result.economicReport['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({
+      population: 8,
+      gold: 1,
+      income: 8,
+      initialBuildingUpkeep: 7,
+      buildingUpkeep: 7,
+      unitCount: 0,
+      unitUpkeep: 0,
+      expenses: 7,
+      unpaidExpenses: 0,
+      food: 15,
+      foodDemand: 8,
+      goods: 10,
+      goodsDemand: 8,
+      foodShortage: false,
+      goodsShortage: false,
+    });
+  });
+
+  it('halves field output when a factory is diagonally adjacent', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 5, 'gold_mine'),
+      economyCell('field', 1, 1, 0, 'field'),
+      economyCell('diagonal-factory', 2, 2, 0, 'factory'),
+    ]);
+    const result = resolve(state, [], createRandom().source);
+    const economy = (result.economicReport['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({
+      population: 5,
+      food: 5,
+      foodDemand: 5,
+      goods: 10,
+      goodsDemand: 5,
+      foodShortage: false,
+      goodsShortage: false,
+    });
+  });
+
+  it('randomly disables buildings for the turn when upkeep exceeds income', () => {
+    const state = createEconomyState([
+      economyCell('field', 0, 0, 1, 'field'),
+      economyCell('factory', 1, 0, 0, 'factory'),
+      economyCell('tower', 2, 0, 0, 'tower'),
+    ]);
+    const random = createRandom();
+    const result = resolve(state, [], random.source);
+    const economy = (result.economicReport['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(economy).toMatchObject({
+      income: 0,
+      expenses: 0,
+      unpaidExpenses: 0,
+    });
+    expect(economy?.['disabledBuildings']).toHaveLength(3);
+    expect(random.calls.filter((call) => call.domain === 'economy')).toHaveLength(3);
+  });
+
+  it('blocks colonization when projected population would exceed food capacity', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 1, 1, 'gold_mine'),
+      economyCell('field', 0, 2, 0, 'field'),
+      economyCell('factory-one', 0, 3, 0, 'factory'),
+      economyCell('factory-two', 0, 4, 0, 'factory'),
+    ]);
+    const result = resolve(
+      state,
+      [createOrder('40000000-0000-4000-8000-000000000101')],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_ECONOMY_SHORTAGE',
+      data: { foodShortage: true, goodsShortage: false },
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(4);
+  });
+
+  it('blocks colonization when projected population would exceed goods capacity', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 1, 1, 'gold_mine'),
+      economyCell('field-one', 0, 2, 0, 'field'),
+      economyCell('field-two', 0, 3, 0, 'field'),
+    ]);
+    const result = resolve(
+      state,
+      [createOrder('40000000-0000-4000-8000-000000000102')],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_ECONOMY_SHORTAGE',
+      data: { foodShortage: false, goodsShortage: true },
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(3);
+  });
+
+  it('removes existing colonies when there is not enough food', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 1, 'gold_mine'),
+      economyCell('colony-a', 2, 1, 1, null, 'colony', 'colony-one'),
+      economyCell('colony-b', 2, 2, 1, null, 'colony', 'colony-one'),
+      economyCell('colony-c', 2, 3, 1, null, 'colony', 'colony-one'),
+    ]);
+    const result = resolve(state, [], createRandom().source);
+    const economy = (result.economicReport['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(result.nextState.countries[0]?.cells.map((cell) => cell.id)).toEqual(['gold']);
+    expect(result.events).toContainEqual(
+      expect.objectContaining({
+        type: 'colony.removed',
+        payload: expect.objectContaining({
+          territoryId: 'colony-one',
+          reason: 'starved',
+          removedCellCount: 3,
+        }),
+      }),
+    );
+    expect(economy).toMatchObject({
+      foodShortage: true,
+      starvedColonies: 1,
+      fledColonies: 0,
+    });
+  });
+
+  it('removes existing colonies when there are not enough goods but food is sufficient', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 1, 'gold_mine'),
+      economyCell('field', 0, 1, 0, 'field'),
+      economyCell('colony-a', 2, 1, 1, null, 'colony', 'colony-two'),
+      economyCell('colony-b', 2, 2, 1, null, 'colony', 'colony-two'),
+      economyCell('colony-c', 2, 3, 1, null, 'colony', 'colony-two'),
+    ]);
+    const result = resolve(state, [], createRandom().source);
+    const economy = (result.economicReport['countries'] as Array<Record<string, unknown>>)[0];
+
+    expect(result.nextState.countries[0]?.cells.map((cell) => cell.id)).toEqual(['gold', 'field']);
+    expect(result.events).toContainEqual(
+      expect.objectContaining({
+        type: 'colony.removed',
+        payload: expect.objectContaining({
+          territoryId: 'colony-two',
+          reason: 'fled',
+          removedCellCount: 3,
+        }),
+      }),
+    );
+    expect(economy).toMatchObject({
+      foodShortage: false,
+      goodsShortage: true,
+      starvedColonies: 0,
+      fledColonies: 1,
+    });
+  });
+
 });
