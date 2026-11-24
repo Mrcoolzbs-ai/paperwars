@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract research and construction rules from the archived discussions
+      - name: Print science unlock references from the archived discussions
         shell: bash
         run: |
           python3 - <<'PY'
@@ -22,9 +22,9 @@ jobs:
 
           ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
           terms = re.compile(
-              r'наук|исслед|теплиц|дамб|рисов|рисов|хлоп|ткац|рыб|охот|шахт|'
-              r'фабрик|поле|мастерск|постро|здан|уровн|снос|удал|популяц|насел|'
-              r'знани|технолог|производств|урожай|единиц',
+              r'наук|лаборатор|исслед|технолог|теплиц|дамб|рисов|хлоп|швейн|'
+              r'одежд|горяч|термальн|поле.{0,8}II|саке|разведк|уровн.{0,10}наук|'
+              r'наук.{0,10}(единиц|очк|уровн|пункт)',
               re.IGNORECASE
           )
           for path in sorted(Path('.').glob('VK_*.docx')):
@@ -36,13 +36,7 @@ jobs:
                       value = ''.join(node.text or '' for node in p.findall('.//w:t', ns)).strip()
                       if value:
                           paragraphs.append(value)
-                  shown = set()
                   for i, value in enumerate(paragraphs):
                       if terms.search(value):
-                          for j in range(max(0, i - 1), min(len(paragraphs), i + 2)):
-                              if j not in shown:
-                                  shown.add(j)
-                                  print(f'P{j+1}: {paragraphs[j]}')
-                  media = [n for n in archive.namelist() if n.startswith('word/media/')]
-                  print('MEDIA:', ', '.join(media))
+                          print(f'P{i+1}: {value}')
           PY
