@@ -819,6 +819,128 @@ function registerCountryRoutes(
     }
   });
 }
+function registerAdminRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  campaignService: CampaignService,
+  countrySetupService: CountrySetupService,
+  adminService: AdminService,
+): void {
+  app.get('/admin/users', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const users = await adminService.listUsers(user.id);
+      return reply.send({ users });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.patch<{ Params: { userId: string } }>('/admin/users/:userId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const updated = await adminService.renameUser(user.id, request.params.userId, body['displayName']);
+      return reply.send({ user: updated });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete<{ Params: { userId: string } }>('/admin/users/:userId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await adminService.deleteUser(user.id, request.params.userId);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/campaigns/:campaignId/force-end-turn', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turnJob = await campaignService.forceEndTurn(user.id, getCampaignId(request));
+      return reply.send({ turnJob });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/campaigns/:campaignId/rollback', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const turnNumber = await campaignService.rollbackLastTurn(user.id, getCampaignId(request));
+      return reply.send({ turnNumber });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/admin/campaigns/:campaignId/discoveries', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const discoveries = await countrySetupService.listAccessibleDiscoveries(
+        user.id,
+        getCampaignId(request),
+      );
+      return reply.send({ discoveries });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get<{ Params: { campaignId: string; countryId: string } }>(
+    '/admin/campaigns/:campaignId/countries/:countryId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const country = await countrySetupService.getCountryProfileForAdmin(
+          user.id,
+          request.params.campaignId,
+          request.params.countryId,
+        );
+        return reply.send({ country });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
+  app.delete('/admin/campaigns/:campaignId/buildings', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      await countrySetupService.deleteBuildingForAdmin(
+        user.id,
+        getCampaignId(request),
+        parseCoordinate(body['x'], 'x'),
+        parseCoordinate(body['y'], 'y'),
+      );
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete<{ Params: { campaignId: string; territoryId: string } }>(
+    '/admin/campaigns/:campaignId/colonies/:territoryId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await countrySetupService.deleteColonyForAdmin(
+          user.id,
+          request.params.campaignId,
+          request.params.territoryId,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+}
+
 function sendChatError(error: unknown, reply: FastifyReply): unknown {
   if (error instanceof ChatServiceError) {
     const status = error.code === 'NOT_ACTIVE_CAMPAIGN_MEMBER' ? 403 : 429;
@@ -980,6 +1102,21 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.countrySetupService !== undefined) {
     registerCountryRoutes(app, options.authService, options.countrySetupService);
+  }
+
+  if (
+    options.authService !== undefined &&
+    options.campaignService !== undefined &&
+    options.countrySetupService !== undefined &&
+    options.adminService !== undefined
+  ) {
+    registerAdminRoutes(
+      app,
+      options.authService,
+      options.campaignService,
+      options.countrySetupService,
+      options.adminService,
+    );
   }
 
   if (options.authService !== undefined && options.chatService !== undefined) {
