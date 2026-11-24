@@ -580,6 +580,21 @@
     });
   }
 
+  function mapFreeLandCellsInBox(centerX, centerY) {
+    if (!state.mapView) return [];
+    const ownedCoordinates = new Set();
+    for (const country of state.mapView.countries || []) {
+      for (const cell of country.cells) ownedCoordinates.add(cell.x + ',' + cell.y);
+    }
+    const freeLand = [];
+    for (let y = Math.max(0, centerY - 1); y <= Math.min(state.mapView.height - 1, centerY + 1); y += 1) {
+      for (let x = Math.max(0, centerX - 1); x <= Math.min(state.mapView.width - 1, centerX + 1); x += 1) {
+        if (mapIsLand(x, y) && !ownedCoordinates.has(x + ',' + y)) freeLand.push({ x, y });
+      }
+    }
+    return freeLand;
+  }
+
   function mapActionCount() {
     return state.mapOrders.filter((order) => order.status !== 'discarded').length;
   }
@@ -708,6 +723,8 @@
     );
     const isLand = mapIsLand(cell.x, cell.y);
     const existingOrders = mapOrdersAt(cell.x, cell.y);
+    const freeLandInBox = mapFreeLandCellsInBox(cell.x, cell.y);
+    const canColonizeRegion = freeLandInBox.length > 0;
     const actionsRemaining = Math.max(0, 3 - mapActionCount());
     let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
     content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
@@ -727,10 +744,8 @@
       content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
     } else if (actionsRemaining === 0) {
       content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
-    } else if (!isLand) {
-      content += '<p class="map-context-note">На воде и реках нельзя размещать постройки или колонии.</p>';
     } else if (ownedCell) {
-      const canBuild = !ownedCell.buildingType && Number(ownedCell.population) > 0;
+      const canBuild = isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
       if (canBuild) {
         content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
         content += mapBuildingOptions.map(([type, label]) =>
@@ -740,14 +755,20 @@
         content += '</div>';
       } else {
         content += '<p class="map-context-note">' +
-          (ownedCell.buildingType ? 'На клетке уже стоит здание.' : 'На клетке нет свободного жителя.') +
+          (ownedCell.buildingType ? 'На клетке уже стоит здание.' : isLand ? 'На клетке нет свободного жителя.' : 'На воде и реках строить нельзя.') +
           '</p>';
       }
-    } else if (!anyCountryOwnsCell) {
+      if (canColonizeRegion) {
+        content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
+        content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
+      }
+    } else if (canColonizeRegion) {
       content += '<button class="map-context-action" type="button" data-map-action="colonization">Колонизировать район · 3×3</button>';
-      content += '<small>Выбрана центральная клетка: захватятся все свободные клетки суши в квадрате 3×3. Каждая новая клетка получает отдельный бросок d100.</small>';
+      content += '<small>В квадрат войдут все свободные клетки; нужен минимум один новый участок суши. d100 бросается только для каждой новой клетки суши.</small>';
+    } else if (anyCountryOwnsCell) {
+      content += '<p class="map-context-note">В квадрате 3×3 нет свободной клетки суши для колонизации чужой территории.</p>';
     } else {
-      content += '<p class="map-context-note">Нельзя отдать приказ на клетку другого государства.</p>';
+      content += '<p class="map-context-note">В квадрате 3×3 нет свободной клетки суши для колонизации.</p>';
     }
 
     if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
