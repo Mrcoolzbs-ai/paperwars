@@ -27,6 +27,13 @@
     selectedBuilding: 'factory',
     authMode: 'login',
     toastTimer: null,
+    chatModalOpen: false,
+    chatScope: 'world',
+    chatCampaignId: null,
+    chatCampaigns: [],
+    chatRequestId: 0,
+    chatPollingTimer: null,
+    chatSending: false,
     mapView: null,
     mapSelectedCenter: null,
     mapTransform: null,
@@ -279,6 +286,304 @@
     state.toastTimer = setTimeout(() => toast.classList.remove('show'), 3600);
   }
 
+  function setChatStatus(message, isError = false) {
+    const status = $('#chat-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('error', isError);
+  }
+
+  function formatChatTimestamp(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function renderChatMessages(items) {
+    const host = $('#chat-messages');
+    if (!host) return;
+    host.replaceChildren();
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'chat-empty-state';
+      empty.textContent = 'В этой комнате пока нет сообщений. Начни разговор.';
+      host.append(empty);
+      return;
+    }
+
+    for (const item of items) {
+      const article = document.createElement('article');
+      article.className = 'chat-message' + (item.isMine ? ' mine' : '');
+      const meta = document.createElement('div');
+      meta.className = 'chat-message-meta';
+      const author = document.createElement('strong');
+      author.textContent = item.authorLabel || 'Игрок';
+      const time = document.createElement('time');
+      const messageDate = new Date(item.createdAt);
+      time.dateTime = Number.isNaN(messageDate.getTime()) ? '' : messageDate.toISOString();
+      time.textContent = formatChatTimestamp(item.createdAt);
+      meta.append(author, time);
+      const content = document.createElement('div');
+      content.className = 'chat-message-content';
+      content.textContent = item.message;
+      article.append(meta, content);
+      host.append(article);
+    }
+    host.scrollTop = host.scrollHeight;
+  }
+
+  function updateChatRoomHeader() {
+    const title = $('#chat-room-title');
+    const hint = $('#chat-room-hint');
+    if (!title || !hint) return;
+    if (state.chatScope === 'world') {
+      title.textContent = 'Мировой чат';
+      hint.textContent = 'Общение всех игроков Paper Wars';
+      return;
+    }
+    const campaign = state.chatCampaigns.find((item) => item.id === state.chatCampaignId);
+    title.textContent = campaign?.name || 'Чат кампании';
+    hint.textContent = campaign
+      ? 'Кампания · ход ' + String(campaign.currentTurn).padStart(2, '0')
+      : 'Закрытый канал участников кампании';
+  }
+
+  function renderChatRooms() {
+    const host = $('#chat-room-list');
+    if (!host) return;
+    host.replaceChildren();
+
+    const generalLabel = document.createElement('div');
+    generalLabel.className = 'chat-room-section-label';
+    generalLabel.textContent = 'ОБЩИЙ КАНАЛ';
+    host.append(generalLabel);
+
+    const worldButton = document.createElement('button');
+    worldButton.type = 'button';
+    worldButton.className = 'chat-room-button';
+    worldButton.classList.toggle('active', state.chatScope === 'world');
+    worldButton.setAttribute('data-chat-room-scope', 'world');
+    if (state.chatScope === 'world') worldButton.setAttribute('aria-current', 'true');
+    const worldIcon = document.createElement('span');
+    worldIcon.className = 'chat-room-icon';
+    worldIcon.textContent = '◎';
+    const worldText = document.createElement('span');
+    const worldTitle = document.createElement('strong');
+    worldTitle.textContent = 'Мировой чат';
+    const worldHint = document.createElement('small');
+    worldHint.textContent = 'Все игроки Paper Wars';
+    worldText.append(worldTitle, worldHint);
+    worldButton.append(worldIcon, worldText);
+    worldButton.addEventListener('click', () => {
+      if (state.chatScope === 'world') return;
+      state.chatScope = 'world';
+      state.chatCampaignId = null;
+      renderChatRooms();
+      updateChatRoomHeader();
+      void loadChatMessages();
+    });
+    host.append(worldButton);
+
+    const campaignLabel = document.createElement('div');
+    campaignLabel.className = 'chat-room-section-label';
+    campaignLabel.textContent = 'ТВОИ КАМПАНИИ';
+    host.append(campaignLabel);
+
+    if (state.chatCampaigns.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'chat-room-empty';
+      empty.textContent = 'Ты пока не состоишь ни в одной кампании.';
+      host.append(empty);
+    }
+
+    for (const campaign of state.chatCampaigns) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chat-room-button';
+      const active = state.chatScope === 'campaign' && state.chatCampaignId === campaign.id;
+      button.classList.toggle('active', active);
+      button.dataset.chatCampaignId = campaign.id;
+      button.setAttribute('data-chat-room-scope', 'campaign');
+      if (active) button.setAttribute('aria-current', 'true');
+
+      const icon = document.createElement('span');
+      icon.className = 'chat-room-icon';
+      icon.textContent = '⌂';
+      const label = document.createElement('span');
+      const name = document.createElement('strong');
+      name.textContent = campaign.name;
+      const subtitle = document.createElement('small');
+      subtitle.textContent = 'Ход ' + String(campaign.currentTurn).padStart(2, '0');
+      label.append(name, subtitle);
+      button.append(icon, label);
+      button.addEventListener('click', () => {
+        if (state.chatScope === 'campaign' && state.chatCampaignId === campaign.id) return;
+        state.chatScope = 'campaign';
+        state.chatCampaignId = campaign.id;
+        renderChatRooms();
+        updateChatRoomHeader();
+        void loadChatMessages();
+      });
+      host.append(button);
+    }
+  }
+
+  async function loadChatMessages() {
+    if (!state.chatModalOpen || !state.token) return;
+    const scope = state.chatScope;
+    const campaignId = state.chatCampaignId;
+    if (scope === 'campaign' && !campaignId) return;
+    const requestId = ++state.chatRequestId;
+    const path = scope === 'world'
+      ? '/chat/world'
+      : '/campaigns/' + encodeURIComponent(campaignId) + '/chat';
+    try {
+      const data = await request(path);
+      if (
+        !state.chatModalOpen ||
+        requestId !== state.chatRequestId ||
+        scope !== state.chatScope ||
+        campaignId !== state.chatCampaignId
+      ) return;
+      renderChatMessages(Array.isArray(data.messages) ? data.messages : []);
+      setChatStatus('');
+    } catch (error) {
+      if (!state.chatModalOpen || requestId !== state.chatRequestId) return;
+      if (error.status === 401) {
+        closeChatModal();
+        state.user = null;
+        showScreen('auth');
+        setMessage('#auth-message', 'Сессия завершена. Войди снова.');
+        void initVkOneTap();
+        return;
+      }
+      if (error.status === 403) {
+        setChatStatus('Нет доступа к этой кампании. Обнови список комнат.', true);
+      } else {
+        setChatStatus(error.message || 'Не удалось загрузить сообщения.', true);
+      }
+    }
+  }
+
+  async function refreshChatCampaigns() {
+    const data = await request('/campaigns');
+    state.chatCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+    if (
+      state.chatScope === 'campaign' &&
+      !state.chatCampaigns.some((campaign) => campaign.id === state.chatCampaignId)
+    ) {
+      state.chatScope = 'world';
+      state.chatCampaignId = null;
+    }
+    renderChatRooms();
+    updateChatRoomHeader();
+  }
+
+  function startChatPolling() {
+    if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
+    state.chatPollingTimer = setInterval(() => {
+      if (state.chatModalOpen && !document.hidden) void loadChatMessages();
+    }, 5000);
+  }
+
+  function closeChatModal() {
+    const modal = $('#chat-modal');
+    if (!modal || !state.chatModalOpen) return;
+    state.chatModalOpen = false;
+    state.chatRequestId += 1;
+    if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
+    state.chatPollingTimer = null;
+    modal.classList.add('hidden');
+    document.body.classList.remove('chat-modal-open');
+    $('#chat-open-button')?.focus();
+  }
+
+  async function openChatModal() {
+    if (!state.user || !state.token) return;
+    const modal = $('#chat-modal');
+    if (!modal) return;
+    state.chatModalOpen = true;
+    modal.classList.remove('hidden');
+    document.body.classList.add('chat-modal-open');
+    setChatStatus('');
+    const messageHost = $('#chat-messages');
+    messageHost.replaceChildren();
+    const loading = document.createElement('div');
+    loading.className = 'chat-empty-state';
+    loading.textContent = 'Подключаемся к комнатам…';
+    messageHost.append(loading);
+    try {
+      await refreshChatCampaigns();
+      if (!state.chatModalOpen) return;
+      startChatPolling();
+      await loadChatMessages();
+      $('#chat-message-input').focus();
+    } catch (error) {
+      if (error.status === 401) {
+        closeChatModal();
+        state.user = null;
+        showScreen('auth');
+        setMessage('#auth-message', 'Сессия завершена. Войди снова.');
+        void initVkOneTap();
+      } else {
+        setChatStatus(error.message || 'Не удалось загрузить список кампаний.', true);
+        renderChatRooms();
+      }
+    }
+  }
+
+  async function sendChatMessage(event) {
+    event.preventDefault();
+    if (state.chatSending || !state.token) return;
+    const input = $('#chat-message-input');
+    const value = input.value.trim();
+    if (!value) return;
+    if (state.chatScope === 'campaign' && !state.chatCampaignId) return;
+    state.chatSending = true;
+    $('#chat-send-button').disabled = true;
+    setChatStatus('');
+    const path = state.chatScope === 'world'
+      ? '/chat/world'
+      : '/campaigns/' + encodeURIComponent(state.chatCampaignId) + '/chat';
+    try {
+      await request(path, {
+        method: 'POST',
+        body: JSON.stringify({ message: value }),
+      });
+      input.value = '';
+      await loadChatMessages();
+    } catch (error) {
+      if (error.status === 429) {
+        setChatStatus('Слишком много сообщений. Подожди несколько секунд.', true);
+      } else if (error.status === 403) {
+        setChatStatus('Ты больше не состоишь в этой кампании.', true);
+        try {
+          await refreshChatCampaigns();
+          await loadChatMessages();
+        } catch (refreshError) {
+          setChatStatus(refreshError.message || 'Не удалось обновить список комнат.', true);
+        }
+      } else if (error.status === 401) {
+        closeChatModal();
+        state.user = null;
+        showScreen('auth');
+        setMessage('#auth-message', 'Сессия завершена. Войди снова.');
+        void initVkOneTap();
+      } else {
+        setChatStatus(error.message || 'Не удалось отправить сообщение.', true);
+      }
+    } finally {
+      state.chatSending = false;
+      $('#chat-send-button').disabled = false;
+      if (state.chatModalOpen) input.focus();
+    }
+  }
+
   function setMessage(selector, message, success = false) {
     const element = $(selector);
     element.textContent = message;
@@ -389,6 +694,7 @@
     $('#game-screen').classList.toggle('hidden', name !== 'game');
     $('#workspace-screen').classList.toggle('hidden', name !== 'workspace');
     $('#logout-button').classList.toggle('hidden', !state.user);
+    $('#chat-open-button').classList.toggle('hidden', !state.user);
     $('#user-label').classList.toggle('hidden', !state.user);
     $('#user-label').textContent = state.user?.email || '';
   }
@@ -447,6 +753,17 @@
   async function loadCampaigns() {
     const data = await request('/campaigns');
     state.campaigns = data.campaigns || [];
+    if (state.chatModalOpen) {
+      state.chatCampaigns = state.campaigns;
+      if (state.chatScope === 'campaign' &&
+          !state.chatCampaigns.some((campaign) => campaign.id === state.chatCampaignId)) {
+        state.chatScope = 'world';
+        state.chatCampaignId = null;
+        void loadChatMessages();
+      }
+      renderChatRooms();
+      updateChatRoomHeader();
+    }
     renderCampaigns();
     await loadOpenCampaigns();
   }
@@ -1923,7 +2240,26 @@
 
     $('#refresh-open-campaigns').addEventListener('click', () => { void loadOpenCampaigns(); });
 
+    $('#chat-open-button').addEventListener('click', () => { void openChatModal(); });
+    $('#chat-close-button').addEventListener('click', closeChatModal);
+    $('#chat-modal').addEventListener('click', (event) => {
+      if (event.target === $('#chat-modal-backdrop') ||
+          event.target.classList.contains('chat-modal-backdrop') ||
+          event.target === $('#chat-modal')) closeChatModal();
+    });
+    $('#chat-compose-form').addEventListener('submit', sendChatMessage);
+    $('#chat-message-input').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        $('#chat-compose-form').requestSubmit();
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.chatModalOpen) void loadChatMessages();
+    });
+
     $('#logout-button').addEventListener('click', async () => {
+      closeChatModal();
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
@@ -2016,7 +2352,10 @@
       if (menu && !menu.contains(event.target) && event.target !== $('#map-canvas')) closeMapContextMenu();
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeMapContextMenu();
+      if (event.key === 'Escape') {
+        closeMapContextMenu();
+        closeChatModal();
+      }
     });
     window.addEventListener('resize', () => {
       drawMapCanvas($('#world-grid'), true);
