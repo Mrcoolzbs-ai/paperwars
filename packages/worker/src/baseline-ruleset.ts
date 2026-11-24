@@ -145,6 +145,28 @@ function adjacentToWater(
 ): boolean {
   return adjacentWaterCount(x, y, terrain, width, height) > 0;
 }
+
+function adjacentToCardinalWater(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): boolean {
+  const adjacent = [
+    [x - 1, y],
+    [x + 1, y],
+    [x, y - 1],
+    [x, y + 1],
+  ];
+  return adjacent.some(
+    ([nextX, nextY]) =>
+      nextX !== undefined &&
+      nextY !== undefined &&
+      isInsideMap(nextX, nextY, width, height) &&
+      terrain[nextY * width + nextX] !== 'l',
+  );
+}
 function adjacentWaterCount(
   x: number,
   y: number,
@@ -788,7 +810,7 @@ export function createBaselineTurnResolver(): TurnResolver<
 
         if (buildingType === 'greenhouse' || buildingType === 'dam') {
           if (buildingType === 'dam' &&
-            !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
+            !adjacentToCardinalWater(x, y, terrain, mapWidth, mapHeight)) {
             orderResults.push(
               rejection(
                 order.id,
