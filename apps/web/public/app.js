@@ -3342,9 +3342,13 @@
       showScreen('game');
       try {
         await loadCampaigns();
+      } catch (error) {
+        showToast('Сессия активна, но список кампаний не загрузился: ' + userErrorMessage(error), true);
+      }
+      try {
         await loadProfile();
       } catch (error) {
-        showToast('Сессия активна, но список кампаний или профиль не загрузились: ' + userErrorMessage(error), true);
+        showToast('Сессия активна, но профиль не загрузился: ' + userErrorMessage(error), true);
       }
       if (vkLinked && await openProfile()) {
         setMessage('#profile-page-message', 'Аккаунт VK ID успешно подключён.', true);
