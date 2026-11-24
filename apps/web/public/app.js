@@ -562,7 +562,12 @@
         setChatStatus('Слишком много сообщений. Подожди несколько секунд.', true);
       } else if (error.status === 403) {
         setChatStatus('Ты больше не состоишь в этой кампании.', true);
-        await refreshChatCampaigns();
+        try {
+          await refreshChatCampaigns();
+          await loadChatMessages();
+        } catch (refreshError) {
+          setChatStatus(refreshError.message || 'Не удалось обновить список комнат.', true);
+        }
       } else if (error.status === 401) {
         closeChatModal();
         state.user = null;
