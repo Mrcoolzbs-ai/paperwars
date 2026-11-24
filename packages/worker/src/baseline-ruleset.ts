@@ -621,9 +621,10 @@ export function createBaselineTurnResolver(): TurnResolver<
       const actionsUsed = actionsUsedByCountry.get(country.id) ?? 0;
       const requestedBuildingType = String(order.payload['buildingType'] ?? '');
       const isFreeUpgrade =
-        order.type === 'construction' &&
-        (requestedBuildingType === 'field_level_2' ||
-          requestedBuildingType === 'textile_workshop_level_2');
+        order.type === 'structure_removal' ||
+        (order.type === 'construction' &&
+          (requestedBuildingType === 'field_level_2' ||
+            requestedBuildingType === 'textile_workshop_level_2'));
       if (
         !adminCountryIds.has(country.id) &&
         !isFreeUpgrade &&
@@ -646,6 +647,37 @@ export function createBaselineTurnResolver(): TurnResolver<
         orderResults.push(
           rejection(order.id, 'INVALID_COORDINATES', 'Координаты приказа находятся вне карты.'),
         );
+        continue;
+      }
+
+      if (order.type === 'structure_removal') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || cell.structureType === null || cell.structureType === undefined) {
+          orderResults.push(
+            rejection(order.id, 'STRUCTURE_NOT_FOUND', 'На этой клетке нет мини-сооружения для демонтажа.'),
+          );
+          continue;
+        }
+        const structureType = cell.structureType;
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id ? { ...candidate, structureType: null } : candidate,
+        );
+        emit(order.id, country.id, 'structure.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          structureType,
+          reason: 'manual_removal',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'STRUCTURE_REMOVED',
+          message: 'Мини-сооружение демонтировано без расхода ОД.',
+          data: { x, y, structureType },
+        });
         continue;
       }
 
@@ -674,20 +706,26 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
         const buildingType = cell.buildingType;
+        const removedGreenhouse = cell.structureType === 'greenhouse';
         const population = Math.max(0, cell.population) + 1;
         country.cells = country.cells.map((candidate) =>
           candidate.id === cell.id
-            ? { ...candidate, buildingType: null, structureType: null, population }
+            ? {
+                ...candidate,
+                buildingType: null,
+                structureType: removedGreenhouse ? null : candidate.structureType,
+                population,
+              }
             : candidate,
         );
-        if (cell.structureType) {
+        if (removedGreenhouse) {
           emit(order.id, country.id, 'structure.destroyed', {
             orderId: order.id,
             countryId: country.id,
             cellId: cell.id,
             x,
             y,
-            structureType: cell.structureType,
+            structureType: 'greenhouse',
             reason: 'demolition',
           });
         }
