@@ -73,6 +73,7 @@ export type BaselineOrder = OrderEnvelope<Record<string, unknown>>;
 
 const ADDITIONAL_BUILDING_TYPES = new Set([
   'factory',
+  'factory_level_2',
   'field',
   'rice_field',
   'field_level_2',
@@ -88,6 +89,18 @@ const ADDITIONAL_BUILDING_TYPES = new Set([
   'greenhouse',
   'dam',
 ]);
+
+/**
+ * Science is a live capability level: one currently owned science centre
+ * contributes one science. It is deliberately not accumulated between turns.
+ */
+const SCIENCE_REQUIRED_BY_BUILDING: Readonly<Record<string, number>> = {
+  rice_field: 2,
+  dam: 3,
+  field_level_2: 10,
+  factory_level_2: 10,
+  textile_workshop_level_2: 15,
+};
 
 function stableUuid(value: string): string {
   const chars = createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 32).split('');
@@ -220,7 +233,8 @@ function getCountrySupply(
   mapWidth = 0,
   mapHeight = mapWidth > 0 ? Math.ceil(terrain.length / mapWidth) : 0,
 ): CountrySupply {
-  const factories = country.cells.filter((cell) => ['factory', 'factory_level_2'].includes(cell.buildingType));
+  const factories = country.cells.filter((cell) =>
+    ['factory', 'factory_level_2'].includes(cell.buildingType));
   const active = (cell: BaselineCellState): boolean =>
     !componentIsDisabled(cell, 'building', disabledComponents);
   const activeFactories = factories.filter(active);
@@ -296,7 +310,10 @@ function getCountrySupply(
   return {
     population,
     food,
-    goods: activeFactories.length * 10,
+    goods: activeFactories.reduce(
+      (sum, cell) => sum + (cell.buildingType === 'factory_level_2' ? 15 : 10),
+      0,
+    ),
     clothing,
     cottonFields: activeCottonFields.length,
     textileWorkshops: activeWorkshops.length,
@@ -305,7 +322,11 @@ function getCountrySupply(
 }
 
 function buildingUpkeep(buildingType: string | null): number {
-  if (buildingType === 'tower' || buildingType === 'field_level_2') return 2;
+  if (
+    buildingType === 'tower' ||
+    buildingType === 'field_level_2' ||
+    buildingType === 'factory_level_2'
+  ) return 2;
   if (buildingType === 'textile_workshop_level_2') return 3;
   return buildingType ? 1 : 0;
 }
@@ -655,6 +676,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         order.type === 'structure_removal' ||
         (order.type === 'construction' &&
           (requestedBuildingType === 'field_level_2' ||
+            requestedBuildingType === 'factory_level_2' ||
             requestedBuildingType === 'textile_workshop_level_2'));
       if (
         !adminCountryIds.has(country.id) &&
@@ -796,6 +818,21 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
+        const requiredScience = SCIENCE_REQUIRED_BY_BUILDING[buildingType] ?? 0;
+        const currentScience = country.cells.filter(
+          (candidate) => candidate.buildingType === 'science',
+        ).length;
+        if (currentScience < requiredScience) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'SCIENCE_REQUIRED',
+              `Для этой постройки требуется ${requiredScience} науки. Сейчас у государства ${currentScience}.`,
+            ),
+          );
+          continue;
+        }
+
         if (buildingType === 'fisher' &&
           !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
           orderResults.push(
@@ -874,6 +911,7 @@ export function createBaselineTurnResolver(): TurnResolver<
 
         const upgrades: Record<string, string> = {
           field_level_2: 'field',
+          factory_level_2: 'factory',
           textile_workshop_level_2: 'textile_workshop',
         };
         const upgradeFrom = upgrades[buildingType];
