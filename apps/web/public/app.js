@@ -36,7 +36,18 @@
     chatCampaigns: [],
     chatRequestId: 0,
     chatPollingTimer: null,
+    chatNotificationPollingTimer: null,
+    chatNotificationPollingBusy: false,
+    chatNotificationsPrimed: false,
+    chatPreferencesUserId: null,
+    chatSeenMessageIds: {},
+    chatAlerts: new Set(),
+    chatMutedRooms: new Set(),
     chatSending: false,
+    adminModeEnabled: false,
+    adminUsers: [],
+    adminCampaignDiscoveries: [],
+    adminSelectedCountry: null,
     mapView: null,
     mapSelectedCenter: null,
     mapTransform: null,
@@ -411,6 +422,105 @@
       : 'Закрытый канал участников кампании';
   }
 
+  function chatRoomKey(scope, campaignId = null) {
+    return scope === 'world' ? 'world' : 'campaign:' + String(campaignId || '');
+  }
+
+  function loadChatPreferences() {
+    if (!state.user?.id || state.chatPreferencesUserId === state.user.id) return;
+    state.chatPreferencesUserId = state.user.id;
+    try {
+      const stored = JSON.parse(localStorage.getItem('pw_chat_mutes:' + state.user.id) || '[]');
+      state.chatMutedRooms = new Set(Array.isArray(stored) ? stored.filter((item) => typeof item === 'string') : []);
+    } catch {
+      state.chatMutedRooms = new Set();
+    }
+    state.chatSeenMessageIds = {};
+    state.chatNotificationsPrimed = false;
+    state.chatAlerts.clear();
+    updateChatAlertButton();
+  }
+
+  function saveChatPreferences() {
+    if (!state.user?.id) return;
+    localStorage.setItem('pw_chat_mutes:' + state.user.id, JSON.stringify([...state.chatMutedRooms]));
+  }
+
+  function updateChatAlertButton() {
+    const button = $('#chat-open-button');
+    if (!button) return;
+    const active = state.chatAlerts.size > 0;
+    button.classList.toggle('chat-new-message-alert', active);
+    button.setAttribute('aria-label', active ? 'Чаты: есть новые сообщения' : 'Чаты');
+  }
+
+  function clearChatAlert(roomKey) {
+    state.chatAlerts.delete(roomKey);
+    updateChatAlertButton();
+  }
+
+  function markChatRoomSeen(roomKey, messages) {
+    state.chatSeenMessageIds[roomKey] = (messages || []).map((message) => message.id).filter(Boolean);
+    clearChatAlert(roomKey);
+  }
+
+  function toggleChatRoomMute(roomKey) {
+    if (state.chatMutedRooms.has(roomKey)) {
+      state.chatMutedRooms.delete(roomKey);
+    } else {
+      state.chatMutedRooms.add(roomKey);
+      clearChatAlert(roomKey);
+    }
+    saveChatPreferences();
+    renderChatRooms();
+  }
+
+  function appendChatRoom(host, options) {
+    const { scope, campaignId = null, title, subtitle, icon, active, onSelect } = options;
+    const roomKey = chatRoomKey(scope, campaignId);
+    const entry = document.createElement('div');
+    entry.className = 'chat-room-entry';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chat-room-button';
+    button.classList.toggle('active', Boolean(active));
+    button.classList.toggle('has-alert', state.chatAlerts.has(roomKey));
+    button.setAttribute('data-chat-room-scope', scope);
+    if (campaignId) button.dataset.chatCampaignId = campaignId;
+    if (active) button.setAttribute('aria-current', 'true');
+    const iconNode = document.createElement('span');
+    iconNode.className = 'chat-room-icon';
+    iconNode.textContent = icon;
+    const label = document.createElement('span');
+    const name = document.createElement('strong');
+    name.textContent = title;
+    const hint = document.createElement('small');
+    hint.textContent = subtitle;
+    label.append(name, hint);
+    button.append(iconNode, label);
+    button.addEventListener('click', () => {
+      if (active) {
+        clearChatAlert(roomKey);
+        return;
+      }
+      clearChatAlert(roomKey);
+      onSelect();
+    });
+
+    const muted = state.chatMutedRooms.has(roomKey);
+    const mute = document.createElement('button');
+    mute.type = 'button';
+    mute.className = 'chat-room-mute';
+    mute.textContent = muted ? '♩' : '♬';
+    mute.title = muted ? 'Включить уведомления для этого чата' : 'Отключить уведомления для этого чата';
+    mute.setAttribute('aria-label', mute.title);
+    mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    mute.addEventListener('click', () => toggleChatRoomMute(roomKey));
+    entry.append(button, mute);
+    host.append(entry);
+  }
+
   function renderChatRooms() {
     const host = $('#chat-room-list');
     if (!host) return;
@@ -421,31 +531,20 @@
     generalLabel.textContent = 'ОБЩИЙ КАНАЛ';
     host.append(generalLabel);
 
-    const worldButton = document.createElement('button');
-    worldButton.type = 'button';
-    worldButton.className = 'chat-room-button';
-    worldButton.classList.toggle('active', state.chatScope === 'world');
-    worldButton.setAttribute('data-chat-room-scope', 'world');
-    if (state.chatScope === 'world') worldButton.setAttribute('aria-current', 'true');
-    const worldIcon = document.createElement('span');
-    worldIcon.className = 'chat-room-icon';
-    worldIcon.textContent = '◎';
-    const worldText = document.createElement('span');
-    const worldTitle = document.createElement('strong');
-    worldTitle.textContent = 'Мировой чат';
-    const worldHint = document.createElement('small');
-    worldHint.textContent = 'Все игроки Paper Wars';
-    worldText.append(worldTitle, worldHint);
-    worldButton.append(worldIcon, worldText);
-    worldButton.addEventListener('click', () => {
-      if (state.chatScope === 'world') return;
-      state.chatScope = 'world';
-      state.chatCampaignId = null;
-      renderChatRooms();
-      updateChatRoomHeader();
-      void loadChatMessages();
+    appendChatRoom(host, {
+      scope: 'world',
+      title: 'Мировой чат',
+      subtitle: 'Все игроки Paper Wars',
+      icon: '◎',
+      active: state.chatScope === 'world',
+      onSelect: () => {
+        state.chatScope = 'world';
+        state.chatCampaignId = null;
+        renderChatRooms();
+        updateChatRoomHeader();
+        void loadChatMessages();
+      },
     });
-    host.append(worldButton);
 
     const campaignLabel = document.createElement('div');
     campaignLabel.className = 'chat-room-section-label';
@@ -460,34 +559,21 @@
     }
 
     for (const campaign of state.chatCampaigns) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'chat-room-button';
-      const active = state.chatScope === 'campaign' && state.chatCampaignId === campaign.id;
-      button.classList.toggle('active', active);
-      button.dataset.chatCampaignId = campaign.id;
-      button.setAttribute('data-chat-room-scope', 'campaign');
-      if (active) button.setAttribute('aria-current', 'true');
-
-      const icon = document.createElement('span');
-      icon.className = 'chat-room-icon';
-      icon.textContent = '⌂';
-      const label = document.createElement('span');
-      const name = document.createElement('strong');
-      name.textContent = campaign.name;
-      const subtitle = document.createElement('small');
-      subtitle.textContent = 'Ход ' + String(campaign.currentTurn).padStart(2, '0');
-      label.append(name, subtitle);
-      button.append(icon, label);
-      button.addEventListener('click', () => {
-        if (state.chatScope === 'campaign' && state.chatCampaignId === campaign.id) return;
-        state.chatScope = 'campaign';
-        state.chatCampaignId = campaign.id;
-        renderChatRooms();
-        updateChatRoomHeader();
-        void loadChatMessages();
+      appendChatRoom(host, {
+        scope: 'campaign',
+        campaignId: campaign.id,
+        title: campaign.name,
+        subtitle: 'Ход ' + String(campaign.currentTurn).padStart(2, '0'),
+        icon: '⌂',
+        active: state.chatScope === 'campaign' && state.chatCampaignId === campaign.id,
+        onSelect: () => {
+          state.chatScope = 'campaign';
+          state.chatCampaignId = campaign.id;
+          renderChatRooms();
+          updateChatRoomHeader();
+          void loadChatMessages();
+        },
       });
-      host.append(button);
     }
   }
 
@@ -508,7 +594,9 @@
         scope !== state.chatScope ||
         campaignId !== state.chatCampaignId
       ) return;
-      renderChatMessages(Array.isArray(data.messages) ? data.messages : []);
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      renderChatMessages(messages);
+      markChatRoomSeen(chatRoomKey(scope, campaignId), messages);
       setChatStatus('');
     } catch (error) {
       if (!state.chatModalOpen || requestId !== state.chatRequestId) return;
@@ -547,6 +635,74 @@
     state.chatPollingTimer = setInterval(() => {
       if (state.chatModalOpen && !document.hidden) void loadChatMessages();
     }, 5000);
+  }
+
+  async function pollChatNotifications() {
+    if (!state.user?.id || !state.token || state.chatNotificationPollingBusy || document.hidden) return;
+    state.chatNotificationPollingBusy = true;
+    try {
+      const campaignData = await request('/campaigns');
+      const campaigns = Array.isArray(campaignData.campaigns) ? campaignData.campaigns : [];
+      state.chatCampaigns = campaigns;
+      const rooms = [
+        { key: 'world', path: '/chat/world' },
+        ...campaigns.map((campaign) => ({
+          key: chatRoomKey('campaign', campaign.id),
+          path: '/campaigns/' + encodeURIComponent(campaign.id) + '/chat',
+        })),
+      ];
+      const results = await Promise.all(rooms.map(async (room) => {
+        try {
+          const response = await request(room.path);
+          return { room, messages: Array.isArray(response.messages) ? response.messages : [] };
+        } catch (error) {
+          if (error.status === 403 || error.status === 404) return { room, messages: [] };
+          throw error;
+        }
+      }));
+      for (const { room, messages } of results) {
+        const previous = new Set(state.chatSeenMessageIds[room.key] || []);
+        const currentRoom = state.chatModalOpen &&
+          chatRoomKey(state.chatScope, state.chatCampaignId) === room.key;
+        if (
+          state.chatNotificationsPrimed &&
+          !currentRoom &&
+          !state.chatMutedRooms.has(room.key) &&
+          messages.some((message) => message.id && !previous.has(message.id) && !message.isMine)
+        ) {
+          state.chatAlerts.add(room.key);
+        }
+        state.chatSeenMessageIds[room.key] = messages.map((message) => message.id).filter(Boolean);
+      }
+      state.chatNotificationsPrimed = true;
+      if (state.chatScope === 'campaign' && !campaigns.some((campaign) => campaign.id === state.chatCampaignId)) {
+        state.chatScope = 'world';
+        state.chatCampaignId = null;
+      }
+      updateChatAlertButton();
+      if (state.chatModalOpen) renderChatRooms();
+    } catch (error) {
+      if (error.status === 401) stopChatNotificationPolling();
+    } finally {
+      state.chatNotificationPollingBusy = false;
+    }
+  }
+
+  function startChatNotificationPolling() {
+    if (state.chatNotificationPollingTimer !== null) return;
+    void pollChatNotifications();
+    state.chatNotificationPollingTimer = setInterval(() => {
+      void pollChatNotifications();
+    }, 20000);
+  }
+
+  function stopChatNotificationPolling() {
+    if (state.chatNotificationPollingTimer !== null) clearInterval(state.chatNotificationPollingTimer);
+    state.chatNotificationPollingTimer = null;
+    state.chatNotificationsPrimed = false;
+    state.chatSeenMessageIds = {};
+    state.chatAlerts.clear();
+    updateChatAlertButton();
   }
 
   function closeChatModal() {
@@ -907,6 +1063,8 @@
     }
     renderCampaigns();
     await loadOpenCampaigns();
+    loadChatPreferences();
+    startChatNotificationPolling();
   }
 
   async function loadOpenCampaigns() {
@@ -1134,11 +1292,15 @@
     if (!region.some((cell) => mapIsLand(cell.x, cell.y))) {
       return { allowed: false, reason: 'no-land' };
     }
-    const borderOffsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-    const touchesOwnTerritory = region.some((cell) => borderOffsets.some(([dx, dy]) => {
-      const key = (cell.x + dx) + ',' + (cell.y + dy);
-      return ownCoordinates.has(key) || plannedCoordinates.has(key);
-    }));
+    const adjacentSides = [
+      [[centerX - 1, centerY - 2], [centerX, centerY - 2], [centerX + 1, centerY - 2]],
+      [[centerX - 1, centerY + 2], [centerX, centerY + 2], [centerX + 1, centerY + 2]],
+      [[centerX - 2, centerY - 1], [centerX - 2, centerY], [centerX - 2, centerY + 1]],
+      [[centerX + 2, centerY - 1], [centerX + 2, centerY], [centerX + 2, centerY + 1]],
+    ];
+    const touchesOwnTerritory = adjacentSides.some((side) =>
+      side.every(([x, y]) => ownCoordinates.has(x + ',' + y) || plannedCoordinates.has(x + ',' + y)),
+    );
     if (!touchesOwnTerritory) return { allowed: false, reason: 'not-adjacent' };
     return { allowed: true, reason: 'available' };
   }
@@ -1147,7 +1309,7 @@
     if (reason === 'bounds') return 'Квадрат 3×3 должен полностью находиться в пределах карты.';
     if (reason === 'overlap') return 'Новая колония не должна пересекать существующие или уже запланированные территории.';
     if (reason === 'no-land') return 'В квадрате 3×3 должна быть хотя бы одна свободная клетка суши.';
-    if (reason === 'not-adjacent') return 'Колония 3×3 должна примыкать стороной к твоей территории или ранее поставленной колонии.';
+    if (reason === 'not-adjacent') return 'Колония 3×3 должна полностью примыкать одной стороной из трёх клеток к твоей территории или предыдущей колонии.';
     return 'Эту область нельзя колонизировать.';
   }
 
@@ -2590,15 +2752,21 @@
       }
     });
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && state.chatModalOpen) void loadChatMessages();
+      if (!document.hidden) {
+        if (state.chatModalOpen) void loadChatMessages();
+        void pollChatNotifications();
+      }
     });
 
     $('#logout-button').addEventListener('click', async () => {
       closeChatModal();
+      stopChatNotificationPolling();
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
       state.profile = null;
+      state.chatPreferencesUserId = null;
+      state.adminModeEnabled = false;
       sessionStorage.removeItem('pw_access_token');
       showScreen('auth');
       showToast('Сессия завершена.');
