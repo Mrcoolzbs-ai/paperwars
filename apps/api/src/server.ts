@@ -6,6 +6,7 @@ import {
   createAccessTokenSigner,
   createCampaignService,
   createChatService,
+  createAdminService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import {
@@ -152,6 +153,10 @@ try {
     rngVersion,
   });
   const chatService = createChatService({ pool: persistence.pool });
+  const adminService = createAdminService({
+    pool: persistence.pool,
+    adminCode: process.env['ADMIN_CODE'],
+  });
   const countrySetupService = createCountrySetupService({
     pool: persistence.pool,
     socialSystemAdminUserIds,
@@ -168,6 +173,7 @@ try {
     authService,
     campaignService,
     chatService,
+    adminService,
     countrySetupService,
     ...(webEntryPath === undefined ? {} : { webEntryPath }),
     ...(vkId === undefined ? {} : { vkId }),

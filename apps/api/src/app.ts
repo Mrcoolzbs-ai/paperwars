@@ -5,6 +5,8 @@ import {
   ChatServiceError,
   DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
+  AdminServiceError,
+  type AdminService,
   ExternalIdentityAlreadyLinkedError,
   InvalidCredentialsError,
   InvalidRefreshTokenError,
@@ -51,6 +53,7 @@ export interface CreateAppOptions {
   readonly campaignService?: CampaignService;
   readonly countrySetupService?: CountrySetupService;
   readonly chatService?: ChatService;
+  readonly adminService?: AdminService;
   readonly vkId?: VkIdOptions;
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
@@ -127,6 +130,12 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
   );
 }
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof AdminServiceError) {
+    const status = error.code === 'ADMIN_CODE_UNAVAILABLE' ? 503
+      : error.code === 'ADMIN_CODE_RATE_LIMITED' ? 429
+        : error.code === 'ADMIN_NOT_FOUND' ? 403 : 400;
+    return reply.code(status).send({ error: error.code, message: error.message });
+  }
   const messages: Record<string, string> = {
     INVALID_ORDER: 'Приказ заполнен неверно. Проверьте его параметры.',
     CAMPAIGN_NOT_FOUND: 'Кампания не найдена.',
@@ -267,6 +276,7 @@ function registerAuthRoutes(
   app: FastifyInstance,
   authService: AuthService,
   secureCookies: boolean,
+  adminService?: AdminService,
 ): void {
   app.post('/auth/login', async (request, reply) => {
     try {
@@ -341,6 +351,19 @@ function registerAuthRoutes(
       return sendAuthError(error, reply);
     }
   });
+
+  if (adminService !== undefined) {
+    app.post('/auth/admin-code', async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        await adminService.grantWithCode(user.id, body['code']);
+        return reply.send({ isAdmin: true });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    });
+  }
 
   app.post('/auth/password', async (request, reply) => {
     try {
@@ -942,7 +965,12 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   }));
 
   if (options.authService !== undefined) {
-    registerAuthRoutes(app, options.authService, options.secureCookies ?? false);
+    registerAuthRoutes(
+      app,
+      options.authService,
+      options.secureCookies ?? false,
+      options.adminService,
+    );
     registerVkRoutes(app, options.authService, options.secureCookies ?? false, options.vkId);
   }
 
