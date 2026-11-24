@@ -339,9 +339,7 @@ async function loadTurnInput<
               if (!isRecord(cellValue) || typeof cellValue['id'] !== 'string') {
                 return cellValue;
               }
-              const territory = territoryByCell.get(
-                `${countryValue['id']}:${cellValue['id']}`,
-              );
+              const territory = territoryByCell.get(`${countryValue['id']}:${cellValue['id']}`);
               return territory ? { ...cellValue, ...territory } : cellValue;
             }),
           };
