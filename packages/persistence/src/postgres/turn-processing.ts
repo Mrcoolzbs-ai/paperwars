@@ -548,10 +548,7 @@ export async function closeOrders(
  * The worker calls this before claiming jobs, so expired turns cannot remain
  * stuck forever waiting for a participant to click a confirmation button.
  */
-export async function closeExpiredOrderWindows(
-  pool: Pool,
-  limit = 25,
-): Promise<ClosedTurnJob[]> {
+export async function closeExpiredOrderWindows(pool: Pool, limit = 25): Promise<ClosedTurnJob[]> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new RangeError('limit must be an integer between 1 and 100');
   }
