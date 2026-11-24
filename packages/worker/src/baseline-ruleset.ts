@@ -247,6 +247,19 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       if (order.type === 'colonization') {
         const radius = ruleset.parameters.colonizationRadius;
+        if (
+          x < radius ||
+          y < radius ||
+          x + radius >= mapWidth ||
+          y + radius >= mapHeight
+        ) {
+          orderResults.push(rejection(
+            order.id,
+            'COLONIZATION_OUT_OF_BOUNDS',
+            'Квадрат колонизации 3×3 должен полностью находиться в пределах карты.',
+          ));
+          continue;
+        }
         const candidates: Array<{ x: number; y: number; terrainCode: string }> = [];
         for (let cellY = Math.max(0, y - radius); cellY <= Math.min(mapHeight - 1, y + radius); cellY += 1) {
           for (let cellX = Math.max(0, x - radius); cellX <= Math.min(mapWidth - 1, x + radius); cellX += 1) {
