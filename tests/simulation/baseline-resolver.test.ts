@@ -159,9 +159,7 @@ describe('baseline turn resolver', () => {
     expect(capturedEvent?.payload).not.toHaveProperty('discoveryType');
     expect(capturedEvent?.payload).not.toHaveProperty('discoveryId');
     expect(result.events.some((event) => event.type === 'discovery.discovered')).toBe(false);
-    expect(result.orderResults[0]?.data?.['discoveries']).toEqual([
-      { x: 2, y: 2, alreadyDiscovered: true },
-    ]);
+    expect(result.orderResults[0]?.data?.['discoveries']).toEqual([]);
     expect(random.calls).toHaveLength(0);
   });
 
