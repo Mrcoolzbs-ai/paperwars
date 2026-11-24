@@ -491,15 +491,21 @@ async function persistWorldProjectionEvent(
   if (event.type === 'discovery.captured') {
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');
-    const existing = await client.query<{ id: string }>(
-      `SELECT id FROM discovery_records
+    const existing = await client.query<{ id: string; discovered_by_country_id: string }>(
+      `SELECT id, discovered_by_country_id FROM discovery_records
        WHERE campaign_id = $1 AND cell_id = $2
        FOR UPDATE`,
       [campaignId, cellId],
     );
-    const discoveryId = existing.rows[0]?.id;
-    if (discoveryId === undefined) {
+    const record = existing.rows[0];
+    if (record === undefined) {
       throw new TurnWorkerInvariantError('A captured cell has no permanent discovery record');
+    }
+    if (
+      event.visibility !== 'private' ||
+      event.recipientCountryId !== record.discovered_by_country_id
+    ) {
+      throw new TurnWorkerInvariantError('A captured discovery notice must remain private to its original discoverer');
     }
 
     // Capturing a tile never discloses its discovery or grants the capturing
@@ -508,7 +514,7 @@ async function persistWorldProjectionEvent(
       `INSERT INTO discovery_history (
          discovery_id, event_type, actor_country_id, turn_number, payload
        ) VALUES ($1, 'captured', $2, $3, $4)`,
-      [discoveryId, countryId, turnNumber, payload],
+      [record.id, countryId, turnNumber, payload],
     );
   }
 }
