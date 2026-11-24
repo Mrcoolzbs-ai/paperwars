@@ -125,14 +125,14 @@ describe('baseline turn resolver', () => {
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(10);
     const colonyEvents = result.events.filter((event) => event.type === 'territory.colonized');
-     expect(colonyEvents).toHaveLength(9);
-     expect(new Set(colonyEvents.map((event) => event.payload['territoryId'])).size).toBe(1);
-     expect(colonyEvents[0]?.payload).toMatchObject({
-       centerX: 2,
-       centerY: 2,
-       width: 3,
-       height: 3,
-     });
+    expect(colonyEvents).toHaveLength(9);
+    expect(new Set(colonyEvents.map((event) => event.payload['territoryId'])).size).toBe(1);
+    expect(colonyEvents[0]?.payload).toMatchObject({
+      centerX: 2,
+      centerY: 2,
+      width: 3,
+      height: 3,
+    });
     expect(result.events.filter((event) => event.type === 'discovery.discovered')).toHaveLength(9);
     expect(random.calls).toHaveLength(9);
     expect(

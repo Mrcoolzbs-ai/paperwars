@@ -904,9 +904,7 @@ export function createCountrySetupService(options: {
           };
           groups.set(row.country_id, country);
         }
-        if (
-          !country.territories.some((territory) => territory.id === row.territory_id)
-        ) {
+        if (!country.territories.some((territory) => territory.id === row.territory_id)) {
           country.territories.push({
             id: row.territory_id,
             type: row.territory_type,

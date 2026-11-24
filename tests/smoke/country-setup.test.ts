@@ -231,21 +231,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(firstMapCountry).toBeDefined();
 
       expect(firstMapCountry!.territories).toEqual([
-
         expect.objectContaining({
-
           type: 'core',
-
           centerX: firstSpawn.x,
-
           centerY: firstSpawn.y,
-
           width: 5,
-
           height: 5,
-
         }),
-
       ]);
 
       for (const cell of firstMapCountry!.cells) {
