@@ -1637,6 +1637,7 @@
 
   const SCIENCE_REQUIRED_BY_BUILDING = {
     rice_field: 2,
+    greenhouse: 2,
     dam: 3,
     field_level_2: 10,
     factory_level_2: 10,
