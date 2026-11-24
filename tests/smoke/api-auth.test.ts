@@ -382,7 +382,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(refreshed.body).not.toContain('refreshToken');
     });
 
-    it('grants and revokes the protected super-admin mode without exposing the server code', async () => {
+    it(
+      'grants and revokes the protected super-admin mode without exposing the server code',
+      async () => {
       const email = `super-admin-${randomUUID()}@example.test`;
       const password = 'an api integration test password';
       await createBackupAccount(persistence!.pool, email, password);
@@ -524,7 +526,8 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         headers: { authorization: `Bearer ${targetSession.accessToken}` },
       });
       expect(disabledSession.statusCode).toBe(401);
-    });
+      },
+    );
 
     it('rate limits failed super-code attempts per user account', async () => {
       const email = `wrong-super-code-${randomUUID()}@example.test`;
