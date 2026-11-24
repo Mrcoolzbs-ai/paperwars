@@ -601,23 +601,6 @@ async function persistWorldProjectionEvent(
     return;
   }
 
-  if (event.type === 'science.points.updated') {
-    const countryId = projectionString(payload, 'countryId');
-    const sciencePoints = projectionInteger(payload, 'sciencePoints');
-    const updated = await client.query(
-      `UPDATE countries
-       SET science_points = $3
-       WHERE campaign_id = $1 AND id = $2`,
-      [campaignId, countryId, sciencePoints],
-    );
-    if (updated.rowCount !== 1) {
-      throw new TurnWorkerInvariantError(
-        'A science points event references a country that does not exist',
-      );
-    }
-    return;
-  }
-
   if (event.type === 'population.synchronized') {
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');
