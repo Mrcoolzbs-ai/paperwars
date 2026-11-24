@@ -665,6 +665,7 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       countryEconomies.push({
         countryId: country.id,
+        turnNumber: snapshot.turnNumber,
         population,
         gold,
         income,
