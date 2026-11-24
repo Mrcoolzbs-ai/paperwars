@@ -211,11 +211,13 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       const actionsUsed = actionsUsedByCountry.get(country.id) ?? 0;
       if (actionsUsed >= ruleset.parameters.actionPointsPerTurn) {
-        orderResults.push(rejection(
-          order.id,
-          'ACTION_POINTS_EXHAUSTED',
-          'На этот ход уже использованы все 3 очка действий.',
-        ));
+        orderResults.push(
+          rejection(
+            order.id,
+            'ACTION_POINTS_EXHAUSTED',
+            'На этот ход уже использованы все 3 очка действий.',
+          ),
+        );
         continue;
       }
       actionsUsedByCountry.set(country.id, actionsUsed + 1);
@@ -352,9 +354,9 @@ export function createBaselineTurnResolver(): TurnResolver<
           const key = coordinateKey(cell.x, cell.y);
           const isLand = cell.terrainCode === 'l';
           const previousDiscovery = isLand ? discoveredByCoordinate.get(key) : undefined;
-          const cellId = previousDiscovery?.cellId ?? stableUuid(
-            `paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`,
-          );
+          const cellId =
+            previousDiscovery?.cellId ??
+            stableUuid(`paperwars:cell:${snapshot.campaignId}:${cell.x}:${cell.y}`);
           const population = isLand
             ? residentsPerLandCell + (landIndex < extraResidents ? 1 : 0)
             : 0;
