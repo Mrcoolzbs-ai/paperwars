@@ -44,6 +44,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Temporary archive rules scan
+        run: |
+          python3 - <<'PY'
+          import re
+          import zipfile
+          import xml.etree.ElementTree as ET
+
+          namespace = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+          patterns = re.compile(r'теплиц|дамб|рыбак|рыболов|рыболовств|рыбн', re.IGNORECASE)
+          for filename in [
+              'VK_discussions_205658089_2026-11-20.docx',
+              'VK_wall_205658089_2026-11-20.docx',
+          ]:
+              print(f'===== ARCHIVE {filename} =====')
+              with zipfile.ZipFile(filename) as archive:
+                  root = ET.fromstring(archive.read('word/document.xml'))
+                  paragraphs = [
+                      ''.join(node.itertext()).strip()
+                      for node in root.findall('.//w:p', namespace)
+                  ]
+                  print(f'paragraphs={len(paragraphs)} media={len([name for name in archive.namelist() if name.startswith("word/media/")])}')
+                  hits = 0
+                  for index, paragraph in enumerate(paragraphs):
+                      if not patterns.search(paragraph):
+                          continue
+                      hits += 1
+                      print(f'--- paragraph {index} ---')
+                      print(paragraph[:5000])
+                  print(f'targeted_paragraphs={hits}')
+          PY
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
