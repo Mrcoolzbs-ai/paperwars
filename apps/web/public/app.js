@@ -47,6 +47,8 @@
     adminModeEnabled: false,
     adminUsers: [],
     adminCampaigns: [],
+    adminMapPreviousCampaign: null,
+    adminMapOpened: false,
     adminCampaignDiscoveries: [],
     adminSelectedCountry: null,
     mapView: null,
@@ -1195,6 +1197,10 @@
       return;
     }
     if (state.campaign?.id !== selected.id) {
+      if (!state.adminMapOpened) {
+        state.adminMapPreviousCampaign = state.campaign;
+        state.adminMapOpened = true;
+      }
       state.campaign = {
         id: selected.id,
         name: selected.name,
@@ -3271,6 +3277,12 @@
     $('#close-map').addEventListener('click', () => {
       closeMapContextMenu();
       $('#map-modal').classList.add('hidden');
+      if (state.adminMapOpened) {
+        state.campaign = state.adminMapPreviousCampaign;
+        state.adminMapPreviousCampaign = null;
+        state.adminMapOpened = false;
+        state.mapView = null;
+      }
     });
     $('#confirm-spawn').addEventListener('click', confirmSpawn);
     $('#confirm-map-orders').addEventListener('click', confirmMapOrders);
