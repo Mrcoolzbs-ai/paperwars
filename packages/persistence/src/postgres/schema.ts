@@ -927,3 +927,17 @@ export const adminCodeAttempts = pgTable(
     check('admin_code_attempts_count_check', sql`${table.attempts} between 0 and 5`),
   ],
 );
+
+
+export const userAdminSettings = pgTable(
+  'user_admin_settings',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => userAdmins.userId, { onDelete: 'cascade' }),
+    enabled: boolean('enabled').notNull().default(true),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+);

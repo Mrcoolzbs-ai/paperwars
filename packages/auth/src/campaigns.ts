@@ -186,7 +186,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
 
     async forceEndTurn(adminUserId, campaignId) {
       const role = await options.pool.query(
-        'SELECT 1 FROM user_admins WHERE user_id = $1',
+        `SELECT 1 FROM user_admins AS admin
+         JOIN user_admin_settings AS setting ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+         WHERE admin.user_id = $1`,
         [adminUserId],
       );
       if (role.rows.length === 0) {
@@ -197,7 +199,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
 
     async rollbackLastTurn(adminUserId, campaignId) {
       const role = await options.pool.query(
-        'SELECT 1 FROM user_admins WHERE user_id = $1',
+        `SELECT 1 FROM user_admins AS admin
+         JOIN user_admin_settings AS setting ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+         WHERE admin.user_id = $1`,
         [adminUserId],
       );
       if (role.rows.length === 0) {

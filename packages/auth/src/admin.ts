@@ -27,6 +27,8 @@ export interface AdminUserView {
 
 export interface AdminService {
   isAdmin(userId: string): Promise<boolean>;
+  isAdminModeEnabled(userId: string): Promise<boolean>;
+  setAdminMode(userId: string, enabled: unknown): Promise<boolean>;
   grantWithCode(userId: string, code: unknown): Promise<void>;
   listUsers(adminUserId: string): Promise<readonly AdminUserView[]>;
   renameUser(adminUserId: string, targetUserId: string, displayName: unknown): Promise<AdminUserView>;
@@ -76,6 +78,9 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
     if (!(await service.isAdmin(userId))) {
       throw new AdminServiceError('ADMIN_NOT_FOUND', 'Для этого действия нужны права администратора.');
     }
+    if (!(await service.isAdminModeEnabled(userId))) {
+      throw new AdminServiceError('ADMIN_NOT_FOUND', 'Включи административный режим в профиле.');
+    }
   }
 
   const service: AdminService = {
@@ -83,6 +88,33 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
       validateUserId(userId);
       const result = await pool.query('SELECT 1 FROM user_admins WHERE user_id = $1', [userId]);
       return result.rows.length > 0;
+    },
+
+    async isAdminModeEnabled(userId) {
+      validateUserId(userId);
+      const result = await pool.query(
+        'SELECT 1 FROM user_admin_settings WHERE user_id = $1 AND enabled = TRUE',
+        [userId],
+      );
+      return result.rows.length > 0;
+    },
+
+    async setAdminMode(userId, enabledInput) {
+      validateUserId(userId);
+      if (typeof enabledInput !== 'boolean') {
+        throw new AdminServiceError('ADMIN_NOT_FOUND', 'Некорректное состояние административного режима.');
+      }
+      if (!(await service.isAdmin(userId))) {
+        throw new AdminServiceError('ADMIN_NOT_FOUND', 'Для этого действия нужны права администратора.');
+      }
+      await pool.query(
+        `INSERT INTO user_admin_settings (user_id, enabled, updated_at)
+         VALUES ($1, $2, clock_timestamp())
+         ON CONFLICT (user_id) DO UPDATE
+         SET enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at`,
+        [userId, enabledInput],
+      );
+      return enabledInput;
     },
 
     async grantWithCode(userId, codeInput) {
@@ -128,6 +160,13 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
           if (codeMatches(codeInput, expectedCode)) {
             await client.query(
               'INSERT INTO user_admins (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+              [userId],
+            );
+            await client.query(
+              `INSERT INTO user_admin_settings (user_id, enabled, updated_at)
+               VALUES ($1, TRUE, clock_timestamp())
+               ON CONFLICT (user_id) DO UPDATE
+               SET enabled = TRUE, updated_at = clock_timestamp()`,
               [userId],
             );
             await client.query('DELETE FROM admin_code_attempts WHERE user_id = $1', [userId]);

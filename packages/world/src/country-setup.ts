@@ -801,7 +801,10 @@ export function createCountrySetupService(options: {
   const requireAdmin = async (userId: string): Promise<void> => {
     if (adminUserIds.has(userId)) return;
     const role = await options.pool.query(
-      'SELECT 1 FROM user_admins WHERE user_id = $1',
+      `SELECT 1 FROM user_admins AS admin
+       JOIN user_admin_settings AS setting
+         ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+       WHERE admin.user_id = $1`,
       [userId],
     );
     if (role.rows.length === 0) throw new SocialSystemAdminRequiredError();
@@ -831,7 +834,10 @@ export function createCountrySetupService(options: {
       );
       if (member.rows.length === 0) {
         const administrator = await options.pool.query(
-          'SELECT 1 FROM user_admins WHERE user_id = $1',
+          `SELECT 1 FROM user_admins AS admin
+           JOIN user_admin_settings AS setting
+             ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+           WHERE admin.user_id = $1`,
           [userId],
         );
         if (administrator.rows.length === 0 && !adminUserIds.has(userId)) {
@@ -967,7 +973,13 @@ export function createCountrySetupService(options: {
            WHERE campaign_id = $1 AND user_id = $2 AND status = 'active'`,
           [campaignId, userId],
         ),
-        options.pool.query('SELECT 1 FROM user_admins WHERE user_id = $1', [userId]),
+        options.pool.query(
+          `SELECT 1 FROM user_admins AS admin
+           JOIN user_admin_settings AS setting
+             ON setting.user_id = admin.user_id AND setting.enabled = TRUE
+           WHERE admin.user_id = $1`,
+          [userId],
+        ),
       ]);
       const countryId = member.rows[0]?.country_id;
       const isAdmin = administrator.rows.length > 0 || adminUserIds.has(userId);

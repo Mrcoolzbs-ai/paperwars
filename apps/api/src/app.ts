@@ -353,6 +353,17 @@ function registerAuthRoutes(
   });
 
   if (adminService !== undefined) {
+    app.post('/auth/admin-mode', async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const enabled = await adminService.setAdminMode(user.id, body['enabled']);
+        return reply.send({ enabled });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    });
+
     app.post('/auth/admin-code', async (request, reply) => {
       try {
         const user = await authService.authenticateAccessToken(getBearerToken(request));

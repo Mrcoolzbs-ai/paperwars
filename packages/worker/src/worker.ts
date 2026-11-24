@@ -296,6 +296,8 @@ async function loadTurnInput<
         `SELECT country.id AS country_id
          FROM countries AS country
          JOIN user_admins AS admin ON admin.user_id = country.owner_user_id
+         JOIN user_admin_settings AS setting
+           ON setting.user_id = admin.user_id AND setting.enabled = TRUE
          WHERE country.campaign_id = $1`,
         [job.campaignId],
       ),
