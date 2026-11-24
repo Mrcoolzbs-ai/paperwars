@@ -5,7 +5,6 @@ import {
   createAuthService,
   createCampaignService,
   hashPassword,
-  DisplayNameAlreadyTakenError,
   AuthValidationError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
