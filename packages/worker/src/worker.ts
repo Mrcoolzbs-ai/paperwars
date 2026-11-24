@@ -604,6 +604,21 @@ async function persistWorldProjectionEvent(
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');
     const buildingType = projectionString(payload, 'buildingType');
+    const population =
+      typeof payload['population'] === 'number'
+        ? projectionInteger(payload, 'population')
+        : null;
+    const updatedPopulation = await client.query(
+      `UPDATE country_cells
+       SET population = COALESCE($4::integer, population + 1)
+       WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+      [campaignId, countryId, cellId, population],
+    );
+    if (updatedPopulation.rowCount !== 1) {
+      throw new TurnWorkerInvariantError(
+        'A building destruction event references a cell not owned by its country',
+      );
+    }
     const deleted = await client.query(
       `DELETE FROM country_buildings
        WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3 AND building_type = $4`,
