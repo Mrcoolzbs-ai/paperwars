@@ -319,7 +319,7 @@ async function loadTurnInput<
     ]);
     const territoryByCell = new Map(
       territoryCellResult.rows.map((row) => [
-        `${row.country_id:${row.cell_id"}`,
+        `${row.country_id}:${row.cell_id}`,
         { territoryId: row.territory_id, territoryType: row.territory_type },
       ]),
     );
