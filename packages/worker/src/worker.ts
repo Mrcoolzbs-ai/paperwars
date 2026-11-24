@@ -325,13 +325,20 @@ async function loadTurnInput<
     );
     const hydratedCountries = Array.isArray(snapshot.state['countries'])
       ? snapshot.state['countries'].map((countryValue) => {
-          if (!isRecord(countryValue) || typeof countryValue['id'] !== 'string' ||
-              !Array.isArray(countryValue['cells'])) return countryValue;
+          if (
+            !isRecord(countryValue) ||
+            typeof countryValue['id'] !== 'string' ||
+            !Array.isArray(countryValue['cells'])
+          ) {
+            return countryValue;
+          }
           return {
             ...countryValue,
             economyEnabled: true,
             cells: countryValue['cells'].map((cellValue) => {
-              if (!isRecord(cellValue) || typeof cellValue['id'] !== 'string') return cellValue;
+              if (!isRecord(cellValue) || typeof cellValue['id'] !== 'string') {
+                return cellValue;
+              }
               const territory = territoryByCell.get(
                 `${countryValue['id']}:${cellValue['id']}`,
               );
