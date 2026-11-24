@@ -90,9 +90,25 @@ describe('browser client', () => {
     expect(script.body).toContain('Building symbols are rendered after country labels');
     expect(script.body).toContain("ctx.fillText('З'");
     expect(script.body).toContain('Эффект: ');
-    expect(script.body).toContain('Доступно строительство зданий');
-    expect(script.body).toContain('countries/mine/buildings');
+    expect(script.body).toContain("request('/auth/profile')");
+    expect(script.body).toContain("method: 'PUT'");
+    expect(script.body).toContain("request('/auth/password'");
+    expect(script.body).toContain("request('/auth/vk/link'");
+    expect(script.body).toContain('profileReturnScreen');
+    expect(script.body).toContain('VK ID успешно подключён');
+    expect(script.body).toContain('profile-password-form');
+    expect(script.body).toContain('profile-email');
     expect(script.body).not.toContain('build-country-building');
+
+    const home = await app.inject({ method: 'GET', url: '/' });
+    expect(home.body).toContain('id="profile-button"');
+    expect(home.body).toContain('id="profile-screen"');
+    expect(home.body).toContain('id="profile-form"');
+    expect(home.body).toContain('id="profile-link-vk"');
+    expect(home.body).toContain('id="profile-password-form"');
+    expect(home.body).toContain('id="logout-button"');
+    expect(stylesheet.body).toContain('.profile-layout');
+    expect(stylesheet.body).toContain('.profile-account-mark');
     expect(stylesheet.statusCode).toBe(200);
     expect(stylesheet.headers['content-type']).toContain('text/css');
     expect(icon.statusCode).toBe(200);
