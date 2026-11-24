@@ -253,9 +253,11 @@ async function loadTurnInput<
       readonly cell_id: string;
       readonly x: number;
       readonly y: number;
+      readonly discovered_by_country_id: string;
       readonly discovery_type: 'ruins' | 'gold' | 'empty';
     }>(
-      `SELECT discovery.id, discovery.cell_id, cell.x, cell.y, discovery.discovery_type
+      `SELECT discovery.id, discovery.cell_id, discovery.discovered_by_country_id,
+              cell.x, cell.y, discovery.discovery_type
        FROM discovery_records AS discovery
        JOIN cells AS cell
          ON cell.campaign_id = discovery.campaign_id AND cell.id = discovery.cell_id
@@ -276,6 +278,7 @@ async function loadTurnInput<
       discoveredCells: discoveryResult.rows.map((row) => ({
         id: row.id,
         cellId: row.cell_id,
+        discoveredByCountryId: row.discovered_by_country_id,
         x: row.x,
         y: row.y,
         type: row.discovery_type,
