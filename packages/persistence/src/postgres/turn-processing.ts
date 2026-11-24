@@ -671,7 +671,7 @@ export async function createCampaignOrder(
     if ((actionCount.rows[0]?.action_count ?? 0) >= 3) {
       throw new CampaignTurnProcessingError(
         'ACTION_POINTS_EXHAUSTED',
-        'The player has already used all 3 action points for this turn',
+        'На этот ход уже использованы все 3 очка действий.',
       );
     }
     await withdrawOrderConfirmation(
