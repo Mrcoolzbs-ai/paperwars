@@ -2035,7 +2035,11 @@
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
-          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу</button>';
+          const required = scienceRequirementFor('greenhouse');
+          const locked = currentScienceLevel() < required;
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse"' +
+            (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+            (locked ? 'Теплица · Наука ' + required : 'Построить теплицу') + '</button>';
         }
         if (mapCardinalWaterCount(cell.x, cell.y) > 0) {
           const required = scienceRequirementFor('dam');
