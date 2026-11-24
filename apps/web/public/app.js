@@ -709,7 +709,6 @@
     const isLand = mapIsLand(cell.x, cell.y);
     const existingOrders = mapOrdersAt(cell.x, cell.y);
     const actionsRemaining = Math.max(0, 3 - mapActionCount());
-    const canIssue = state.turnStatus?.ordersAccepting === true && actionsRemaining > 0;
     let content = `<header><strong>КЛЕТКА ${cell.x}, ${cell.y}</strong><button type="button" data-map-action="close" aria-label="Закрыть">×</button></header>`;
     content += `<p class="map-context-location">${isLand ? 'Суша' : 'Вода или река'} · ${anyCountryOwnsCell ? (ownedCell ? 'Твоя территория' : 'Чужая территория') : 'Свободная территория'}</p>`;
 
