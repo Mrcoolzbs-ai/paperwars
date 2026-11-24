@@ -378,7 +378,13 @@ async function persistWorldProjectionEvent(
     const x = projectionInteger(payload, 'x');
     const y = projectionInteger(payload, 'y');
     const population = projectionInteger(payload, 'population');
-    if (population < 1) throw new TurnWorkerInvariantError('Newly colonized land must receive a resident');
+    const terrainCode = projectionString(payload, 'terrainCode');
+    if (!['l', 'w', 'r'].includes(terrainCode)) {
+      throw new TurnWorkerInvariantError('A colonized cell contains an unsupported terrain code');
+    }
+    if (population < 0 || (terrainCode === 'l' ? population < 1 : population !== 0)) {
+      throw new TurnWorkerInvariantError('Population must be positive on land and zero on water or rivers');
+    }
 
     const insertedCell = await client.query<{ id: string }>(
       `INSERT INTO cells (id, campaign_id, x, y)
@@ -435,47 +441,37 @@ async function persistWorldProjectionEvent(
     return;
   }
 
-  if (event.type === 'discovery.discovered' || event.type === 'discovery.captured') {
+  if (event.type === 'discovery.discovered') {
     const countryId = projectionString(payload, 'countryId');
     const cellId = projectionString(payload, 'cellId');
     const discoveryType = projectionString(payload, 'discoveryType');
-    if (!['ruins', 'gold', 'empty'].includes(discoveryType)) {
-      throw new TurnWorkerInvariantError('A discovery event contains an unsupported discovery type');
+    const roll = projectionInteger(payload, 'd100');
+    const expectedType = roll === 1 ? 'ruins' : roll === 100 ? 'gold' : 'empty';
+    if (
+      !['ruins', 'gold', 'empty'].includes(discoveryType) ||
+      roll < 1 ||
+      roll > 100 ||
+      discoveryType !== expectedType
+    ) {
+      throw new TurnWorkerInvariantError('A discovery event does not match its d100 result');
     }
 
-    let discoveryId: string;
-    if (event.type === 'discovery.discovered') {
-      const inserted = await client.query<{ id: string }>(
-        `INSERT INTO discovery_records (
-           campaign_id, cell_id, discovered_by_country_id, discovered_at_turn, discovery_type
-         ) VALUES ($1, $2, $3, $4, $5)
-         RETURNING id`,
-        [campaignId, cellId, countryId, turnNumber, discoveryType],
-      );
-      const record = inserted.rows[0];
-      if (record === undefined) throw new TurnWorkerInvariantError('Discovery record was not created');
-      discoveryId = record.id;
-    } else {
-      discoveryId = projectionString(payload, 'discoveryId');
-      const existing = await client.query<{ id: string; discovery_type: string }>(
-        `SELECT id, discovery_type FROM discovery_records
-         WHERE campaign_id = $1 AND cell_id = $2
-         FOR UPDATE`,
-        [campaignId, cellId],
-      );
-      const record = existing.rows[0];
-      if (record === undefined || record.id !== discoveryId || record.discovery_type !== discoveryType) {
-        throw new TurnWorkerInvariantError('A captured discovery no longer matches its permanent record');
-      }
-    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO discovery_records (
+         campaign_id, cell_id, discovered_by_country_id, discovered_at_turn, discovery_type
+       ) VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [campaignId, cellId, countryId, turnNumber, discoveryType],
+    );
+    const record = inserted.rows[0];
+    if (record === undefined) throw new TurnWorkerInvariantError('Discovery record was not created');
 
-    const eventType = event.type === 'discovery.discovered' ? 'discovered' : 'captured';
     const history = await client.query<{ id: string }>(
       `INSERT INTO discovery_history (
          discovery_id, event_type, actor_country_id, turn_number, payload
-       ) VALUES ($1, $2, $3, $4, $5)
+       ) VALUES ($1, 'discovered', $2, $3, $4)
        RETURNING id`,
-      [discoveryId, eventType, countryId, turnNumber, payload],
+      [record.id, countryId, turnNumber, payload],
     );
     const historyId = history.rows[0]?.id;
     if (historyId === undefined) throw new TurnWorkerInvariantError('Discovery history event was not created');
@@ -483,15 +479,33 @@ async function persistWorldProjectionEvent(
     await client.query(
       `INSERT INTO discovery_access (
          discovery_id, country_id, status, granted_at_turn, granted_by_event_id
-       ) VALUES ($1, $2, 'active', $3, $4)
-       ON CONFLICT (discovery_id, country_id) DO UPDATE SET
-         status = 'active',
-         granted_at_turn = EXCLUDED.granted_at_turn,
-         granted_by_event_id = EXCLUDED.granted_by_event_id,
-         revoked_at_turn = NULL,
-         revoked_by_event_id = NULL,
-         updated_at = clock_timestamp()`,
-      [discoveryId, countryId, turnNumber, historyId],
+       ) VALUES ($1, $2, 'active', $3, $4)`,
+      [record.id, countryId, turnNumber, historyId],
+    );
+    return;
+  }
+
+  if (event.type === 'discovery.captured') {
+    const countryId = projectionString(payload, 'countryId');
+    const cellId = projectionString(payload, 'cellId');
+    const existing = await client.query<{ id: string }>(
+      `SELECT id FROM discovery_records
+       WHERE campaign_id = $1 AND cell_id = $2
+       FOR UPDATE`,
+      [campaignId, cellId],
+    );
+    const discoveryId = existing.rows[0]?.id;
+    if (discoveryId === undefined) {
+      throw new TurnWorkerInvariantError('A captured cell has no permanent discovery record');
+    }
+
+    // Capturing a tile never discloses its discovery or grants the capturing
+    // country access. It only appends the permanent history event.
+    await client.query(
+      `INSERT INTO discovery_history (
+         discovery_id, event_type, actor_country_id, turn_number, payload
+       ) VALUES ($1, 'captured', $2, $3, $4)`,
+      [discoveryId, countryId, turnNumber, payload],
     );
   }
 }
