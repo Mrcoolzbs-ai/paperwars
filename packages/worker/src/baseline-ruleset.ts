@@ -311,7 +311,6 @@ export function createBaselineTurnResolver(): TurnResolver<
               x: cell.x,
               y: cell.y,
             });
-            orderDiscoveries.push({ x: cell.x, y: cell.y, alreadyDiscovered: true });
           } else {
             const roll = random.uniform('discovery', `cell:${cell.x}:${cell.y}`, 1, 100);
             const discoveryType = roll === 1 ? 'ruins' : roll === 100 ? 'gold' : 'empty';
