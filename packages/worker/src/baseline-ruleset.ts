@@ -148,7 +148,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         cells: country.cells.map((cell) => ({ ...cell })),
       }));
     const countriesById = new Map(countries.map((country) => [country.id, country]));
-    const adminCountryIds = new Set(snapshot.adminCountryIds ?? []);
+    const adminCountryIds = new Set(snapshot.state.adminCountryIds ?? []);
     const discoveredByCoordinate = new Map(
       (state.discoveredCells ?? []).map((discovery) => [
         coordinateKey(discovery.x, discovery.y),
