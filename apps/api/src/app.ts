@@ -161,9 +161,19 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     /[А-Яа-яЁё]/.test(message) ? message : fallback;
 
   if (error instanceof AuthValidationError) {
+    const campaignJoinMessage =
+      error.message === 'Campaign ID is invalid'
+        ? 'Неверный ID кампании. Нужен полный UUID из 36 символов — скопируй его из карточки мира.'
+        : error.message === 'Campaign is no longer accepting players for the initial setup'
+          ? 'Эта кампания больше не принимает участников: регистрация государств уже завершена.'
+          : error.message.startsWith('Campaign is full (')
+            ? `В кампании заполнены все места (${error.message.match(/[0-9]+/)?.[0] ?? '—'}).`
+            : null;
     return reply.code(400).send({
       error: 'INVALID_REQUEST',
-      message: safeMessage(error.message, 'Проверьте введённые данные и попробуйте ещё раз.'),
+      message:
+        campaignJoinMessage ??
+        safeMessage(error.message, 'Проверьте введённые данные и попробуйте ещё раз.'),
     });
   }
 

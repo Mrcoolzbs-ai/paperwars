@@ -216,7 +216,7 @@
           <div class="join-campaign-block">
             <div class="panel-kicker">ПРИСОЕДИНИТЬСЯ К МИРУ</div>
             <form id="join-campaign-form" class="form-stack">
-              <label class="field"><span>ID кампании от её создателя</span><input id="join-campaign-id" placeholder="UUID кампании" required></label>
+              <label class="field"><span>ID кампании от её создателя</span><input id="join-campaign-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" minlength="36" maxlength="36" pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" autocomplete="off" required></label>
               <button class="button button-outline button-wide" type="submit">Подключиться к кампании ↗</button>
             </form>
             <p id="join-campaign-message" class="form-message" role="status"></p>

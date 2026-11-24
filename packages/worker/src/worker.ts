@@ -614,6 +614,20 @@ async function persistWorldProjectionEvent(
         'A building destruction event references a building that does not exist',
       );
     }
+    if (payload['population'] !== undefined) {
+      const population = projectionInteger(payload, 'population');
+      const updated = await client.query(
+        `UPDATE country_cells
+         SET population = $4
+         WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3`,
+        [campaignId, countryId, cellId, population],
+      );
+      if (updated.rowCount !== 1) {
+        throw new TurnWorkerInvariantError(
+          'A building destruction event references a cell not owned by its country',
+        );
+      }
+    }
     return;
   }
 

@@ -809,6 +809,247 @@ function getCountryEconomyFromReport(
   return value ? (value as CountryEconomyView) : null;
 }
 
+interface EconomyPreviewCell {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly population: number;
+  readonly buildingType: string | null;
+  readonly structureType: 'greenhouse' | 'dam' | null;
+  readonly flooded: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getSnapshotCountry(
+  snapshotState: Record<string, unknown> | null,
+  countryId: string,
+): Record<string, unknown> | null {
+  const countries = snapshotState?.['countries'];
+  if (!Array.isArray(countries)) return null;
+  const country = countries.find(
+    (candidate) => isRecord(candidate) && candidate['id'] === countryId,
+  );
+  return isRecord(country) ? country : null;
+}
+
+function getCountryEconomyPreview(
+  country: Record<string, unknown>,
+  terrain: string,
+  mapWidth: number,
+  mapHeight: number,
+  turnNumber: number,
+): CountryEconomyView | null {
+  const rawCells = country['cells'];
+  if (!Array.isArray(rawCells)) return null;
+  const cells: EconomyPreviewCell[] = [];
+  for (const value of rawCells) {
+    if (!isRecord(value)) continue;
+    const x = value['x'];
+    const y = value['y'];
+    if (
+      !Number.isSafeInteger(x) ||
+      !Number.isSafeInteger(y) ||
+      (x as number) < 0 ||
+      (y as number) < 0 ||
+      (x as number) >= mapWidth ||
+      (y as number) >= mapHeight
+    )
+      continue;
+    cells.push({
+      id: typeof value['id'] === 'string' ? value['id'] : `${x},${y}`,
+      x: x as number,
+      y: y as number,
+      population: Number.isSafeInteger(value['population'])
+        ? Math.max(0, value['population'] as number)
+        : 0,
+      buildingType: typeof value['buildingType'] === 'string' ? value['buildingType'] : null,
+      structureType:
+        value['structureType'] === 'greenhouse' || value['structureType'] === 'dam'
+          ? value['structureType']
+          : null,
+      flooded: value['flooded'] === true,
+    });
+  }
+
+  const seasonNames = ['spring', 'summer', 'autumn', 'winter'] as const;
+  const safeTurn = Math.max(1, Math.floor(turnNumber));
+  const seasonPosition = (safeTurn - 1) % 24;
+  const season = seasonNames[Math.floor(seasonPosition / 6)]!;
+  const year = Math.floor((safeTurn - 1) / 24) + 1;
+  const seasonTurn = (seasonPosition % 6) + 1;
+  const population = cells.filter(
+    (cell) => terrain[cell.y * mapWidth + cell.x] === 'l' && cell.buildingType === null,
+  ).length;
+  const active = (cell: EconomyPreviewCell): boolean =>
+    !cell.flooded || cell.buildingType === 'rice_field';
+  const factories = cells.filter((cell) => cell.buildingType === 'factory');
+  const activeFactories = factories.filter(active);
+  const cottonFields = cells.filter(
+    (cell) =>
+      cell.buildingType === 'cotton_field' &&
+      active(cell) &&
+      (season !== 'winter' || cell.structureType === 'greenhouse'),
+  );
+  const workshops = cells.filter(
+    (cell) =>
+      (cell.buildingType === 'textile_workshop' ||
+        cell.buildingType === 'textile_workshop_level_2') &&
+      active(cell),
+  );
+  let clothing = 0;
+  let remainingCottonFields = season === 'winter' ? cottonFields.length : 0;
+  for (const workshop of workshops) {
+    if (remainingCottonFields < 1) continue;
+    remainingCottonFields -= 1;
+    clothing += workshop.buildingType === 'textile_workshop_level_2' ? 20 : 10;
+  }
+
+  let food = 0;
+  for (const cell of cells) {
+    if (!cell.buildingType || !active(cell)) continue;
+    const factoryNearby = factories.some(
+      (candidate) => Math.abs(candidate.x - cell.x) <= 1 && Math.abs(candidate.y - cell.y) <= 1,
+    );
+    let output = 0;
+    if (
+      cell.buildingType === 'field' ||
+      cell.buildingType === 'field_level_2' ||
+      cell.buildingType === 'rice_field'
+    ) {
+      const winterGreenhouseField =
+        season === 'winter' && cell.buildingType === 'field' && cell.structureType === 'greenhouse';
+      if (season === 'winter' && !winterGreenhouseField) continue;
+      if (cell.buildingType === 'rice_field') {
+        if (season === 'winter') continue;
+        output = cell.flooded
+          ? 15
+          : hasWaterNeighbor(cell.x, cell.y, terrain, mapWidth, mapHeight)
+            ? 10
+            : 5;
+      } else {
+        output = cell.buildingType === 'field_level_2' ? 15 : 10;
+      }
+      if (factoryNearby) output /= 2;
+    } else if (cell.buildingType === 'hunter') {
+      output = season === 'spring' ? 15 : 5;
+    } else if (cell.buildingType === 'fisher') {
+      output =
+        adjacentWaterCount(cell.x, cell.y, terrain, mapWidth, mapHeight) *
+        (season === 'spring' ? 10 : 5);
+    }
+    food += output;
+  }
+
+  const gold = cells.filter((cell) => cell.buildingType === 'gold_mine' && !cell.flooded).length;
+  const income = gold * population;
+  const upkeepFor = (type: string | null): number => {
+    if (type === 'tower' || type === 'field_level_2') return 2;
+    if (type === 'textile_workshop_level_2') return 3;
+    return type ? 1 : 0;
+  };
+  let buildingUpkeep = 0;
+  for (const cell of cells) {
+    buildingUpkeep += upkeepFor(cell.buildingType) + (cell.structureType ? 1 : 0);
+    if (cell.flooded && cell.buildingType !== 'rice_field') buildingUpkeep += 1;
+  }
+  const unitCount = Array.isArray(country['units']) ? country['units'].length : 0;
+  const unitUpkeep = unitCount;
+  const expenses = buildingUpkeep + unitUpkeep;
+  const clothingDemand = season === 'winter' ? population : 0;
+  const floodedCells = cells.filter((cell) => cell.flooded).length;
+  const goods = activeFactories.length * 10;
+
+  return {
+    turnNumber: safeTurn,
+    season,
+    year,
+    seasonTurn,
+    movementMultiplier: season === 'winter' ? 0.5 : 1,
+    population,
+    gold,
+    income,
+    initialBuildingUpkeep: buildingUpkeep,
+    buildingUpkeep,
+    unitCount,
+    unitUpkeep,
+    budgetDeficit: income < expenses,
+    unitMovementAllowed: income >= expenses,
+    expenses,
+    unpaidExpenses: Math.max(0, expenses - income),
+    disabledBuildings: [],
+    food,
+    foodDemand: population,
+    foodShortage: food < population,
+    goods,
+    goodsDemand: population,
+    goodsShortage: goods < population,
+    clothing,
+    clothingDemand,
+    clothingShortage: clothing < clothingDemand,
+    unclothedPopulation: Math.max(0, clothingDemand - clothing),
+    cottonFields: cottonFields.length,
+    textileWorkshops: workshops.length,
+    floodedCells,
+    starvedColonies: 0,
+    fledColonies: 0,
+    isPreview: true,
+  };
+}
+
+function hasWaterNeighbor(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): boolean {
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (
+        nextX >= 0 &&
+        nextY >= 0 &&
+        nextX < width &&
+        nextY < height &&
+        terrain[nextY * width + nextX] !== 'l'
+      )
+        return true;
+    }
+  }
+  return false;
+}
+
+function adjacentWaterCount(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): number {
+  let count = 0;
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (
+        nextX >= 0 &&
+        nextY >= 0 &&
+        nextX < width &&
+        nextY < height &&
+        terrain[nextY * width + nextX] !== 'l'
+      )
+        count += 1;
+    }
+  }
+  return count;
+}
+
 export function createCountrySetupService(options: {
   readonly pool: Pool;
   readonly systemAvailabilityPolicy?: SocialSystemAvailabilityPolicy;
@@ -1574,7 +1815,7 @@ export function createCountrySetupService(options: {
       const country = result.rows[0];
       if (!country) return null;
 
-      const [population, buildings, latestEconomy] = await Promise.all([
+      const [population, buildings, latestEconomy, campaignData] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(population), 0)::integer AS resident_count
            FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
@@ -1591,11 +1832,42 @@ export function createCountrySetupService(options: {
            WHERE campaign_id = $1 ORDER BY turn_number DESC LIMIT 1`,
           [campaignId],
         ),
+        options.pool.query<{
+          current_turn: number;
+          map_width: number | null;
+          map_height: number | null;
+          map_seed: string | null;
+          state: Record<string, unknown> | null;
+        }>(
+          `SELECT campaign.current_turn, campaign.map_width, campaign.map_height,
+                  campaign.map_seed, snapshot.state
+           FROM campaigns AS campaign
+           LEFT JOIN world_snapshots AS snapshot
+             ON snapshot.campaign_id = campaign.id
+            AND snapshot.turn_number = campaign.current_turn
+           WHERE campaign.id = $1`,
+          [campaignId],
+        ),
       ]);
-      const economy = getCountryEconomyFromReport(
-        latestEconomy.rows[0]?.report,
-        country.country_id,
-      );
+      const current = campaignData.rows[0];
+      const snapshotCountry = getSnapshotCountry(current?.state ?? null, country.country_id);
+      const preview =
+        current &&
+        snapshotCountry &&
+        current.map_width !== null &&
+        current.map_height !== null &&
+        current.map_seed !== null
+          ? getCountryEconomyPreview(
+              snapshotCountry,
+              generateWorldMap(current.map_seed, current.map_width, current.map_height).terrain,
+              current.map_width,
+              current.map_height,
+              current.current_turn,
+            )
+          : null;
+      const economy =
+        getCountryEconomyFromReport(latestEconomy.rows[0]?.report, country.country_id) ?? preview;
+      const residentCount = preview?.population ?? population.rows[0]?.resident_count ?? 0;
       return {
         id: country.country_id,
         campaignId: country.campaign_id,
@@ -1617,7 +1889,7 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: population.rows[0]?.resident_count ?? 0,
+        residentCount,
         economy,
       } satisfies CountryProfileView;
     },
@@ -2388,6 +2660,44 @@ export function createCountrySetupService(options: {
         const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
         if (world.terrain[worldY * campaign.map_width + worldX] !== 'l') {
           throw new CountrySetupValidationError('Buildings can only be placed on dry land');
+        }
+
+        const research = await client.query<{ science_count: number }>(
+          `SELECT count(*) FILTER (WHERE building_type = 'science')::integer AS science_count
+           FROM country_buildings
+           WHERE campaign_id = $1 AND country_id = $2`,
+          [campaignId, member.country_id],
+        );
+        const scienceCount = research.rows[0]?.science_count ?? 0;
+        const scienceRequirements: Readonly<Record<string, number>> = {
+          rice_field: 2,
+        };
+        const requiredScience = scienceRequirements[buildingType] ?? 0;
+        if (scienceCount < requiredScience) {
+          throw new CountrySetupValidationError(
+            `Для этой постройки требуется науки: ${requiredScience}. Сейчас доступно: ${scienceCount}.`,
+          );
+        }
+        if (buildingType === 'fisher') {
+          const adjacentWater = [-1, 0, 1].some((offsetY) =>
+            [-1, 0, 1].some((offsetX) => {
+              if (offsetX === 0 && offsetY === 0) return false;
+              const nextX = worldX + offsetX;
+              const nextY = worldY + offsetY;
+              return (
+                nextX >= 0 &&
+                nextY >= 0 &&
+                nextX < campaign.map_width! &&
+                nextY < campaign.map_height! &&
+                world.terrain[nextY * campaign.map_width! + nextX] !== 'l'
+              );
+            }),
+          );
+          if (!adjacentWater) {
+            throw new CountrySetupValidationError(
+              'Рыбака можно разместить только рядом с водой или рекой; диагональное соседство тоже подходит.',
+            );
+          }
         }
 
         const targetResult = await client.query<{

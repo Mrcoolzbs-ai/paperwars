@@ -89,6 +89,17 @@ const ADDITIONAL_BUILDING_TYPES = new Set([
   'dam',
 ]);
 
+// Research is cumulative: science buildings unlock technologies but are not consumed.
+const BUILDING_SCIENCE_REQUIREMENTS: Readonly<Record<string, number>> = {
+  rice_field: 2,
+  field_level_2: 10,
+  textile_workshop_level_2: 15,
+  // The archive defines no separate values for these seasonal structures.
+  // They use the first advanced-construction tier until the ruleset specifies otherwise.
+  greenhouse: 10,
+  dam: 10,
+};
+
 function stableUuid(value: string): string {
   const chars = createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 32).split('');
   chars[12] = '5';
@@ -156,26 +167,47 @@ function adjacentToWater(
   return false;
 }
 
-function adjacentRiverCount(
+function adjacentWaterCount(
   x: number,
   y: number,
   terrain: string,
   width: number,
   height: number,
 ): number {
+  let count = 0;
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function adjacentToWaterEdge(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): boolean {
   const adjacent = [
     [x - 1, y],
     [x + 1, y],
     [x, y - 1],
     [x, y + 1],
   ];
-  return adjacent.filter(
+  return adjacent.some(
     ([nextX, nextY]) =>
       nextX !== undefined &&
       nextY !== undefined &&
       isInsideMap(nextX, nextY, width, height) &&
-      terrain[nextY * width + nextX] === 'r',
-  ).length;
+      terrain[nextY * width + nextX] !== 'l',
+  );
 }
 
 function componentIsDisabled(
@@ -267,8 +299,8 @@ function getCountrySupply(
     } else if (cell.buildingType === 'hunter') {
       output = season === 'spring' ? 15 : 5;
     } else if (cell.buildingType === 'fisher') {
-      const riverCells = adjacentRiverCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
-      output = riverCells * (season === 'spring' ? 10 : 5);
+      const adjacentWater = adjacentWaterCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
+      output = adjacentWater * (season === 'spring' ? 10 : 5);
     }
     food += output;
   }
@@ -606,9 +638,11 @@ export function createBaselineTurnResolver(): TurnResolver<
         order.type === 'construction' &&
         (requestedBuildingType === 'field_level_2' ||
           requestedBuildingType === 'textile_workshop_level_2');
+      const isFreeStructureRemoval = order.type === 'structure_removal';
       if (
         !adminCountryIds.has(country.id) &&
         !isFreeUpgrade &&
+        !isFreeStructureRemoval &&
         actionsUsed >= ruleset.parameters.actionPointsPerTurn
       ) {
         orderResults.push(
@@ -620,7 +654,9 @@ export function createBaselineTurnResolver(): TurnResolver<
         );
         continue;
       }
-      if (!isFreeUpgrade) actionsUsedByCountry.set(country.id, actionsUsed + 1);
+      if (!isFreeUpgrade && !isFreeStructureRemoval) {
+        actionsUsedByCountry.set(country.id, actionsUsed + 1);
+      }
 
       const x = order.payload['x'];
       const y = order.payload['y'];
@@ -628,6 +664,117 @@ export function createBaselineTurnResolver(): TurnResolver<
         orderResults.push(
           rejection(order.id, 'INVALID_COORDINATES', 'Координаты приказа находятся вне карты.'),
         );
+        continue;
+      }
+
+      if (order.type === 'structure_removal') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'CELL_NOT_OWNED',
+              'Снимать мини-постройки можно только на своей клетке суши.',
+            ),
+          );
+          continue;
+        }
+        if (cell.structureType === null || cell.structureType === undefined) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'STRUCTURE_NOT_FOUND',
+              'На клетке нет мини-постройки для снятия.',
+            ),
+          );
+          continue;
+        }
+
+        const structureType = cell.structureType;
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id ? { ...candidate, structureType: null } : candidate,
+        );
+        emit(order.id, country.id, 'structure.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          structureType,
+          reason: 'manual-removal',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'STRUCTURE_REMOVED',
+          message: 'Мини-постройка снята без расхода ОД.',
+          data: { x, y, structureType },
+        });
+        continue;
+      }
+
+      if (order.type === 'demolition') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'CELL_NOT_OWNED',
+              'Сносить можно только постройку на своей клетке суши.',
+            ),
+          );
+          continue;
+        }
+        if (cell.buildingType === 'gold_mine' || cell.buildingType === 'capital') {
+          orderResults.push(
+            rejection(order.id, 'PROTECTED_BUILDING', 'Золотую шахту и столицу сносить нельзя.'),
+          );
+          continue;
+        }
+        if (cell.buildingType === null) {
+          orderResults.push(
+            rejection(order.id, 'BUILDING_NOT_FOUND', 'На клетке нет здания для сноса.'),
+          );
+          continue;
+        }
+
+        const updatedCell = {
+          ...cell,
+          buildingType: null,
+          structureType: null,
+          population: 1,
+        };
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id ? updatedCell : candidate,
+        );
+        if (cell.structureType) {
+          emit(order.id, country.id, 'structure.destroyed', {
+            orderId: order.id,
+            countryId: country.id,
+            cellId: cell.id,
+            x,
+            y,
+            structureType: cell.structureType,
+            reason: 'demolition',
+          });
+        }
+        emit(order.id, country.id, 'building.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          buildingType: cell.buildingType,
+          population: 1,
+          reason: 'demolition',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'BUILDING_DEMOLISHED',
+          message: 'Здание снесено; клетка снова заселена.',
+          data: { x, y, buildingType: cell.buildingType, population: 1 },
+        });
         continue;
       }
 
@@ -643,6 +790,43 @@ export function createBaselineTurnResolver(): TurnResolver<
         if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
           orderResults.push(
             rejection(order.id, 'CELL_NOT_OWNED', 'Строить можно только на своей клетке суши.'),
+          );
+          continue;
+        }
+
+        const requiredScience = BUILDING_SCIENCE_REQUIREMENTS[buildingType] ?? 0;
+        const availableScience = country.cells.filter(
+          (candidate) => candidate.buildingType === 'science',
+        ).length;
+        if (availableScience < requiredScience) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'RESEARCH_REQUIRED',
+              `Для этой постройки требуется науки: ${requiredScience}. Сейчас доступно: ${availableScience}.`,
+            ),
+          );
+          continue;
+        }
+
+        if (buildingType === 'fisher' && !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'FISHER_REQUIRES_WATER',
+              'Рыбака можно разместить только рядом с водой или рекой; диагональное соседство тоже подходит.',
+            ),
+          );
+          continue;
+        }
+
+        if (buildingType === 'dam' && !adjacentToWaterEdge(x, y, terrain, mapWidth, mapHeight)) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'DAM_REQUIRES_WATER_EDGE',
+              'Дамбу можно построить только на клетке с общей стороной с водой или рекой.',
+            ),
           );
           continue;
         }
