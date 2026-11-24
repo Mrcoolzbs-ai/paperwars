@@ -350,7 +350,7 @@
     $('#profile-user-title').textContent = profile.displayName || 'Игрок';
     const initials = String(profile.displayName || 'PW')
       .trim()
-      .split(/\\s+/u)
+      .split(/\s+/u)
       .slice(0, 2)
       .map((part) => Array.from(part)[0] || '')
       .join('')
