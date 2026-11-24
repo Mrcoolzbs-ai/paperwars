@@ -948,6 +948,49 @@ describe('baseline turn resolver', () => {
     expect(country?.cells.filter((cell) => cell.buildingType === 'science')).toHaveLength(2);
   });
 
+  it('requires two current science centres to build a greenhouse', () => {
+    const oneCentre = createEconomyState([
+      economyCell('gold', 0, 0, 10, 'gold_mine'),
+      economyCell('field', 1, 0, 1, 'field'),
+      economyCell('science-one', 3, 0, 0, 'science'),
+    ]);
+    const locked = resolve(
+      oneCentre,
+      [
+        createOrder('40000000-0000-4000-8000-000000000311', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'greenhouse',
+        }),
+      ],
+      createRandom().source,
+    );
+    expect(locked.orderResults[0]?.resultCode).toBe('SCIENCE_REQUIRED');
+
+    const twoCentres = createEconomyState([
+      economyCell('gold', 0, 0, 10, 'gold_mine'),
+      economyCell('field', 1, 0, 1, 'field'),
+      economyCell('science-one', 3, 0, 0, 'science'),
+      economyCell('science-two', 4, 0, 0, 'science'),
+    ]);
+    const unlocked = resolve(
+      twoCentres,
+      [
+        createOrder('40000000-0000-4000-8000-000000000312', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'greenhouse',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(unlocked.orderResults[0]?.resultCode).toBe('STRUCTURE_CONSTRUCTED');
+    expect(
+      unlocked.nextState.countries[0]?.cells.find((cell) => cell.id === 'field')?.structureType,
+    ).toBe('greenhouse');
+  });
+
   it('adds only one flood surcharge to a cell that has both a field and a greenhouse', () => {
     const cells = [
       economyCell('gold', 0, 0, 10, 'gold_mine'),
