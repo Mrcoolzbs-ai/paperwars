@@ -1609,10 +1609,15 @@
 
   function mapAdjacentWaterCount(x, y) {
     let count = 0;
+    const width = state.mapView?.width || 0;
+    const height = state.mapView?.height || 0;
     for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
       for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
         if (offsetX === 0 && offsetY === 0) continue;
-        if (terrainCodeAt(x + offsetX, y + offsetY) !== 'l') count += 1;
+        const nextX = x + offsetX;
+        const nextY = y + offsetY;
+        if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) continue;
+        if (terrainCodeAt(nextX, nextY) !== 'l') count += 1;
       }
     }
     return count;
@@ -2587,6 +2592,7 @@
   function orderTypeLabel(type) {
     const labels = {
       construction: 'Строительство',
+      demolition: 'Снос здания',
       colonization: 'Колонизация',
       movement: 'Перемещение',
       research: 'Исследование',
@@ -3431,7 +3437,10 @@
 
     $('#join-campaign-form').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const campaignId = $('#join-campaign-id').value.trim();
+      const rawCampaignId = $('#join-campaign-id').value.trim();
+      const campaignId = rawCampaignId.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+      )?.[0] || rawCampaignId;
       try {
         await request('/campaigns/' + encodeURIComponent(campaignId) + '/join', { method: 'POST' });
         $('#join-campaign-id').value = '';
