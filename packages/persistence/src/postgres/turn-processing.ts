@@ -601,14 +601,42 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
       );
     }
 
-    // Remove discovery history from the undone turn before the dependent
-    // discovery records. Earlier discoveries remain intact.
+    // Revert discoveries shared with other countries during the undone turn.
+    // Access rows carry foreign keys to their grant/revocation history entries,
+    // so detach these rows before deleting that history.
     await client.query(
-      'DELETE FROM discovery_records WHERE campaign_id = $1 AND discovered_at_turn >= $2',
+      `DELETE FROM discovery_access
+       WHERE granted_at_turn >= $2
+         AND discovery_id IN (
+           SELECT id FROM discovery_records
+           WHERE campaign_id = $1
+         )`,
       [campaignId, turnNumber],
     );
     await client.query(
-      'DELETE FROM discovery_history WHERE turn_number >= $2 AND discovery_id IN (SELECT id FROM discovery_records WHERE campaign_id = $1)',
+      `UPDATE discovery_access
+       SET status = 'active',
+           revoked_at_turn = NULL,
+           revoked_by_event_id = NULL,
+           updated_at = clock_timestamp()
+       WHERE revoked_at_turn >= $2
+         AND discovery_id IN (
+           SELECT id FROM discovery_records
+           WHERE campaign_id = $1
+         )`,
+      [campaignId, turnNumber],
+    );
+    await client.query(
+      `DELETE FROM discovery_history
+       WHERE turn_number >= $2
+         AND discovery_id IN (
+           SELECT id FROM discovery_records
+           WHERE campaign_id = $1
+         )`,
+      [campaignId, turnNumber],
+    );
+    await client.query(
+      'DELETE FROM discovery_records WHERE campaign_id = $1 AND discovered_at_turn >= $2',
       [campaignId, turnNumber],
     );
 
@@ -710,10 +738,6 @@ export async function rollbackCampaignTurn(pool: Pool, campaignId: string): Prom
       }
     }
 
-    await client.query(
-      'DELETE FROM discovery_history WHERE turn_number >= $2 AND discovery_id IN (SELECT id FROM discovery_records WHERE campaign_id = $1)',
-      [campaignId, turnNumber],
-    );
     await client.query('DELETE FROM game_events WHERE campaign_id = $1 AND turn_number >= $2', [
       campaignId,
       turnNumber,
