@@ -61,16 +61,6 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
-      - name: Diagnose changed-file formatting
-        run: |
-          pnpm exec prettier --write \
-            packages/worker/src/baseline-ruleset.ts \
-            packages/worker/src/worker.ts \
-            tests/simulation/baseline-resolver.test.ts
-          git diff -- \
-            packages/worker/src/baseline-ruleset.ts \
-            packages/worker/src/worker.ts \
-            tests/simulation/baseline-resolver.test.ts
       - name: Format check
         run: pnpm format:check
       - name: Tests
