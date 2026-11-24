@@ -1666,7 +1666,7 @@ export function createCountrySetupService(options: {
         const countries = currentState['countries'];
         if (!Array.isArray(countries)) throw new CampaignSetupNotReadyError();
         let changed = false;
-        const updatedCountries = countries.map((countryValue) => {
+        const updatedCountries = countries.map((countryValue: unknown) => {
           if (
             typeof countryValue !== 'object' ||
             countryValue === null ||
@@ -1679,7 +1679,7 @@ export function createCountrySetupService(options: {
           }
           return {
             ...countryValue,
-            cells: countryValue.cells.map((cellValue) => {
+            cells: countryValue.cells.map((cellValue: unknown) => {
               if (
                 typeof cellValue !== 'object' ||
                 cellValue === null ||
@@ -1756,7 +1756,7 @@ export function createCountrySetupService(options: {
         const minX = territory.center_x - Math.floor(territory.width / 2);
         const minY = territory.center_y - Math.floor(territory.height / 2);
         let removedCount = 0;
-        const updatedCountries = countries.map((countryValue) => {
+        const updatedCountries = countries.map((countryValue: unknown) => {
           if (
             typeof countryValue !== 'object' ||
             countryValue === null ||
@@ -1769,7 +1769,7 @@ export function createCountrySetupService(options: {
           }
           return {
             ...countryValue,
-            cells: countryValue.cells.filter((cellValue) => {
+            cells: countryValue.cells.filter((cellValue: unknown) => {
               if (
                 typeof cellValue !== 'object' ||
                 cellValue === null ||
