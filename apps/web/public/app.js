@@ -1646,11 +1646,12 @@
     if (!summary || !confirm) return;
     const activeOrders = state.mapOrders.filter((order) => order.status !== 'discarded');
     const actionCount = activeOrders.length;
-    const remainingActions = Math.max(0, 3 - actionCount);
+    const unlimitedActions = isAdminMode();
+    const remainingActions = unlimitedActions ? '∞' : Math.max(0, 3 - actionCount);
     const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
     const confirmedCount = actionCount - draftCount;
     summary.hidden = !state.campaign?.countryId;
-    summary.textContent = `ОД: ${actionCount}/3 · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
+    summary.textContent = `ОД: ${actionCount}/${unlimitedActions ? '∞' : '3'} · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
     confirm.disabled =
       state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
@@ -1684,7 +1685,7 @@
       showToast('Сейчас приём приказов закрыт.', true);
       return;
     }
-    if (mapActionCount() >= 3) {
+    if (!isAdminMode() && mapActionCount() >= 3) {
       showToast('На этот ход уже использованы все 3 очка действий.', true);
       return;
     }
