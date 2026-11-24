@@ -1182,3 +1182,48 @@ body.chat-modal-open {
   .profile-account-mark { min-width: 0; max-width: 100%; }
   .profile-layout { gap: 13px; }
 }
+
+
+/* Subtle chat notifications: slow pulse, restrained glow, no sound. */
+.chat-new-message-alert {
+  border-color: #a65f57 !important;
+  color: #f0c5bb !important;
+  box-shadow: 0 0 0 1px #9e534733, 0 0 12px #a34c4330;
+  animation: chat-soft-red-pulse 2.8s ease-in-out infinite;
+}
+@keyframes chat-soft-red-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px #9e534722, 0 0 5px #a34c4320; }
+  50% { box-shadow: 0 0 0 1px #b85e4b66, 0 0 13px #a34c4350; }
+}
+.chat-room-entry { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+.chat-room-entry .chat-room-button { flex: 1; min-width: 0; }
+.chat-room-button.has-alert { border-color: #94544b; }
+.chat-room-button.has-alert .chat-room-icon { color: #db8b7d; }
+.chat-room-mute {
+  flex: 0 0 32px;
+  border: 1px solid #455645;
+  border-radius: 3px;
+  background: #111a15;
+  color: #a4b09f;
+  cursor: pointer;
+  font-size: 15px;
+}
+.chat-room-mute[aria-pressed="true"] { color: #d3a66f; border-color: #7b6445; }
+.chat-room-mute:hover { border-color: var(--gold); color: var(--gold2); }
+.admin-access-panel { margin-top: 20px; }
+.admin-tools-content { display: grid; gap: 14px; margin-top: 20px; }
+.admin-tools-content h3 { margin: 8px 0 0; font: 600 17px "Playfair Display", serif; color: #d9dfd1; }
+.admin-tools-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.admin-tools-actions .button { flex: 1 1 220px; }
+.admin-data-list { display: grid; gap: 8px; color: #aab6a7; font-size: 11px; }
+.admin-data-card { padding: 12px; border: 1px solid #405344; background: #111a15; display: grid; gap: 8px; }
+.admin-data-card strong { color: #e3e8dc; font-size: 13px; }
+.admin-user-row { display: grid; grid-template-columns: minmax(140px,1fr) minmax(130px,1fr) auto auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #405344; background: #111a15; }
+.admin-user-row input { min-width: 0; width: 100%; background: #17221b; color: var(--text); border: 1px solid #405344; padding: 8px; }
+.admin-user-row button { white-space: nowrap; }
+@media(max-width:700px) {
+  .admin-user-row { grid-template-columns: 1fr 1fr; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .chat-new-message-alert { animation: none; }
+}
