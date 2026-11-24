@@ -125,6 +125,7 @@ describe('browser client', () => {
     expect(script.body).toContain('function setChatDockView(view)');
     expect(script.body).toContain('function returnToChatList');
     expect(script.body).toContain("state.chatDockView === 'conversation'");
+    expect(script.body).toContain('greenhouse: 2,');
     expect(script.body).toContain('setInterval');
     expect(script.body).toContain('function mapColonizationAvailability');
     expect(script.body).toContain('function mapColonizationRegion');
@@ -152,6 +153,7 @@ describe('browser client', () => {
     expect(home.body).toContain('id="chat-open-button"');
     expect(home.body).toContain('id="chat-modal"');
     expect(home.body).toContain('id="chat-list-view"');
+    expect(home.body).toContain('id="chat-list-status"');
     expect(home.body).toContain('id="chat-room-list"');
     expect(home.body).toContain('id="chat-conversation-view"');
     expect(home.body).toContain('id="chat-back-button"');
