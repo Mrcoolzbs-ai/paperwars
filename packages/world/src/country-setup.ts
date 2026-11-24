@@ -876,10 +876,9 @@ export function createCountrySetupService(options: {
         map_height: number | null;
         map_seed: string;
         current_turn: number;
-      }>(
-        'SELECT map_width, map_height, map_seed, current_turn FROM campaigns WHERE id = $1',
-        [campaignId],
-      );
+      }>('SELECT map_width, map_height, map_seed, current_turn FROM campaigns WHERE id = $1', [
+        campaignId,
+      ]);
       const map = dims.rows[0];
       if (!map || map.map_width === null || map.map_height === null)
         throw new CampaignSetupNotReadyError();

@@ -55,10 +55,6 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
-      - name: Temporary country setup format diff
-        run: |
-          pnpm exec prettier --write packages/world/src/country-setup.ts
-          git diff -- packages/world/src/country-setup.ts
       - name: Build
         run: pnpm build
       - name: Typecheck
