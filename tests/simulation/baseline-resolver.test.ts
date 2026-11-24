@@ -19,16 +19,18 @@ function createState(
     campaignId,
     turnNumber: 1,
     map: { width: 5, height: 5, seed: 'test-seed', terrain },
-    countries: [{
-      id: countryId,
-      ownerUserId: '30000000-0000-4000-8000-000000000003',
-      name: 'Test country',
-      culture: [],
-      government: 'republic',
-      flagDataUrl: null,
-      officialSystem: {},
-      cells: [],
-    }],
+    countries: [
+      {
+        id: countryId,
+        ownerUserId: '30000000-0000-4000-8000-000000000003',
+        name: 'Test country',
+        culture: [],
+        government: 'republic',
+        flagDataUrl: null,
+        officialSystem: {},
+        cells: [],
+      },
+    ],
     discoveredCells,
   };
 }
@@ -145,7 +147,12 @@ describe('baseline turn resolver', () => {
 
     expect(result.orderResults[0]).toMatchObject({
       status: 'accepted',
-      data: { colonizedCount: 9, colonizedLandCount: 1, colonizedWaterCount: 8, residentsAdded: 9 },
+      data: {
+        colonizedCount: 9,
+        colonizedLandCount: 1,
+        colonizedWaterCount: 8,
+        residentsAdded: 9,
+      },
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(9);
     expect(
@@ -212,16 +219,20 @@ describe('baseline turn resolver', () => {
     const state = createState(terrain.join(''));
     const occupiedState: BaselineWorldState = {
       ...state,
-      countries: [{
-        ...state.countries[0]!,
-        cells: [{
-          id: '60000000-0000-4000-8000-000000000008',
-          x: 2,
-          y: 2,
-          population: 1,
-          buildingType: null,
-        }],
-      }],
+      countries: [
+        {
+          ...state.countries[0]!,
+          cells: [
+            {
+              id: '60000000-0000-4000-8000-000000000008',
+              x: 2,
+              y: 2,
+              population: 1,
+              buildingType: null,
+            },
+          ],
+        },
+      ],
     };
     const random = createRandom();
     const result = resolve(
