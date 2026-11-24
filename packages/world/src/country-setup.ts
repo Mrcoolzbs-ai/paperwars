@@ -648,10 +648,10 @@ async function buildSnapshot(
 }
 
 /**
- * Corrects legacy turn-one population data using the deterministic world terrain.
- * Only unoccupied dry-land cells may contain a resident. Turn-one snapshots are
- * rebuilt from the corrected relational state so the API and simulation agree.
- * Campaigns whose first turn has already been queued are left untouched.
+ * Corrects legacy turn-one population data from the territory occupancy rule.
+ * Every empty owned cell contributes one resident, regardless of terrain. Turn-one
+ * snapshots are rebuilt from the corrected relational state so the API and
+ * simulation agree. Campaigns whose first turn has already been queued are untouched.
  */
 export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
   const campaigns = await pool.query<{ readonly id: string }>(
@@ -746,8 +746,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
 
       let campaignChanged = false;
       for (const cell of cells.rows) {
-        const expectedPopulation =
-          world.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building ? 1 : 0;
+        const expectedPopulation = cell.has_building ? 0 : 1;
         if (cell.population === expectedPopulation) continue;
         await client.query(
           `UPDATE country_cells
@@ -2109,12 +2108,11 @@ export function createCountrySetupService(options: {
           const cellId = cellIds.get(`${cell.x},${cell.y}`);
           if (cellId === undefined) throw new Error('Initial cell id was not returned');
           const hasBuilding = buildingsByOffset.has(`${cell.offsetX},${cell.offsetY}`);
-          const isDryLand = spawnMap.terrain[cell.y * spawnMap.width + cell.x] === 'l';
           return [
             campaignId,
             countryId,
             cellId,
-            isDryLand && !hasBuilding ? 1 : 0,
+            hasBuilding ? 0 : 1,
             coreTerritoryId,
           ] as const;
         });
