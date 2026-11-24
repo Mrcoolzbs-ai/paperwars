@@ -135,6 +135,38 @@ describe('baseline turn resolver', () => {
     expect(result.nextState.countries[0]?.cells).toHaveLength(0);
   });
 
+  it('rejects a square when its only land cell is already owned, even if water is free', () => {
+    const terrain = Array.from({ length: 25 }, () => 'w');
+    terrain[2 * 5 + 2] = 'l';
+    const state = createState(terrain.join(''));
+    const occupiedState: BaselineWorldState = {
+      ...state,
+      countries: [{
+        ...state.countries[0]!,
+        cells: [{
+          id: '60000000-0000-4000-8000-000000000008',
+          x: 2,
+          y: 2,
+          population: 1,
+          buildingType: null,
+        }],
+      }],
+    };
+    const random = createRandom();
+    const result = resolve(
+      occupiedState,
+      [createOrder('40000000-0000-4000-8000-000000000008')],
+      random.source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'NO_COLONIZABLE_LAND',
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
+    expect(random.calls).toHaveLength(0);
+  });
+
   it('reuses a permanent discovery without rolling d100 again', () => {
     const terrain = Array.from({ length: 25 }, () => 'w');
     terrain[2 * 5 + 2] = 'l';
