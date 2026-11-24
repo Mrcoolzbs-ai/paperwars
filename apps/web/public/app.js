@@ -253,11 +253,61 @@
     return state.refreshPromise;
   }
 
+  function russianApiError(data, status) {
+    const code = typeof data?.error === 'string' ? data.error : '';
+    const messages = {
+      INVALID_REQUEST: 'Проверьте введённые данные и попробуйте ещё раз.',
+      INVALID_ORDER: 'Приказ заполнен неверно. Проверьте его параметры.',
+      INVALID_COUNTRY_SETUP: 'Не удалось создать государство. Проверьте выбранные параметры.',
+      UNAUTHENTICATED: 'Сессия завершена или данные для входа неверны. Войдите снова.',
+      EMAIL_ALREADY_REGISTERED: 'Аккаунт с этой почтой уже существует.',
+      NICKNAME_ALREADY_TAKEN: 'Этот никнейм уже занят.',
+      VK_IDENTITY_CONFLICT: 'Этот аккаунт VK ID уже привязан к другому профилю.',
+      CAMPAIGN_NOT_FOUND: 'Кампания не найдена.',
+      CAMPAIGN_NOT_ACTIVE: 'Эта кампания сейчас неактивна.',
+      ORDER_NOT_FOUND: 'Приказ не найден.',
+      ORDER_NOT_EDITABLE: 'Этот приказ уже нельзя изменить.',
+      NOT_ACTIVE_MEMBER: 'У вас больше нет доступа к этой кампании.',
+      NOT_ACTIVE_CAMPAIGN_MEMBER: 'У вас больше нет доступа к этой кампании.',
+      COUNTRY_NOT_REGISTERED: 'Сначала зарегистрируйте государство.',
+      ACTION_POINTS_EXHAUSTED: 'На этот ход уже использованы все 3 очка действий.',
+      ORDERS_ALREADY_LOCKED: 'Приказы уже закрыты. Изменить их нельзя.',
+      ORDERS_DEADLINE_PASSED: 'Время приёма приказов закончилось.',
+      ORDERS_NOT_READY: 'Ход ещё нельзя завершить: ожидается подтверждение участников.',
+      SNAPSHOT_NOT_FOUND: 'Не удалось найти сохранённое состояние мира.',
+      NO_ACTIVE_MEMBERS: 'В кампании нет активных участников.',
+      TURN_JOB_ALREADY_EXISTS: 'Этот ход уже отправлен на обработку.',
+      COUNTRY_SETUP_CONFLICT: 'Это действие конфликтует с текущим состоянием государства или кампании.',
+      OFFICIAL_SYSTEM_NOT_AVAILABLE: 'Выбранное учение больше недоступно.',
+      SYSTEM_AVAILABILITY_NOT_CONFIGURED: 'Выбор учений временно недоступен.',
+      SOCIAL_SYSTEM_NOT_FOUND: 'Учение не найдено.',
+      SOCIAL_SYSTEM_ADMIN_REQUIRED: 'Для этого действия нужны права администратора.',
+      EMAIL_NOT_VERIFIED: 'Сначала подтвердите адрес электронной почты.',
+      VK_ID_NOT_CONFIGURED: 'Вход через VK ID пока не настроен.',
+      INTERNAL_SERVER_ERROR: 'На сервере произошла ошибка. Попробуйте ещё раз позже.',
+    };
+    const serverMessage = typeof data?.message === 'string' ? data.message.trim() : '';
+    if (/[А-Яа-яЁё]/.test(serverMessage)) return serverMessage;
+    if (messages[code]) return messages[code];
+    if (status >= 500) return 'На сервере произошла ошибка. Попробуйте ещё раз позже.';
+    if (status === 404) return 'Запрошенные данные не найдены.';
+    if (status === 401) return 'Сессия завершена. Войдите снова.';
+    if (status === 403) return 'У вас недостаточно прав для этого действия.';
+    return 'Не удалось выполнить запрос. Проверьте данные и попробуйте ещё раз.';
+  }
+
   async function request(url, options = {}, retried = false) {
     const headers = new Headers(options.headers || {});
     if (state.token) headers.set('Authorization', `Bearer ${state.token}`);
     if (options.body !== undefined) headers.set('Content-Type', 'application/json');
-    const response = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+    let response;
+    try {
+      response = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+    } catch (cause) {
+      const error = new Error('Не удалось связаться с сервером. Проверьте подключение и попробуйте ещё раз.');
+      error.cause = cause;
+      throw error;
+    }
     if (response.status === 401 && state.token && !retried &&
         !['/auth/login', '/auth/register', '/auth/refresh', '/auth/resend-verification'].includes(url)) {
       try {
@@ -272,7 +322,7 @@
     let data = null;
     try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
     if (!response.ok) {
-      const error = new Error(data?.message || data?.error || `HTTP ${response.status}`);
+      const error = new Error(russianApiError(data, response.status));
       error.status = response.status;
       error.code = data?.error;
       throw error;
@@ -605,7 +655,7 @@
       let settled = false;
       const timeoutId = window.setTimeout(() => {
         script.remove();
-        finish(reject, new Error('VK ID SDK loading timed out.'));
+        finish(reject, new Error('Не удалось загрузить VK ID: превышено время ожидания.'));
       }, 12000);
 
       function finish(callback, value) {
@@ -622,12 +672,12 @@
         if (window.VKIDSDK) {
           finish(resolve, window.VKIDSDK);
         } else {
-          finish(reject, new Error('VK ID SDK loaded without exposing its browser API.'));
+          finish(reject, new Error('VK ID загрузился некорректно.'));
         }
       };
       script.onerror = () => {
         script.remove();
-        finish(reject, new Error('VK ID SDK source could not be loaded.'));
+        finish(reject, new Error('Не удалось загрузить библиотеку VK ID.'));
       };
       document.head.appendChild(script);
     });
@@ -1190,6 +1240,35 @@
     }
   }
 
+  async function returnMapOrderToDraft(orderId) {
+    const order = state.mapOrders.find((item) => item.id === orderId);
+    if (!state.campaign || !order || order.status !== 'confirmed') return;
+    if (state.turnStatus?.ordersAccepting !== true) {
+      showToast('Приказы уже закрыты. Вернуть их в черновик нельзя.', true);
+      return;
+    }
+    try {
+      await request(
+        '/campaigns/' + encodeURIComponent(state.campaign.id) + '/orders/' + encodeURIComponent(orderId),
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            type: order.type,
+            schemaVersion: order.schemaVersion,
+            payload: order.payload,
+          }),
+        },
+      );
+      await loadMapOrders();
+      await loadTurnRoom();
+      closeMapContextMenu();
+      drawMapCanvas($('#map-canvas'), false);
+      showToast('Приказ возвращён в черновик. Все твои подтверждённые приказы также стали черновиками — подтверди их заново.');
+    } catch (error) {
+      showToast(error.message || 'Не удалось вернуть приказ в черновик.', true);
+    }
+  }
+
   async function confirmMapOrders() {
     if (!state.campaign || state.turnStatus?.ordersAccepting !== true) return;
     const button = $('#confirm-map-orders');
@@ -1244,6 +1323,10 @@
     } else if (existingOrders.length) {
       content += '<div class="map-context-group"><span>ПРИКАЗЫ НА ЭТОЙ КЛЕТКЕ</span>';
       content += existingOrders.map((order) =>
+        (order.status === 'confirmed' && state.turnStatus?.ordersAccepting === true
+          ? '<button class="map-context-action" type="button" data-map-action="return-order-to-draft" data-order-id="' +
+            escapeHtml(order.id) + '">Вернуть в черновик: ' + escapeHtml(orderTypeLabel(order.type)) + '</button>'
+          : '') +
         '<button class="map-context-action map-context-remove" type="button" data-map-action="remove-order" data-order-id="' +
         escapeHtml(order.id) + '">Снять: ' + escapeHtml(orderTypeLabel(order.type)) + '</button>',
       ).join('');
@@ -1304,6 +1387,8 @@
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
         } else if (action === 'remove-order') {
           await removeMapOrder(button.dataset.orderId);
+        } else if (action === 'return-order-to-draft') {
+          await returnMapOrderToDraft(button.dataset.orderId);
         }
       });
     });
@@ -1370,10 +1455,7 @@
       }
     }
     for (const country of (state.mapView.countries || [])) {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const cell of country.cells) {
-        minX = Math.min(minX, cell.x); minY = Math.min(minY, cell.y);
-        maxX = Math.max(maxX, cell.x); maxY = Math.max(maxY, cell.y);
         const px = left + cell.x * cellSize;
         const py = top + cell.y * cellSize;
         ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
@@ -1382,18 +1464,28 @@
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
       }
-      if (!miniature && country.cells.length) {
-        ctx.strokeStyle = '#050505';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(left + minX * cellSize + 1, top + minY * cellSize + 1,
-          (maxX - minX + 1) * cellSize - 2, (maxY - minY + 1) * cellSize - 2);
-        ctx.fillStyle = '#101820';
-        ctx.font = 'bold ' + Math.max(10, Math.min(15, cellSize)) + 'px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        const countryLabelX = left + ((minX + maxX + 1) / 2) * cellSize;
+      for (const territory of country.territories || []) {
+        const minX = territory.centerX - Math.floor(territory.width / 2);
+        const minY = territory.centerY - Math.floor(territory.height / 2);
+        const countryLabelX = left + (minX + territory.width / 2) * cellSize;
         const countryBorderTop = top + minY * cellSize;
-        ctx.fillText(country.name, countryLabelX, Math.max(12, countryBorderTop - 4));
+        ctx.strokeStyle = territory.type === 'core' ? '#050505' : '#253b55';
+        ctx.lineWidth = territory.type === 'core' ? 3 : 2.2;
+        ctx.setLineDash(territory.type === 'core' ? [] : [Math.max(3, cellSize * 0.28), Math.max(2, cellSize * 0.16)]);
+        ctx.strokeRect(
+          left + minX * cellSize + 1,
+          countryBorderTop + 1,
+          territory.width * cellSize - 2,
+          territory.height * cellSize - 2,
+        );
+        ctx.setLineDash([]);
+        if (!miniature && territory.type === 'core') {
+          ctx.fillStyle = '#101820';
+          ctx.font = 'bold ' + Math.max(10, Math.min(15, cellSize)) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(country.name, countryLabelX, Math.max(12, countryBorderTop - 4));
+        }
       }
     }
     // Building symbols are rendered after country labels and borders so map text
@@ -1428,23 +1520,13 @@
           continue;
         }
         if (order.type !== 'construction') continue;
+        const buildingType = order.payload?.buildingType;
+        if (!buildingMeta[buildingType]) continue;
         const px = left + point.x * cellSize;
         const py = top + point.y * cellSize;
         ctx.save();
-        ctx.fillStyle = order.status === 'confirmed' ? '#f1d37c' : '#f19b68';
-        ctx.strokeStyle = '#19231b';
-        ctx.lineWidth = Math.max(1, cellSize * 0.08);
-        ctx.beginPath();
-        ctx.arc(px + cellSize / 2, py + cellSize / 2, Math.max(2, cellSize * 0.34), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        if (cellSize >= 8) {
-          ctx.fillStyle = '#19231b';
-          ctx.font = 'bold ' + Math.max(7, Math.min(11, cellSize * 0.58)) + 'px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('С', px + cellSize / 2, py + cellSize / 2);
-        }
+        ctx.globalAlpha = order.status === 'confirmed' ? 0.58 : 0.34;
+        drawBuildingMapIcon(ctx, buildingType, px, py, cellSize);
         ctx.restore();
       }
     }

@@ -127,29 +127,47 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
   );
 }
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
+  const messages: Record<string, string> = {
+    INVALID_ORDER: 'Приказ заполнен неверно. Проверьте его параметры.',
+    CAMPAIGN_NOT_FOUND: 'Кампания не найдена.',
+    CAMPAIGN_NOT_ACTIVE: 'Эта кампания сейчас неактивна.',
+    ORDERS_ALREADY_LOCKED: 'Приказы уже закрыты. Изменить их нельзя.',
+    NOT_ACTIVE_MEMBER: 'У вас больше нет доступа к этой кампании.',
+    SNAPSHOT_NOT_FOUND: 'Не удалось найти сохранённое состояние мира.',
+    NO_ACTIVE_MEMBERS: 'В кампании нет активных участников.',
+    ORDERS_NOT_READY: 'Ход ещё нельзя завершить: ожидается подтверждение участников.',
+    TURN_JOB_ALREADY_EXISTS: 'Этот ход уже отправлен на обработку.',
+    ACTION_POINTS_EXHAUSTED: 'На этот ход уже использованы все 3 очка действий.',
+    COUNTRY_NOT_REGISTERED: 'Сначала зарегистрируйте государство.',
+    ORDER_NOT_FOUND: 'Приказ не найден.',
+    ORDER_NOT_EDITABLE: 'Этот приказ уже нельзя изменить.',
+    ORDERS_DEADLINE_PASSED: 'Время приёма приказов закончилось.',
+  };
+  const safeMessage = (message: string, fallback: string) =>
+    /[А-Яа-яЁё]/.test(message) ? message : fallback;
   if (error instanceof AuthValidationError) {
-    return reply.code(400).send({ error: 'INVALID_REQUEST', message: error.message });
+    return reply.code(400).send({
+      error: 'INVALID_REQUEST',
+      message: safeMessage(error.message, 'Проверьте введённые данные и попробуйте ещё раз.'),
+    });
   }
   if (error instanceof CampaignTurnProcessingError) {
-    if (error.code === 'INVALID_ORDER') {
-      return reply.code(400).send({ error: error.code, message: error.message });
-    }
-    if (error.code === 'CAMPAIGN_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND') {
-      return reply.code(404).send({ error: error.code, message: error.message });
-    }
-    if (error.code === 'NOT_ACTIVE_MEMBER') {
-      return reply.code(403).send({ error: error.code, message: error.message });
-    }
-    return reply.code(409).send({ error: error.code, message: error.message });
+    const status = error.code === 'INVALID_ORDER' ? 400
+      : error.code === 'CAMPAIGN_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND' ? 404
+        : error.code === 'NOT_ACTIVE_MEMBER' ? 403 : 409;
+    return reply.code(status).send({
+      error: error.code,
+      message: messages[error.code] || 'Не удалось выполнить действие с приказами.',
+    });
   }
   if (error instanceof EmailAlreadyRegisteredError) {
-    return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED', message: error.message });
+    return reply.code(409).send({ error: 'EMAIL_ALREADY_REGISTERED', message: 'Аккаунт с этой почтой уже существует.' });
   }
   if (error instanceof DisplayNameAlreadyTakenError) {
-    return reply.code(409).send({ error: 'NICKNAME_ALREADY_TAKEN', message: error.message });
+    return reply.code(409).send({ error: 'NICKNAME_ALREADY_TAKEN', message: 'Этот никнейм уже занят.' });
   }
   if (error instanceof ExternalIdentityAlreadyLinkedError) {
-    return reply.code(409).send({ error: 'VK_IDENTITY_CONFLICT', message: error.message });
+    return reply.code(409).send({ error: 'VK_IDENTITY_CONFLICT', message: 'Этот аккаунт VK ID уже привязан к другому профилю.' });
   }
   if (
     error instanceof RefreshTokenReuseDetectedError ||
@@ -157,10 +175,13 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof InvalidCredentialsError ||
     error instanceof UnauthenticatedError
   ) {
-    return reply.code(401).send({ error: 'UNAUTHENTICATED' });
+    return reply.code(401).send({ error: 'UNAUTHENTICATED', message: 'Сессия недействительна или истекла. Войдите снова.' });
   }
   if (error instanceof CountrySetupValidationError) {
-    return reply.code(400).send({ error: 'INVALID_COUNTRY_SETUP', message: error.message });
+    return reply.code(400).send({
+      error: 'INVALID_COUNTRY_SETUP',
+      message: safeMessage(error.message, 'Некорректные данные государства. Проверьте выбранные параметры.'),
+    });
   }
   if (
     error instanceof NotActiveCampaignMemberError ||
@@ -171,10 +192,13 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
         error instanceof SocialSystemAdminRequiredError
           ? 'SOCIAL_SYSTEM_ADMIN_REQUIRED'
           : 'NOT_ACTIVE_CAMPAIGN_MEMBER',
+      message: error instanceof SocialSystemAdminRequiredError
+        ? 'Для этого действия нужны права администратора.'
+        : 'У вас больше нет доступа к этой кампании.',
     });
   }
   if (error instanceof SocialSystemNotFoundError) {
-    return reply.code(404).send({ error: 'SOCIAL_SYSTEM_NOT_FOUND' });
+    return reply.code(404).send({ error: 'SOCIAL_SYSTEM_NOT_FOUND', message: 'Учение не найдено.' });
   }
   if (
     error instanceof CampaignSetupNotReadyError ||
@@ -184,16 +208,19 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     error instanceof SocialSystemNameConflictError ||
     error instanceof SocialSystemReviewConflictError
   ) {
-    return reply.code(409).send({ error: 'COUNTRY_SETUP_CONFLICT', message: error.message });
+    return reply.code(409).send({
+      error: 'COUNTRY_SETUP_CONFLICT',
+      message: safeMessage(error.message, 'Действие конфликтует с текущим состоянием государства или кампании.'),
+    });
   }
   if (error instanceof OfficialSystemNotAvailableError) {
-    return reply.code(422).send({ error: 'OFFICIAL_SYSTEM_NOT_AVAILABLE' });
+    return reply.code(422).send({ error: 'OFFICIAL_SYSTEM_NOT_AVAILABLE', message: 'Выбранное учение больше недоступно.' });
   }
   if (error instanceof SystemAvailabilityNotConfiguredError) {
-    return reply.code(503).send({ error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED' });
+    return reply.code(503).send({ error: 'SYSTEM_AVAILABILITY_NOT_CONFIGURED', message: 'Выбор учений временно недоступен.' });
   }
   reply.log.error({ err: error }, 'Unhandled API request error');
-  return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });
+  return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR', message: 'На сервере произошла ошибка. Попробуйте ещё раз позже.' });
 }
 
 function registerAuthRoutes(

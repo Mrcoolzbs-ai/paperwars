@@ -137,6 +137,15 @@ export interface CampaignMapCountry {
   /** True only for the country owned by the requesting active member. */
   readonly isMine: boolean;
   readonly flagDataUrl: string | null;
+  /** Fixed, independently stored borders for the core territory and every colony. */
+  readonly territories: ReadonlyArray<{
+    readonly id: string;
+    readonly type: 'core' | 'colony';
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly width: number;
+    readonly height: number;
+  }>;
   readonly cells: ReadonlyArray<{
     readonly x: number;
     readonly y: number;
