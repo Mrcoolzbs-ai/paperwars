@@ -4,6 +4,9 @@
   const state = {
     token: sessionStorage.getItem('pw_access_token') || '',
     user: null,
+    profile: null,
+    activeScreen: 'auth',
+    profileReturnScreen: 'game',
     campaigns: [],
     openCampaigns: [],
     campaign: null,
@@ -328,12 +331,94 @@
   }
 
   function showScreen(name) {
+    state.activeScreen = name;
     $('#auth-screen').classList.toggle('hidden', name !== 'auth');
     $('#game-screen').classList.toggle('hidden', name !== 'game');
     $('#workspace-screen').classList.toggle('hidden', name !== 'workspace');
+    $('#profile-screen').classList.toggle('hidden', name !== 'profile');
+    $('#profile-button').classList.toggle('hidden', !state.user);
     $('#logout-button').classList.toggle('hidden', !state.user);
     $('#user-label').classList.toggle('hidden', !state.user);
-    $('#user-label').textContent = state.user?.email || '';
+    $('#user-label').textContent = state.user?.displayName || state.user?.email || '';
+  }
+
+  function renderProfile() {
+    const profile = state.profile;
+    if (!profile) return;
+    $('#profile-display-name').value = profile.displayName || '';
+    $('#profile-email').value = profile.email || '';
+    $('#profile-user-title').textContent = profile.displayName || 'Игрок';
+    const initials = String(profile.displayName || 'PW')
+      .trim()
+      .split(/\\s+/u)
+      .slice(0, 2)
+      .map((part) => Array.from(part)[0] || '')
+      .join('')
+      .toLocaleUpperCase();
+    $('#profile-avatar').textContent = initials || 'PW';
+
+    const emailInput = $('#profile-email');
+    emailInput.required = Boolean(profile.email) || !profile.hasVk;
+    $('#profile-email-hint').textContent = profile.email
+      ? 'Укажи актуальный email: он используется для резервного входа по паролю.'
+      : profile.hasVk
+        ? 'Email необязателен для входа через VK ID. Добавь его, чтобы включить резервный пароль.'
+        : 'Укажи email, чтобы сохранить возможность входа в аккаунт.';
+
+    $('#profile-vk-status').textContent = profile.hasVk ? 'Подключён' : 'Не подключён';
+    $('#profile-vk-status').classList.toggle('connected', profile.hasVk);
+    $('#profile-link-vk').classList.toggle('hidden', profile.hasVk);
+    $('#profile-password-status').textContent = profile.hasPassword
+      ? 'Пароль настроен для резервного входа'
+      : 'Пароль ещё не установлен';
+    $('#profile-password-pill').textContent = profile.hasPassword ? 'Задан' : 'Не задан';
+    $('#profile-password-pill').classList.toggle('connected', profile.hasPassword);
+    $('#profile-current-password-row').classList.toggle('hidden', !profile.hasPassword);
+    $('#profile-current-password').required = profile.hasPassword;
+    $('#profile-password-form').classList.toggle('hidden', !profile.email);
+    $('#profile-password-unavailable').classList.toggle('hidden', Boolean(profile.email));
+    $('#profile-password-title').textContent = profile.hasPassword
+      ? 'Изменить пароль'
+      : 'Установить пароль';
+    $('#profile-password-caption').textContent = profile.hasPassword
+      ? 'Для смены пароля введи текущий, затем задай новый длиной не менее 12 символов.'
+      : 'Задай резервный пароль длиной не менее 12 символов. Текущий пароль не требуется.';
+    $('#profile-password-submit').textContent = profile.hasPassword
+      ? 'Изменить пароль ↗'
+      : 'Установить пароль ↗';
+  }
+
+  async function loadProfile() {
+    const data = await request('/auth/profile');
+    state.profile = data.profile;
+    state.user = {
+      id: data.profile.id,
+      email: data.profile.email,
+      displayName: data.profile.displayName,
+    };
+    $('#user-label').textContent = state.user.displayName || state.user.email || '';
+    renderProfile();
+  }
+
+  async function openProfile() {
+    if (!state.user) return;
+    if (state.activeScreen !== 'profile') {
+      state.profileReturnScreen = state.activeScreen || (state.campaign ? 'workspace' : 'game');
+    }
+    showScreen('profile');
+    setMessage('#profile-page-message', '');
+    try {
+      await loadProfile();
+    } catch (error) {
+      setMessage('#profile-page-message', error.message || 'Не удалось загрузить профиль.');
+    }
+  }
+
+  function closeProfile() {
+    const destination = ['game', 'workspace'].includes(state.profileReturnScreen)
+      ? state.profileReturnScreen
+      : (state.campaign ? 'workspace' : 'game');
+    showScreen(destination);
   }
 
   function authMode(mode) {
@@ -1609,6 +1694,113 @@
       }
     });
 
+    $('#profile-button').addEventListener('click', () => { void openProfile(); });
+    $('#profile-back').addEventListener('click', closeProfile);
+    $('#profile-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.profile) return;
+      const displayName = $('#profile-display-name').value.trim();
+      const email = $('#profile-email').value.trim();
+      if (!email && (state.profile.email || state.profile.hasPassword || !state.profile.hasVk)) {
+        setMessage(
+          '#profile-form-message',
+          'Не удаляй единственный резервный способ входа. Укажи email или сначала подключи VK ID.',
+        );
+        return;
+      }
+      const button = $('#profile-save');
+      button.disabled = true;
+      setMessage('#profile-form-message', '');
+      try {
+        const data = await request('/auth/profile', {
+          method: 'PUT',
+          body: JSON.stringify({ displayName, email: email || null }),
+        });
+        state.profile = data.profile;
+        state.user = {
+          id: data.profile.id,
+          email: data.profile.email,
+          displayName: data.profile.displayName,
+        };
+        $('#user-label').textContent = state.user.displayName || state.user.email || '';
+        renderProfile();
+        setMessage('#profile-form-message', 'Данные профиля сохранены.', true);
+        showToast('Профиль обновлён.');
+      } catch (error) {
+        const message = error.code === 'NICKNAME_ALREADY_TAKEN'
+          ? 'Этот никнейм уже занят. Выбери другой.'
+          : error.code === 'EMAIL_ALREADY_REGISTERED'
+            ? 'Этот email уже используется другим аккаунтом.'
+            : error.message || 'Не удалось сохранить профиль.';
+        setMessage('#profile-form-message', message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('#profile-password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.profile?.email) {
+        setMessage('#profile-password-message', 'Сначала добавь резервный email.');
+        return;
+      }
+      const newPassword = $('#profile-new-password').value;
+      const confirmPassword = $('#profile-confirm-password').value;
+      if (newPassword.length < 12) {
+        setMessage('#profile-password-message', 'Пароль должен содержать не менее 12 символов.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setMessage('#profile-password-message', 'Новые пароли не совпадают.');
+        return;
+      }
+      const button = $('#profile-password-submit');
+      button.disabled = true;
+      setMessage('#profile-password-message', '');
+      try {
+        await request('/auth/password', {
+          method: 'POST',
+          body: JSON.stringify({
+            currentPassword: $('#profile-current-password').value,
+            newPassword,
+          }),
+        });
+        $('#profile-current-password').value = '';
+        $('#profile-new-password').value = '';
+        $('#profile-confirm-password').value = '';
+        await loadProfile();
+        setMessage('#profile-password-message', 'Резервный пароль сохранён.', true);
+        showToast('Настройки пароля обновлены.');
+      } catch (error) {
+        const message = error.code === 'UNAUTHENTICATED'
+          ? 'Текущий пароль указан неверно.'
+          : error.message || 'Не удалось изменить пароль.';
+        setMessage('#profile-password-message', message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('#profile-link-vk').addEventListener('click', async () => {
+      const button = $('#profile-link-vk');
+      button.disabled = true;
+      try {
+        const data = await request('/auth/vk/link', { method: 'POST' });
+        if (typeof data.authorizationUrl !== 'string') {
+          throw new Error('Сервер не вернул адрес привязки VK ID.');
+        }
+        window.location.assign(data.authorizationUrl);
+      } catch (error) {
+        showToast(
+          error.code === 'VK_ID_NOT_CONFIGURED'
+            ? 'Привязка VK ID пока не настроена на сервере.'
+            : error.message || 'Не удалось начать привязку VK ID.',
+          true,
+        );
+        button.disabled = false;
+      }
+    });
+
     $('#leave-campaign').addEventListener('click', () => {
       if (state.campaign) leaveCampaign(state.campaign.id);
     });
@@ -1654,6 +1846,7 @@
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
+      state.profile = null;
       sessionStorage.removeItem('pw_access_token');
       showScreen('auth');
       showToast('Сессия завершена.');
@@ -1835,6 +2028,8 @@
   }
 
   async function init() {
+    const vkLinked = new URLSearchParams(window.location.search).get('vk') === 'linked';
+    if (vkLinked) window.history.replaceState({}, document.title, window.location.pathname);
     bindEvents();
     buildWorldPreview();
     renderPrincipleCatalog();
@@ -1856,6 +2051,10 @@
         await loadCampaigns();
       } catch (error) {
         showToast('Сессия активна, но список кампаний не загрузился: ' + error.message, true);
+      }
+      if (vkLinked) {
+        await openProfile();
+        setMessage('#profile-page-message', 'Аккаунт VK ID успешно подключён.', true);
       }
     } catch (error) {
       showScreen('auth');
