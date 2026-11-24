@@ -171,7 +171,8 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
             : null;
     return reply.code(400).send({
       error: 'INVALID_REQUEST',
-      message: campaignJoinMessage ??
+      message:
+        campaignJoinMessage ??
         safeMessage(error.message, 'Проверьте введённые данные и попробуйте ещё раз.'),
     });
   }

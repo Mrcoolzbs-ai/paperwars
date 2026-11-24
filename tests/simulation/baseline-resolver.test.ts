@@ -810,9 +810,13 @@ describe('baseline turn resolver', () => {
         economyCell('gold', 0, 0, 100, 'gold_mine'),
         economyCell('field', 1, 0, 0, 'field'),
       ]),
-      [createOrder('40000000-0000-4000-8000-000000000312', 'construction', {
-        x: 1, y: 0, buildingType: 'greenhouse',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000312', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'greenhouse',
+        }),
+      ],
       createRandom().source,
     );
     expect(result.orderResults[0]).toMatchObject({
@@ -824,16 +828,27 @@ describe('baseline turn resolver', () => {
   it('allows greenhouse and dam overlays on cells but prevents installing both on one cell', () => {
     const terrain = Array.from({ length: 45 }, () => 'l');
     terrain[1 * 9 + 1] = 'w';
-    const state = createSeasonState([
-      economyCell('gold', 0, 0, 20, 'gold_mine'),
-      economyCell('field', 1, 0, 1, 'field'),
-      ...[
-        [0, 1], [2, 1], [3, 1], [4, 1], [5, 1],
-        [6, 1], [7, 1], [8, 1], [0, 2], [1, 2],
-      ].map(([x, y], index) =>
-        economyCell('science-' + index, x!, y!, 0, 'science'),
-      ),
-    ], 1, terrain.join(''), 9);
+    const state = createSeasonState(
+      [
+        economyCell('gold', 0, 0, 20, 'gold_mine'),
+        economyCell('field', 1, 0, 1, 'field'),
+        ...[
+          [0, 1],
+          [2, 1],
+          [3, 1],
+          [4, 1],
+          [5, 1],
+          [6, 1],
+          [7, 1],
+          [8, 1],
+          [0, 2],
+          [1, 2],
+        ].map(([x, y], index) => economyCell('science-' + index, x!, y!, 0, 'science')),
+      ],
+      1,
+      terrain.join(''),
+      9,
+    );
     const result = resolve(
       state,
       [
@@ -911,9 +926,13 @@ describe('baseline turn resolver', () => {
     ]);
     const riceLocked = resolve(
       noScience,
-      [createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
-        x: 1, y: 0, buildingType: 'rice_field',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'rice_field',
+        }),
+      ],
       createRandom().source,
     );
     expect(riceLocked.orderResults[0]).toMatchObject({
@@ -929,9 +948,13 @@ describe('baseline turn resolver', () => {
     ]);
     const riceUnlocked = resolve(
       twoScience,
-      [createOrder('40000000-0000-4000-8000-000000000302', 'construction', {
-        x: 1, y: 0, buildingType: 'rice_field',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000302', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'rice_field',
+        }),
+      ],
       createRandom().source,
     );
     expect(riceUnlocked.orderResults[0]).toMatchObject({
@@ -948,9 +971,13 @@ describe('baseline turn resolver', () => {
     ]);
     const fieldLocked = resolve(
       nineScience,
-      [createOrder('40000000-0000-4000-8000-000000000303', 'construction', {
-        x: 1, y: 0, buildingType: 'field_level_2',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000303', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'field_level_2',
+        }),
+      ],
       createRandom().source,
     );
     expect(fieldLocked.orderResults[0]).toMatchObject({
@@ -969,9 +996,13 @@ describe('baseline turn resolver', () => {
     ];
     const result = resolve(
       createEconomyState(cells),
-      [createOrder('40000000-0000-4000-8000-000000000304', 'construction', {
-        x: 1, y: 0, buildingType: 'textile_workshop_level_2',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000304', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'textile_workshop_level_2',
+        }),
+      ],
       createRandom().source,
     );
     expect(result.orderResults[0]).toMatchObject({
@@ -983,15 +1014,21 @@ describe('baseline turn resolver', () => {
   it('only allows fishers beside water, including diagonal neighbours', () => {
     const terrain = Array.from({ length: 45 }, () => 'l');
     terrain[1 * 9 + 3] = 'w';
-    const state = createSeasonState([
-      economyCell('gold', 0, 0, 100, 'gold_mine'),
-      economyCell('fisher-target', 2, 0, 1),
-    ], 1, terrain.join(''), 9);
+    const state = createSeasonState(
+      [economyCell('gold', 0, 0, 100, 'gold_mine'), economyCell('fisher-target', 2, 0, 1)],
+      1,
+      terrain.join(''),
+      9,
+    );
     const diagonal = resolve(
       state,
-      [createOrder('40000000-0000-4000-8000-000000000305', 'construction', {
-        x: 2, y: 0, buildingType: 'fisher',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000305', 'construction', {
+          x: 2,
+          y: 0,
+          buildingType: 'fisher',
+        }),
+      ],
       createRandom().source,
     );
     expect(diagonal.orderResults[0]).toMatchObject({
@@ -1004,9 +1041,13 @@ describe('baseline turn resolver', () => {
         economyCell('gold', 0, 0, 100, 'gold_mine'),
         economyCell('fisher-target', 2, 0, 1),
       ]),
-      [createOrder('40000000-0000-4000-8000-000000000306', 'construction', {
-        x: 2, y: 0, buildingType: 'fisher',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000306', 'construction', {
+          x: 2,
+          y: 0,
+          buildingType: 'fisher',
+        }),
+      ],
       createRandom().source,
     );
     expect(dry.orderResults[0]).toMatchObject({
@@ -1019,21 +1060,38 @@ describe('baseline turn resolver', () => {
     const terrain = Array.from({ length: 45 }, () => 'l');
     terrain[1 * 9 + 2] = 'w';
     const sciencePositions = [
-      [0, 1], [3, 1], [4, 1], [5, 1], [6, 1],
-      [7, 1], [8, 1], [0, 2], [1, 2], [2, 2],
+      [0, 1],
+      [3, 1],
+      [4, 1],
+      [5, 1],
+      [6, 1],
+      [7, 1],
+      [8, 1],
+      [0, 2],
+      [1, 2],
+      [2, 2],
     ];
-    const state = createSeasonState([
-      economyCell('gold', 0, 0, 100, 'gold_mine'),
-      ...sciencePositions.map(([x, y], index) =>
-        economyCell('lab-' + index, x!, y!, 0, 'science'),
-      ),
-      economyCell('dam-target', 1, 0, 1),
-    ], 1, terrain.join(''), 9);
+    const state = createSeasonState(
+      [
+        economyCell('gold', 0, 0, 100, 'gold_mine'),
+        ...sciencePositions.map(([x, y], index) =>
+          economyCell('lab-' + index, x!, y!, 0, 'science'),
+        ),
+        economyCell('dam-target', 1, 0, 1),
+      ],
+      1,
+      terrain.join(''),
+      9,
+    );
     const diagonalOnlyWater = resolve(
       state,
-      [createOrder('40000000-0000-4000-8000-000000000307', 'construction', {
-        x: 1, y: 0, buildingType: 'dam',
-      })],
+      [
+        createOrder('40000000-0000-4000-8000-000000000307', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'dam',
+        }),
+      ],
       createRandom().source,
     );
     expect(diagonalOnlyWater.orderResults[0]).toMatchObject({
@@ -1083,7 +1141,9 @@ describe('baseline turn resolver', () => {
       [createOrder('40000000-0000-4000-8000-000000000311', 'demolition', { x: 1, y: 0 })],
       createRandom().source,
     );
-    expect(result.nextState.countries[0]?.cells.find((cell) => cell.id === 'greenhouse-field')).toMatchObject({
+    expect(
+      result.nextState.countries[0]?.cells.find((cell) => cell.id === 'greenhouse-field'),
+    ).toMatchObject({
       buildingType: null,
       structureType: null,
       population: 1,

@@ -856,16 +856,20 @@ function getCountryEconomyPreview(
       (y as number) < 0 ||
       (x as number) >= mapWidth ||
       (y as number) >= mapHeight
-    ) continue;
+    )
+      continue;
     cells.push({
       id: typeof value['id'] === 'string' ? value['id'] : `${x},${y}`,
       x: x as number,
       y: y as number,
-      population: Number.isSafeInteger(value['population']) ? Math.max(0, value['population'] as number) : 0,
+      population: Number.isSafeInteger(value['population'])
+        ? Math.max(0, value['population'] as number)
+        : 0,
       buildingType: typeof value['buildingType'] === 'string' ? value['buildingType'] : null,
-      structureType: value['structureType'] === 'greenhouse' || value['structureType'] === 'dam'
-        ? value['structureType']
-        : null,
+      structureType:
+        value['structureType'] === 'greenhouse' || value['structureType'] === 'dam'
+          ? value['structureType']
+          : null,
       flooded: value['flooded'] === true,
     });
   }
@@ -877,9 +881,7 @@ function getCountryEconomyPreview(
   const year = Math.floor((safeTurn - 1) / 24) + 1;
   const seasonTurn = (seasonPosition % 6) + 1;
   const population = cells.filter(
-    (cell) =>
-      terrain[cell.y * mapWidth + cell.x] === 'l' &&
-      cell.buildingType === null,
+    (cell) => terrain[cell.y * mapWidth + cell.x] === 'l' && cell.buildingType === null,
   ).length;
   const active = (cell: EconomyPreviewCell): boolean =>
     !cell.flooded || cell.buildingType === 'rice_field';
@@ -909,9 +911,7 @@ function getCountryEconomyPreview(
   for (const cell of cells) {
     if (!cell.buildingType || !active(cell)) continue;
     const factoryNearby = factories.some(
-      (candidate) =>
-        Math.abs(candidate.x - cell.x) <= 1 &&
-        Math.abs(candidate.y - cell.y) <= 1,
+      (candidate) => Math.abs(candidate.x - cell.x) <= 1 && Math.abs(candidate.y - cell.y) <= 1,
     );
     let output = 0;
     if (
@@ -920,9 +920,7 @@ function getCountryEconomyPreview(
       cell.buildingType === 'rice_field'
     ) {
       const winterGreenhouseField =
-        season === 'winter' &&
-        cell.buildingType === 'field' &&
-        cell.structureType === 'greenhouse';
+        season === 'winter' && cell.buildingType === 'field' && cell.structureType === 'greenhouse';
       if (season === 'winter' && !winterGreenhouseField) continue;
       if (cell.buildingType === 'rice_field') {
         if (season === 'winter') continue;
@@ -938,15 +936,14 @@ function getCountryEconomyPreview(
     } else if (cell.buildingType === 'hunter') {
       output = season === 'spring' ? 15 : 5;
     } else if (cell.buildingType === 'fisher') {
-      output = adjacentWaterCount(cell.x, cell.y, terrain, mapWidth, mapHeight) *
+      output =
+        adjacentWaterCount(cell.x, cell.y, terrain, mapWidth, mapHeight) *
         (season === 'spring' ? 10 : 5);
     }
     food += output;
   }
 
-  const gold = cells.filter(
-    (cell) => cell.buildingType === 'gold_mine' && !cell.flooded,
-  ).length;
+  const gold = cells.filter((cell) => cell.buildingType === 'gold_mine' && !cell.flooded).length;
   const income = gold * population;
   const upkeepFor = (type: string | null): number => {
     if (type === 'tower' || type === 'field_level_2') return 2;
@@ -1020,7 +1017,8 @@ function hasWaterNeighbor(
         nextX < width &&
         nextY < height &&
         terrain[nextY * width + nextX] !== 'l'
-      ) return true;
+      )
+        return true;
     }
   }
   return false;
@@ -1045,7 +1043,8 @@ function adjacentWaterCount(
         nextX < width &&
         nextY < height &&
         terrain[nextY * width + nextX] !== 'l'
-      ) count += 1;
+      )
+        count += 1;
     }
   }
   return count;
@@ -1852,20 +1851,22 @@ export function createCountrySetupService(options: {
       ]);
       const current = campaignData.rows[0];
       const snapshotCountry = getSnapshotCountry(current?.state ?? null, country.country_id);
-      const preview = current && snapshotCountry &&
-        current.map_width !== null && current.map_height !== null && current.map_seed !== null
-        ? getCountryEconomyPreview(
-            snapshotCountry,
-            generateWorldMap(current.map_seed, current.map_width, current.map_height).terrain,
-            current.map_width,
-            current.map_height,
-            current.current_turn,
-          )
-        : null;
-      const economy = getCountryEconomyFromReport(
-        latestEconomy.rows[0]?.report,
-        country.country_id,
-      ) ?? preview;
+      const preview =
+        current &&
+        snapshotCountry &&
+        current.map_width !== null &&
+        current.map_height !== null &&
+        current.map_seed !== null
+          ? getCountryEconomyPreview(
+              snapshotCountry,
+              generateWorldMap(current.map_seed, current.map_width, current.map_height).terrain,
+              current.map_width,
+              current.map_height,
+              current.current_turn,
+            )
+          : null;
+      const economy =
+        getCountryEconomyFromReport(latestEconomy.rows[0]?.report, country.country_id) ?? preview;
       const residentCount = preview?.population ?? population.rows[0]?.resident_count ?? 0;
       return {
         id: country.country_id,
@@ -2683,9 +2684,13 @@ export function createCountrySetupService(options: {
               if (offsetX === 0 && offsetY === 0) return false;
               const nextX = worldX + offsetX;
               const nextY = worldY + offsetY;
-              return nextX >= 0 && nextY >= 0 &&
-                nextX < campaign.map_width! && nextY < campaign.map_height! &&
-                world.terrain[nextY * campaign.map_width! + nextX] !== 'l';
+              return (
+                nextX >= 0 &&
+                nextY >= 0 &&
+                nextX < campaign.map_width! &&
+                nextY < campaign.map_height! &&
+                world.terrain[nextY * campaign.map_width! + nextX] !== 'l'
+              );
             }),
           );
           if (!adjacentWater) {

@@ -87,7 +87,7 @@ describe('browser client', () => {
     );
     expect(mapRenderer).toContain("ctx.fillText('З'");
     expect(mapRenderer).toContain("ctx.strokeStyle = '#238344'");
-    expect(mapRenderer).toContain('drawDamWaterBoundary');
+    expect(script.body).toContain('drawDamWaterBoundary');
     expect(mapRenderer).not.toContain('strokeRect');
     expect(mapRenderer).not.toContain("'#302700'");
     expect(script.body).toContain('countryLabelX');
