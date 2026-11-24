@@ -2623,6 +2623,9 @@
     const economyStatus = economy
       ? (economy.unpaidExpenses > 0 ? 'Есть неоплаченные расходы' : 'Содержание оплачено')
       : 'Расчёт появится после первого завершённого хода';
+    const disabledBuildingsLabel = economy?.disabledBuildings?.map((building) =>
+      (buildingMeta[building.type]?.label || building.type) + ' (' + building.x + ', ' + building.y + ')',
+    ).join(', ') || '';
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -2735,7 +2738,7 @@
         (economy && (economy.disabledBuildings.length || economy.starvedColonies || economy.fledColonies)
           ? '<section class="country-doc-inactive-actions" aria-live="polite"><strong>Экономические последствия этого хода</strong><p>' +
             (economy.disabledBuildings.length
-              ? 'Отключено построек: ' + escapeHtml(economy.disabledBuildings.length) + '. '
+              ? 'Отключены: ' + escapeHtml(disabledBuildingsLabel) + '. '
               : '') +
             (economy.starvedColonies
               ? 'Вымерло колоний: ' + escapeHtml(economy.starvedColonies) + '. '
