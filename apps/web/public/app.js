@@ -2178,7 +2178,26 @@
 
     $('#refresh-open-campaigns').addEventListener('click', () => { void loadOpenCampaigns(); });
 
+    $('#chat-open-button').addEventListener('click', () => { void openChatModal(); });
+    $('#chat-close-button').addEventListener('click', closeChatModal);
+    $('#chat-modal').addEventListener('click', (event) => {
+      if (event.target === $('#chat-modal-backdrop') ||
+          event.target.classList.contains('chat-modal-backdrop') ||
+          event.target === $('#chat-modal')) closeChatModal();
+    });
+    $('#chat-compose-form').addEventListener('submit', sendChatMessage);
+    $('#chat-message-input').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        $('#chat-compose-form').requestSubmit();
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.chatModalOpen) void loadChatMessages();
+    });
+
     $('#logout-button').addEventListener('click', async () => {
+      closeChatModal();
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
       state.user = null;
@@ -2271,7 +2290,10 @@
       if (menu && !menu.contains(event.target) && event.target !== $('#map-canvas')) closeMapContextMenu();
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeMapContextMenu();
+      if (event.key === 'Escape') {
+        closeMapContextMenu();
+        closeChatModal();
+      }
     });
     window.addEventListener('resize', () => {
       drawMapCanvas($('#world-grid'), true);
