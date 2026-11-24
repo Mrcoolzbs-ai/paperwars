@@ -1,0 +1,46 @@
+name: Temporary format repair
+
+on:
+  push:
+    branches:
+      - feat/global-map-orders
+    paths:
+      - .github/workflows/format-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Format changed files
+        run: >-
+          pnpm exec prettier --write
+          packages/worker/src/baseline-ruleset.ts
+          tests/simulation/baseline-resolver.test.ts
+          tests/smoke/turn-worker.test.ts
+      - name: Commit formatted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/worker/src/baseline-ruleset.ts tests/simulation/baseline-resolver.test.ts tests/smoke/turn-worker.test.ts
+          if ! git diff --cached --quiet; then
+            git commit -m "style: apply Prettier formatting to turn resolver"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
