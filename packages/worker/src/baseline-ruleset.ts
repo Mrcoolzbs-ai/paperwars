@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   DomainEvent,
   OrderEnvelope,
+  OrderResolution,
   RulesetDefinition,
   TurnResolver,
 } from '@paper-wars/domain';
@@ -125,10 +126,11 @@ export function createBaselineTurnResolver(): TurnResolver<
 
     const mapWidth = width as number;
     const mapHeight = height as number;
-    const countries = state.countries.map((country) => ({
-      ...country,
-      cells: country.cells.map((cell) => ({ ...cell })),
-    }));
+    const countries: Array<Omit<BaselineCountryState, 'cells'> & { cells: BaselineCellState[] }> =
+      state.countries.map((country) => ({
+        ...country,
+        cells: country.cells.map((cell) => ({ ...cell })),
+      }));
     const countriesById = new Map(countries.map((country) => [country.id, country]));
     const discoveredByCoordinate = new Map(
       (state.discoveredCells ?? []).map((discovery) => [
@@ -142,7 +144,7 @@ export function createBaselineTurnResolver(): TurnResolver<
     }
 
     const events: BaselineGameEvent[] = [];
-    const orderResults: ReturnType<typeof rejection>[] = [];
+    const orderResults: OrderResolution[] = [];
     const actionsUsedByCountry = new Map<string, number>();
     const colonizedCells: Array<{ x: number; y: number; type: string }> = [];
     let constructions = 0;
