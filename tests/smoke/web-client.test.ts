@@ -123,6 +123,7 @@ describe('browser client', () => {
     expect(script.body).toContain('function renderChatRooms');
     expect(script.body).toContain('function openChatModal');
     expect(script.body).toContain('function setChatDockView(view)');
+    expect(script.body).toContain('function filterChatRooms');
     expect(script.body).toContain('function returnToChatList');
     expect(script.body).toContain("state.chatDockView === 'conversation'");
     expect(script.body).toContain('greenhouse: 2,');
@@ -153,6 +154,7 @@ describe('browser client', () => {
     expect(home.body).toContain('id="chat-open-button"');
     expect(home.body).toContain('id="chat-modal"');
     expect(home.body).toContain('id="chat-list-view"');
+    expect(home.body).toContain('id="chat-search"');
     expect(home.body).toContain('id="chat-list-status"');
     expect(home.body).toContain('id="chat-room-list"');
     expect(home.body).toContain('id="chat-conversation-view"');
@@ -174,6 +176,7 @@ describe('browser client', () => {
     expect(stylesheet.body).toContain('.chat-modal');
     expect(stylesheet.body).toContain('.chat-dock-launcher');
     expect(stylesheet.body).toContain('.chat-dock-window');
+    expect(stylesheet.body).toContain('.chat-search-wrap');
     expect(stylesheet.body).toContain('.chat-room-button');
     expect(stylesheet.body).toContain('.chat-message');
     expect(stylesheet.body).toContain('.profile-layout');
