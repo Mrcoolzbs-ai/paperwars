@@ -1129,6 +1129,47 @@ describe('baseline turn resolver', () => {
     expect(actionPointsUsed?.[countryId] ?? 0).toBe(3);
   });
 
+  it('removes a mini-building for free even after all action points are used', () => {
+    const result = resolve(
+      createEconomyState([
+        economyCell('gold', 0, 0, 100, 'gold_mine'),
+        economyCell('factory', 1, 0, 0, 'factory'),
+        economyCell('workshop', 2, 0, 0, 'textile_workshop'),
+        economyCell('capital', 3, 0, 0, 'capital'),
+        {
+          ...economyCell('greenhouse-field', 4, 0, 0, 'field'),
+          structureType: 'greenhouse' as const,
+        },
+      ]),
+      [
+        createOrder('40000000-0000-4000-8000-000000000312', 'demolition', { x: 1, y: 0 }),
+        createOrder('40000000-0000-4000-8000-000000000313', 'demolition', { x: 2, y: 0 }),
+        createOrder('40000000-0000-4000-8000-000000000314', 'demolition', { x: 3, y: 0 }),
+        createOrder('40000000-0000-4000-8000-000000000315', 'structure_removal', { x: 4, y: 0 }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
+      'BUILDING_DEMOLISHED',
+      'BUILDING_DEMOLISHED',
+      'PROTECTED_BUILDING',
+      'STRUCTURE_REMOVED',
+    ]);
+    expect(
+      result.nextState.countries[0]?.cells.find((cell) => cell.id === 'greenhouse-field'),
+    ).toMatchObject({
+      buildingType: 'field',
+      structureType: null,
+      population: 0,
+    });
+    const actionPointsUsed = result.economicReport?.['actionPointsUsed'] as
+      Record<string, number> | undefined;
+    expect(actionPointsUsed?.[countryId] ?? 0).toBe(3);
+    expect(result.events.some((event) => event.type === 'structure.destroyed' &&
+      event.payload['reason'] === 'manual-removal')).toBe(true);
+  });
+
   it('removes a greenhouse overlay when its field is demolished', () => {
     const result = resolve(
       createEconomyState([

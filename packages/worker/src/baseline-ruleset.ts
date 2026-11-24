@@ -638,9 +638,11 @@ export function createBaselineTurnResolver(): TurnResolver<
         order.type === 'construction' &&
         (requestedBuildingType === 'field_level_2' ||
           requestedBuildingType === 'textile_workshop_level_2');
+      const isFreeStructureRemoval = order.type === 'structure_removal';
       if (
         !adminCountryIds.has(country.id) &&
         !isFreeUpgrade &&
+        !isFreeStructureRemoval &&
         actionsUsed >= ruleset.parameters.actionPointsPerTurn
       ) {
         orderResults.push(
@@ -652,7 +654,9 @@ export function createBaselineTurnResolver(): TurnResolver<
         );
         continue;
       }
-      if (!isFreeUpgrade) actionsUsedByCountry.set(country.id, actionsUsed + 1);
+      if (!isFreeUpgrade && !isFreeStructureRemoval) {
+        actionsUsedByCountry.set(country.id, actionsUsed + 1);
+      }
 
       const x = order.payload['x'];
       const y = order.payload['y'];
@@ -660,6 +664,52 @@ export function createBaselineTurnResolver(): TurnResolver<
         orderResults.push(
           rejection(order.id, 'INVALID_COORDINATES', 'Координаты приказа находятся вне карты.'),
         );
+        continue;
+      }
+
+      if (order.type === 'structure_removal') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'CELL_NOT_OWNED',
+              'Снимать мини-постройки можно только на своей клетке суши.',
+            ),
+          );
+          continue;
+        }
+        if (cell.structureType === null || cell.structureType === undefined) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'STRUCTURE_NOT_FOUND',
+              'На клетке нет мини-постройки для снятия.',
+            ),
+          );
+          continue;
+        }
+
+        const structureType = cell.structureType;
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id ? { ...candidate, structureType: null } : candidate,
+        );
+        emit(order.id, country.id, 'structure.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          structureType,
+          reason: 'manual-removal',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'STRUCTURE_REMOVED',
+          message: 'Мини-постройка снята без расхода ОД.',
+          data: { x, y, structureType },
+        });
         continue;
       }
 

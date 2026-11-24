@@ -1715,8 +1715,9 @@
   };
 
   function isFreeUpgradeOrder(order) {
-    return order?.type === 'construction' &&
-      ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType);
+    return order?.type === 'structure_removal' ||
+      (order?.type === 'construction' &&
+        ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType));
   }
 
   function mapOrderCoordinates(order) {
@@ -1847,7 +1848,7 @@
         : 'Окно приёма приказов сейчас закрыто.', true);
       return;
     }
-    if (!isAdminMode() && mapActionCount() >= 3) {
+    if (!isAdminMode() && type !== 'structure_removal' && mapActionCount() >= 3) {
       showToast('На этот ход уже использованы все 3 очка действий.', true);
       return;
     }
@@ -1872,7 +1873,9 @@
         ? 'Приказ колонизации добавлен в список.'
         : type === 'demolition'
           ? 'Приказ на снос здания добавлен в список.'
-          : 'Приказ строительства добавлен в список.');
+          : type === 'structure_removal'
+            ? 'Приказ на бесплатное снятие мини-постройки добавлен в список.'
+            : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -1985,6 +1988,8 @@
         (ownedCell.buildingType === 'textile_workshop' &&
           currentScience >= mapResearchRequirements.textile_workshop_level_2)),
     );
+    const canRemoveMiniBuilding = Boolean(ownedCell?.structureType);
+    const canPerformFreeAction = canFreeUpgrade || canRemoveMiniBuilding;
     const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
       if (territory.type !== 'colony') return false;
       const minX = territory.centerX - Math.floor(territory.width / 2);
@@ -2017,7 +2022,7 @@
           ? 'Первый ход откроется после регистрации всех государств. Осталось зарегистрировать: ' + pending + '.'
           : 'Окно приёма приказов сейчас закрыто.') +
         '</p>';
-    } else if (actionsRemaining === 0 && !canFreeUpgrade) {
+    } else if (actionsRemaining === 0 && !canPerformFreeAction) {
       content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
     } else if (ownedCell) {
       const canBuild = actionsRemaining > 0 && isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
@@ -2056,7 +2061,9 @@
             damWaterMissing ? ' · нужна граница с водой' : '') + '</button>';
         content += '</div>';
       } else if (ownedCell.structureType) {
-        content += '<small>На клетке уже установлена защита: теплица или дамба.</small>';
+        const structureLabel = ownedCell.structureType === 'greenhouse' ? 'теплицу' : 'дамбу';
+        content += '<small>На клетке установлена ' + structureLabel + '.</small>';
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="structure-removal">Снять мини-постройку · бесплатно</button>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') {
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
@@ -2134,6 +2141,8 @@
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
         } else if (action === 'demolition') {
           await createMapOrder('demolition', { x: cell.x, y: cell.y });
+        } else if (action === 'structure-removal') {
+          await createMapOrder('structure_removal', { x: cell.x, y: cell.y });
         } else if (action === 'remove-order') {
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
@@ -2642,6 +2651,7 @@
       diplomacy: 'Дипломатия',
       battle: 'Боевой приказ',
       demolition: 'Снос здания',
+      structure_removal: 'Снятие мини-постройки',
     };
     return labels[type] || type || 'Приказ';
   }
