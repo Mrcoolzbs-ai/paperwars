@@ -265,7 +265,7 @@ async function loadTurnInput<
        ORDER BY cell.y, cell.x`,
       [job.campaignId],
     );
-    const stateMap = isRecord(snapshot.state.map) ? snapshot.state.map : {};
+    const stateMap = isRecord(snapshot.state['map']) ? snapshot.state['map'] : {};
     const hydratedState = {
       ...snapshot.state,
       map: {
