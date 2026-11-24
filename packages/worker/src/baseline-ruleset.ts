@@ -174,8 +174,9 @@ export function createBaselineTurnResolver(): TurnResolver<
       recipientCountryId = countryId,
     ): void => {
       const event = {
-        eventId: toId<'EventId'>(stableUuid(
-          [
+        eventId: toId<'EventId'>(
+          stableUuid(
+            [
               'paperwars:event',
               snapshot.campaignId,
               snapshot.turnNumber,
@@ -184,7 +185,8 @@ export function createBaselineTurnResolver(): TurnResolver<
               String(payload['x'] ?? ''),
               String(payload['y'] ?? ''),
             ].join(':'),
-        )),
+          ),
+        ),
         campaignId: snapshot.campaignId,
         turnNumber: snapshot.turnNumber,
         type,
@@ -296,11 +298,13 @@ export function createBaselineTurnResolver(): TurnResolver<
           x + radius >= mapWidth ||
           y + radius >= mapHeight
         ) {
-          orderResults.push(rejection(
-            order.id,
-            'COLONIZATION_OUT_OF_BOUNDS',
-            'Квадрат колонизации 3×3 должен полностью находиться в пределах карты.',
-          ));
+          orderResults.push(
+            rejection(
+              order.id,
+              'COLONIZATION_OUT_OF_BOUNDS',
+              'Квадрат колонизации 3×3 должен полностью находиться в пределах карты.',
+            ),
+          );
           continue;
         }
         const candidates: Array<{ x: number; y: number; terrainCode: string }> = [];
@@ -325,11 +329,13 @@ export function createBaselineTurnResolver(): TurnResolver<
         const landCandidates = candidates.filter((cell) => cell.terrainCode === 'l');
 
         if (landCandidates.length === 0) {
-          orderResults.push(rejection(
-            order.id,
-            'NO_COLONIZABLE_LAND',
-            'Для колонизации в квадрате 3×3 нужно захватить хотя бы одну свободную клетку суши.',
-          ));
+          orderResults.push(
+            rejection(
+              order.id,
+              'NO_COLONIZABLE_LAND',
+              'Для колонизации в квадрате 3×3 нужно захватить хотя бы одну свободную клетку суши.',
+            ),
+          );
           continue;
         }
 
@@ -338,7 +344,6 @@ export function createBaselineTurnResolver(): TurnResolver<
           y: number;
           roll?: number;
           type?: string;
-          alreadyDiscovered?: boolean;
         }> = [];
         const residentsPerLandCell = Math.floor(9 / landCandidates.length);
         const extraResidents = 9 % landCandidates.length;
@@ -377,26 +382,39 @@ export function createBaselineTurnResolver(): TurnResolver<
           if (previousDiscovery !== undefined) {
             // Discovery is permanent, but a territorial capture does not reveal it
             // or grant the new owner access. Only the discovery history is extended.
-            emit(order.id, country.id, 'discovery.captured', {
-              orderId: order.id,
-              countryId: country.id,
-              cellId,
-              x: cell.x,
-              y: cell.y,
-            }, 'private', previousDiscovery.discoveredByCountryId);
+            emit(
+              order.id,
+              country.id,
+              'discovery.captured',
+              {
+                orderId: order.id,
+                countryId: country.id,
+                cellId,
+                x: cell.x,
+                y: cell.y,
+              },
+              'private',
+              previousDiscovery.discoveredByCountryId,
+            );
           } else {
             const roll = random.uniform('discovery', `cell:${cell.x}:${cell.y}`, 1, 100);
             const discoveryType = roll === 1 ? 'ruins' : roll === 100 ? 'gold' : 'empty';
             discoveriesRolled += 1;
-            emit(order.id, country.id, 'discovery.discovered', {
-              orderId: order.id,
-              countryId: country.id,
-              cellId,
-              discoveryType,
-              d100: roll,
-              x: cell.x,
-              y: cell.y,
-            }, 'private');
+            emit(
+              order.id,
+              country.id,
+              'discovery.discovered',
+              {
+                orderId: order.id,
+                countryId: country.id,
+                cellId,
+                discoveryType,
+                d100: roll,
+                x: cell.x,
+                y: cell.y,
+              },
+              'private',
+            );
             orderDiscoveries.push({ x: cell.x, y: cell.y, roll, type: discoveryType });
           }
         }
