@@ -294,12 +294,7 @@ export function createBaselineTurnResolver(): TurnResolver<
 
       if (order.type === 'colonization') {
         const radius = ruleset.parameters.colonizationRadius;
-        if (
-          x < radius ||
-          y < radius ||
-          x + radius >= mapWidth ||
-          y + radius >= mapHeight
-        ) {
+        if (x < radius || y < radius || x + radius >= mapWidth || y + radius >= mapHeight) {
           orderResults.push(
             rejection(
               order.id,

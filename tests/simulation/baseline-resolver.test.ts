@@ -166,7 +166,13 @@ describe('baseline turn resolver', () => {
 
   it('distributes nine colony residents across captured land cells deterministically', () => {
     const terrain = Array.from({ length: 25 }, () => 'w');
-    for (const [x, y] of [[1, 1], [2, 1], [1, 2], [2, 2]]) terrain[y! * 5 + x!] = 'l';
+    for (const [x, y] of [
+      [1, 1],
+      [2, 1],
+      [1, 2],
+      [2, 2],
+    ])
+      terrain[y! * 5 + x!] = 'l';
     const result = resolve(
       createState(terrain.join('')),
       [createOrder('40000000-0000-4000-8000-000000000015')],
