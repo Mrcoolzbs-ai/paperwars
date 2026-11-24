@@ -19,6 +19,9 @@ export interface BaselineCellState {
   readonly y: number;
   readonly population: number;
   readonly buildingType: string | null;
+  /** Hydrated from the relational ownership projection for colony lifecycle handling. */
+  readonly territoryId?: string;
+  readonly territoryType?: 'core' | 'colony';
 }
 
 export interface BaselineCountryState {
@@ -29,6 +32,10 @@ export interface BaselineCountryState {
   readonly government: string;
   readonly flagDataUrl: string | null;
   readonly officialSystem: Readonly<Record<string, unknown>>;
+  /** Enabled by worker hydration for real campaign states; omitted in legacy unit fixtures. */
+  readonly economyEnabled?: boolean;
+  /** Future unit state; each unit reserves one coin per turn until a detailed unit system exists. */
+  readonly units?: readonly unknown[];
   readonly cells: readonly BaselineCellState[];
 }
 
@@ -85,6 +92,35 @@ function stableUuid(value: string): string {
 
 function coordinateKey(x: number, y: number): string {
   return `${x},${y}`;
+}
+
+interface CountrySupply {
+  readonly population: number;
+  readonly food: number;
+  readonly goods: number;
+}
+
+function getCountrySupply(
+  country: BaselineCountryState,
+  population = country.cells.reduce((sum, cell) => sum + Math.max(0, cell.population), 0),
+  disabledCellIds: ReadonlySet<string> = new Set(),
+): CountrySupply {
+  const factories = country.cells.filter((cell) => cell.buildingType === 'factory');
+  const activeFactories = factories.filter((cell) => !disabledCellIds.has(cell.id));
+  const activeFields = country.cells.filter(
+    (cell) => cell.buildingType === 'field' && !disabledCellIds.has(cell.id),
+  );
+  const food = activeFields.reduce((total, field) => {
+    const factoryNearby = factories.some(
+      (factory) => Math.abs(factory.x - field.x) <= 1 && Math.abs(factory.y - field.y) <= 1,
+    );
+    return total + (factoryNearby ? 5 : 10);
+  }, 0);
+  return { population, food, goods: activeFactories.length * 10 };
+}
+
+function buildingUpkeep(buildingType: string | null): number {
+  return buildingType === 'tower' ? 2 : buildingType ? 1 : 0;
 }
 
 function isCoordinate(value: unknown): value is number {
@@ -187,6 +223,7 @@ export function createBaselineTurnResolver(): TurnResolver<
               type,
               String(payload['x'] ?? ''),
               String(payload['y'] ?? ''),
+              String(payload['territoryId'] ?? ''),
             ].join(':'),
           ),
         ),
@@ -394,6 +431,36 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
+        if (country.economyEnabled) {
+          const currentPopulation = country.cells.reduce(
+            (sum, cell) => sum + Math.max(0, cell.population),
+            0,
+          );
+          const supply = getCountrySupply(country, currentPopulation + landCandidates.length);
+          if (supply.food < supply.population || supply.goods < supply.population) {
+            const foodShortage = supply.food < supply.population;
+            const goodsShortage = supply.goods < supply.population;
+            orderResults.push({
+              orderId: order.id,
+              status: 'rejected',
+              resultCode: 'COLONIZATION_ECONOMY_SHORTAGE',
+              message: foodShortage && goodsShortage
+                ? 'Колонизация недоступна: не хватает продовольствия и товаров.'
+                : foodShortage
+                  ? 'Колонизация недоступна: не хватает продовольствия.'
+                  : 'Колонизация недоступна: не хватает товаров.',
+              data: {
+                population: supply.population,
+                food: supply.food,
+                goods: supply.goods,
+                foodShortage,
+                goodsShortage,
+              },
+            });
+            continue;
+          }
+        }
+
         const territoryId = stableUuid(
           `paperwars:territory:${snapshot.campaignId}:${country.id}:${order.id}`,
         );
@@ -413,7 +480,15 @@ export function createBaselineTurnResolver(): TurnResolver<
           const population = isLand ? 1 : 0;
           country.cells = [
             ...country.cells,
-            { id: cellId, x: cell.x, y: cell.y, population, buildingType: null },
+            {
+              id: cellId,
+              x: cell.x,
+              y: cell.y,
+              population,
+              buildingType: null,
+              territoryId,
+              territoryType: 'colony',
+            },
           ];
           ownership.set(key, country.id);
           colonizedCells += 1;
@@ -508,6 +583,109 @@ export function createBaselineTurnResolver(): TurnResolver<
       );
     }
 
+    const countryEconomies: Array<Record<string, unknown>> = [];
+    for (const country of countries) {
+      if (!country.economyEnabled) continue;
+
+      const population = country.cells.reduce((sum, cell) => sum + Math.max(0, cell.population), 0);
+      const gold = country.cells.filter((cell) => cell.buildingType === 'gold_mine').length;
+      const income = gold * population;
+      const unitCount = country.units?.length ?? 0;
+      const unitUpkeep = unitCount;
+      const buildings = country.cells.filter((cell) => cell.buildingType !== null);
+      const initialBuildingUpkeep = buildings.reduce(
+        (sum, cell) => sum + buildingUpkeep(cell.buildingType),
+        0,
+      );
+      let remainingBuildingUpkeep = initialBuildingUpkeep;
+      const disabledCellIds = new Set<string>();
+      const disabledBuildings: Array<{ x: number; y: number; type: string; upkeepSaved: number }> = [];
+      const disableCandidates = buildings.filter((cell) => cell.buildingType !== 'gold_mine');
+
+      while (
+        income < remainingBuildingUpkeep + unitUpkeep &&
+        disableCandidates.length > 0
+      ) {
+        const drawIndex = random.uniform(
+          'economy',
+          `${country.id:disable-building:${snapshot.turnNumber:${disabledBuildings.length}"}`,
+          0,
+          disableCandidates.length - 1,
+        );
+        const [disabled] = disableCandidates.splice(drawIndex, 1);
+        if (!disabled) break;
+        const saved = buildingUpkeep(disabled.buildingType);
+        disabledCellIds.add(disabled.id);
+        remainingBuildingUpkeep -= saved;
+        disabledBuildings.push({
+          x: disabled.x,
+          y: disabled.y,
+          type: disabled.buildingType!,
+          upkeepSaved: saved,
+        });
+      }
+
+      const supply = getCountrySupply(country, population, disabledCellIds);
+      const foodShortage = supply.food < population;
+      const goodsShortage = supply.goods < population;
+      let starvedColonies = 0;
+      let fledColonies = 0;
+      if (foodShortage || goodsShortage) {
+        const colonies = new Map<string, BaselineCellState[]>();
+        for (const cell of country.cells) {
+          if (cell.territoryType !== 'colony' || !cell.territoryId) continue;
+          const colony = colonies.get(cell.territoryId) ?? [];
+          colony.push(cell);
+          colonies.set(cell.territoryId, colony);
+        }
+        for (const [territoryId, colonyCells] of colonies) {
+          const reason = foodShortage ? 'starved' : 'fled';
+          if (reason === 'starved') starvedColonies += 1;
+          else fledColonies += 1;
+          const removedPopulation = colonyCells.reduce(
+            (sum, cell) => sum + Math.max(0, cell.population),
+            0,
+          );
+          country.cells = country.cells.filter((cell) => cell.territoryId !== territoryId);
+          for (const cell of colonyCells) ownership.delete(coordinateKey(cell.x, cell.y));
+          emit(
+            `economy:${country.id`,
+            country.id,
+            'colony.removed',
+            {
+              countryId: country.id,
+              territoryId,
+              reason,
+              removedCellCount: colonyCells.length,
+              removedPopulation,
+            },
+          );
+        }
+      }
+
+      countryEconomies.push({
+        countryId: country.id,
+        population,
+        gold,
+        income,
+        buildingUpkeep: remainingBuildingUpkeep,
+        initialBuildingUpkeep,
+        unitCount,
+        unitUpkeep,
+        expenses: remainingBuildingUpkeep + unitUpkeep,
+        unpaidExpenses: Math.max(0, remainingBuildingUpkeep + unitUpkeep - income),
+        disabledBuildings,
+        food: supply.food,
+        foodDemand: population,
+        foodShortage,
+        goods: supply.goods,
+        goodsDemand: population,
+        goodsShortage,
+        starvedColonies,
+        fledColonies,
+      });
+    }
+
     const {
       discoveredCells: _discoveredCells,
       adminCountryIds: _adminCountryIds,
@@ -534,6 +712,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         discoveriesRolled,
         residentsAdded,
         constructions,
+        countries: countryEconomies,
       },
       battleReports: [],
       campaignEnded: false,
