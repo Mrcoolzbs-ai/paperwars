@@ -177,8 +177,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       events.push(event);
     };
 
-    const sortedOrders = [...orders].sort((left, right) => left.id.localeCompare(right.id));
-    for (const order of sortedOrders) {
+    for (const order of orders) {
       const country = countriesById.get(order.countryId);
       if (country === undefined) {
         orderResults.push(rejection(order.id, 'COUNTRY_NOT_FOUND', 'Государство приказа не найдено.'));
