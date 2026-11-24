@@ -139,6 +139,7 @@
 
   const buildingMeta = {
     factory:{label:'Фабрика',code:'Ф',required:2,asset:'/assets/buildings/factory.jpg',color:'#5b6570'},
+    factory_level_2:{label:'Завод II уровня',code:'Ф²',required:2,asset:'/assets/buildings/factory.jpg',color:'#5b6570'},
     field:{label:'Поле',code:'П',required:2,asset:'/assets/buildings/field.jpg',color:'#6c9344'},
     gold_mine:{label:'Золотая шахта',code:'З',required:1,asset:'/assets/buildings/gold-mark.jpg',color:'#c99722'},
     capital:{label:'Столица',code:'★',required:1,asset:'/assets/buildings/capital.jpg',color:'#6b477d'},
@@ -1623,6 +1624,24 @@
     return count;
   }
 
+  const SCIENCE_REQUIRED_BY_BUILDING = {
+    rice_field: 2,
+    dam: 3,
+    field_level_2: 10,
+    factory_level_2: 10,
+    textile_workshop_level_2: 15,
+  };
+
+  function currentScienceLevel() {
+    return Math.max(0, Number(
+      (state.countryProfile?.buildings || []).find((item) => item.type === 'science')?.count || 0
+    ));
+  }
+
+  function scienceRequirementFor(type) {
+    return Number(SCIENCE_REQUIRED_BY_BUILDING[type] || 0);
+  }
+
   const mapBuildingOptions = [
     ['factory', 'Фабрика'],
     ['field', 'Поле'],
@@ -1958,10 +1977,13 @@
         content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
         content += mapBuildingOptions
           .filter(([type]) => type !== 'fisher' || mapAdjacentWaterCount(cell.x, cell.y) > 0)
-          .map(([type, label]) =>
-            '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
-            type + '">' + label + '</button>',
-          ).join('');
+          .map(([type, label]) => {
+            const required = scienceRequirementFor(type);
+            const locked = required > currentScienceLevel();
+            return '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
+              type + '"' + (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+              label + (locked ? ' · Наука ' + required : '') + '</button>';
+          }).join('');
         content += '</div>';
       } else {
         content += '<p class="map-context-note">' +
@@ -1974,7 +1996,11 @@
           content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу</button>';
         }
         if (mapAdjacentWaterCount(cell.x, cell.y) > 0) {
-          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam">Построить дамбу</button>';
+          const required = scienceRequirementFor('dam');
+          const locked = currentScienceLevel() < required;
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam"' +
+            (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+            (locked ? 'Дамба · Наука ' + required : 'Построить дамбу') + '</button>';
         }
         content += '</div>';
       } else if (ownedCell.structureType) {
@@ -1988,13 +2014,30 @@
           escapeHtml(buildingMeta[ownedCell.buildingType]?.label || 'здание') + '</button>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') {
+        const required = scienceRequirementFor('field_level_2');
+        const locked = currentScienceLevel() < required;
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2">Улучшить поле до II уровня · бесплатно</button>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2"' +
+          (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+          (locked ? 'Поле II · Наука ' + required : 'Улучшить поле до II уровня · бесплатно') + '</button>';
+        content += '</div>';
+      }
+      if (!ownedCell.flooded && ownedCell.buildingType === 'factory') {
+        const required = scienceRequirementFor('factory_level_2');
+        const locked = currentScienceLevel() < required;
+        content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="factory_level_2"' +
+          (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+          (locked ? 'Завод II · Наука ' + required : 'Улучшить завод до II уровня · бесплатно') + '</button>';
         content += '</div>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'textile_workshop') {
+        const required = scienceRequirementFor('textile_workshop_level_2');
+        const locked = currentScienceLevel() < required;
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2">Улучшить мастерскую · бесплатно</button>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2"' +
+          (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+          (locked ? 'Мастерская II · Наука ' + required : 'Улучшить мастерскую · бесплатно') + '</button>';
         content += '</div>';
       }
       if (actionsRemaining > 0 && canColonizeRegion) {
@@ -2983,7 +3026,7 @@
         '</span></div>' +
         '<div class="country-doc-bottom">' +
           '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
-            String(counts.get('factory') || 0) + ' фабрики</span><small>' +
+            String((counts.get('factory') || 0) + (counts.get('factory_level_2') || 0)) + ' завода</span><small>' +
             String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
               (economy.goodsShortage ? 'дефицит' : 'достаточно') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
