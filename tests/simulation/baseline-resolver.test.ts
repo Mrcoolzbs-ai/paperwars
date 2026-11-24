@@ -16,14 +16,23 @@ function createState(
   discoveredCells: BaselineWorldState['discoveredCells'] = [],
   width = 5,
   includeStartingTerritory = true,
+  fullStartingSide = false,
 ): BaselineWorldState {
-  const startingCell = {
-    id: '60000000-0000-4000-8000-000000000099',
-    x: 0,
-    y: 2,
-    population: terrain[2 * width] === 'l' ? 1 : 0,
-    buildingType: null,
-  };
+  const startingCells = fullStartingSide
+    ? [1, 2, 3].map((y) => ({
+        id: `60000000-0000-4000-8000-0000000000${y}0`,
+        x: 0,
+        y,
+        population: terrain[y * width] === 'l' ? 1 : 0,
+        buildingType: null,
+      }))
+    : [{
+        id: '60000000-0000-4000-8000-000000000099',
+        x: 0,
+        y: 2,
+        population: terrain[2 * width] === 'l' ? 1 : 0,
+        buildingType: null,
+      }];
   return {
     campaignId,
     turnNumber: 1,
@@ -37,7 +46,7 @@ function createState(
         government: 'republic',
         flagDataUrl: null,
         officialSystem: {},
-        cells: includeStartingTerritory ? [startingCell] : [],
+        cells: includeStartingTerritory ? startingCells : [],
       },
     ],
     discoveredCells,
@@ -113,7 +122,7 @@ describe('baseline turn resolver', () => {
   it('colonizes every free land cell in the 3x3 square and rolls one d100 per cell', () => {
     const random = createRandom([1, 100, 2, 99, 45, 67, 88, 3, 52]);
     const result = resolve(
-      createState('l'.repeat(25)),
+      createState('l'.repeat(25), [], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000004')],
       random.source,
     );
@@ -157,7 +166,7 @@ describe('baseline turn resolver', () => {
     terrain[2 * 5 + 2] = 'l';
     const random = createRandom([100]);
     const result = resolve(
-      createState(terrain.join('')),
+      createState(terrain.join(''), [], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000005')],
       random.source,
     );
@@ -191,7 +200,7 @@ describe('baseline turn resolver', () => {
     ])
       terrain[y! * 5 + x!] = 'l';
     const result = resolve(
-      createState(terrain.join('')),
+      createState(terrain.join(''), [], 5, true, true),
       [createOrder('40000000-0000-4000-8000-000000000015')],
       createRandom().source,
     );
@@ -215,6 +224,21 @@ describe('baseline turn resolver', () => {
     expect(result.orderResults[0]).toMatchObject({
       status: 'rejected',
       resultCode: 'COLONIZATION_OUT_OF_BOUNDS',
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
+    expect(random.calls).toHaveLength(0);
+  });
+
+  it('rejects a colony that touches the country at only one cell', () => {
+    const random = createRandom();
+    const result = resolve(
+      createState('l'.repeat(25)),
+      [createOrder('40000000-0000-4000-8000-000000000016')],
+      random.source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'COLONIZATION_NOT_ADJACENT',
     });
     expect(result.nextState.countries[0]?.cells).toHaveLength(1);
     expect(random.calls).toHaveLength(0);
@@ -273,7 +297,7 @@ describe('baseline turn resolver', () => {
   it('allows a later colony to touch an earlier colony in the same turn', () => {
     const random = createRandom();
     const result = resolve(
-      createState('l'.repeat(45), [], 9),
+      createState('l'.repeat(45), [], 9, true, true),
       [
         createOrder('40000000-0000-4000-8000-000000000019', 'colonization', { x: 2, y: 2 }),
         createOrder('40000000-0000-4000-8000-000000000020', 'colonization', { x: 5, y: 2 }),

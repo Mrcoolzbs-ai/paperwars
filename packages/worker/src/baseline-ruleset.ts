@@ -51,6 +51,8 @@ export interface BaselineWorldState extends Record<string, unknown> {
     readonly terrain: string;
   };
   readonly countries: readonly BaselineCountryState[];
+  /** Worker-only country IDs with an administrator owner. */
+  readonly adminCountryIds?: readonly string[];
   /** Worker-only hydration data; deliberately removed from the next public world snapshot. */
   readonly discoveredCells?: readonly BaselineDiscoverySeed[];
 }
@@ -146,6 +148,7 @@ export function createBaselineTurnResolver(): TurnResolver<
         cells: country.cells.map((cell) => ({ ...cell })),
       }));
     const countriesById = new Map(countries.map((country) => [country.id, country]));
+    const adminCountryIds = new Set(snapshot.adminCountryIds ?? []);
     const discoveredByCoordinate = new Map(
       (state.discoveredCells ?? []).map((discovery) => [
         coordinateKey(discovery.x, discovery.y),
@@ -210,7 +213,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       }
 
       const actionsUsed = actionsUsedByCountry.get(country.id) ?? 0;
-      if (actionsUsed >= ruleset.parameters.actionPointsPerTurn) {
+      if (!adminCountryIds.has(country.id) && actionsUsed >= ruleset.parameters.actionPointsPerTurn) {
         orderResults.push(
           rejection(
             order.id,
@@ -351,29 +354,25 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
-        const borderOffsets = [
-          [-1, 0],
-          [1, 0],
-          [0, -1],
-          [0, 1],
-        ] as const;
-        let touchesOwnTerritory = false;
-        for (const cell of candidates) {
-          for (const [dx, dy] of borderOffsets) {
-            if (ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id) {
-              touchesOwnTerritory = true;
-              break;
-            }
-          }
-          if (touchesOwnTerritory) break;
-        }
+        const sideLength = radius * 2 + 1;
+        const adjacentSides = [
+          Array.from({ length: sideLength }, (_, offset) => [x - radius + offset, y - radius - 1] as const),
+          Array.from({ length: sideLength }, (_, offset) => [x - radius + offset, y + radius + 1] as const),
+          Array.from({ length: sideLength }, (_, offset) => [x - radius - 1, y - radius + offset] as const),
+          Array.from({ length: sideLength }, (_, offset) => [x + radius + 1, y - radius + offset] as const),
+        ];
+        const touchesOwnTerritory = adjacentSides.some((side) =>
+          side.every(([adjacentX, adjacentY]) =>
+            ownership.get(coordinateKey(adjacentX, adjacentY)) === country.id,
+          ),
+        );
 
         if (!touchesOwnTerritory) {
           orderResults.push(
             rejection(
               order.id,
               'COLONIZATION_NOT_ADJACENT',
-              'Новая колония должна примыкать стороной к твоей территории или ранее поставленной колонии.',
+              'Новая колония должна примыкать ко всему государству полной стороной из трёх клеток.',
             ),
           );
           continue;
@@ -493,7 +492,11 @@ export function createBaselineTurnResolver(): TurnResolver<
       );
     }
 
-    const { discoveredCells: _discoveredCells, ...persistentState } = state;
+    const {
+      discoveredCells: _discoveredCells,
+      adminCountryIds: _adminCountryIds,
+      ...persistentState
+    } = state;
     const nextState: BaselineWorldState = {
       ...persistentState,
       turnNumber: snapshot.turnNumber + 1,
