@@ -3277,6 +3277,8 @@
     const scienceLevel = mapCountry?.cells.filter((cell) => cell.buildingType === 'science').length ??
       Number(counts.get('science') || 0);
     const armyUnits = mapCountry?.units || [];
+    const generals = mapCountry?.generals || [];
+    const armies = mapCountry?.armies || [];
     const armyRows = Array.from(armyUnits.reduce((groups, unit) => {
       const key = unit.type + ':' + unit.barracksX + ':' + unit.barracksY;
       const current = groups.get(key) || { type: unit.type, x: unit.barracksX, y: unit.barracksY, count: 0 };
@@ -3293,6 +3295,22 @@
         ' · Ув ' + String(stats?.dodge ?? '—') + '/6 · Бр ' + String(stats?.armor ?? '—') +
         ' · Атк ' + String(stats?.attack ?? '—') + ' · HP ' + String(stats?.health ?? '—') +
         '</small></div>';
+    }).join('');
+    const generalRows = generals.map((general) =>
+      '<div class="country-doc-unit-item"><strong>' + escapeHtml(general.name) +
+      ' · ' + String(general.stars) + '/6 звёзд</strong><small>Содержание ' +
+      String(general.upkeep) + ' мон./ход · ' +
+      (general.armyId ? 'Командует сформированным отрядом' : 'Свободен, ожидает назначения') +
+      '</small></div>'
+    ).join('');
+    const armyCards = armies.map((army) => {
+      const commander = generals.find((general) => general.id === army.generalId);
+      return '<div class="country-doc-unit-item"><strong>' + army.romanNumeral +
+        ' · ' + escapeHtml(army.name) + ' · ' + String(army.unitIds.length) +
+        ' бойцов</strong><small>Генерал: ' + escapeHtml(commander?.name || '—') +
+        ' · ' + String(commander?.stars ?? '—') + '/6 ★ · ' +
+        army.size + ' · скорость ' + String(army.movementRange) +
+        ' клеток/ход · пока стоит у казармы</small></div>';
     }).join('');
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
@@ -3367,10 +3385,14 @@
         '<div class="country-doc-middle">' +
           '<section class="country-doc-military"><h3>Армия и гарнизоны</h3>' +
             '<div><b>⚔</b><span>' + String(armyUnits.length) + ' юнитов</span><strong>' +
-              String(economy.unitUpkeep || 0) + ' мон. / ход</strong></div>' +
+              String(economy.armyMaintenance || 0) + ' мон. / ход</strong></div>' +
             '<small>Бюджет армии: ' + String(economy.armyBudget || 0) +
-              ' · Свободно: ' + String(economy.armyBudgetRemaining || 0) + '</small>' +
-            (armyRows ? '<div class="country-doc-unit-list">' + armyRows + '</div>' :
+              ' · Свободно: ' + String(economy.armyBudgetRemaining || 0) +
+              ' · Генералов: ' + String(generals.length) +
+              ' (содержание ' + String(economy.generalUpkeep || 0) + ')</small>' +
+            (armies.length ? '<h4>Отряды</h4><div class="country-doc-unit-list">' + armyCards + '</div>' : '') +
+            (generals.length ? '<h4>Генералы</h4><div class="country-doc-unit-list">' + generalRows + '</div>' : '') +
+            (armyRows ? '<h4>Гарнизон</h4><div class="country-doc-unit-list">' + armyRows + '</div>' :
               '<small>Пока нет нанятых юнитов. Найм доступен через контекстное меню казармы на большой карте.</small>') +
           '</section>' +
           '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
