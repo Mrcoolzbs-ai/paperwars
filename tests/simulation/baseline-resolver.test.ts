@@ -805,10 +805,16 @@ describe('baseline turn resolver', () => {
   });
 
   it('allows greenhouse and dam overlays on cells but prevents installing both on one cell', () => {
-    const state = createEconomyState([
+    const baseState = createEconomyState([
       economyCell('gold', 0, 0, 10, 'gold_mine'),
       economyCell('field', 1, 0, 1, 'field'),
+      economyCell('science-1', 3, 0, 0, 'science'),
+      economyCell('science-2', 4, 0, 0, 'science'),
+      economyCell('science-3', 5, 0, 0, 'science'),
     ]);
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 1] = 'w';
+    const state = { ...baseState, map: { ...baseState.map, terrain: terrain.join('') } };
     const result = resolve(
       state,
       [
@@ -842,6 +848,9 @@ describe('baseline turn resolver', () => {
       economyCell('gold', 0, 0, 30, 'gold_mine'),
       economyCell('field', 1, 0, 1, 'field'),
       economyCell('workshop', 2, 0, 1, 'textile_workshop'),
+      ...Array.from({ length: 15 }, (_, index) =>
+        economyCell(`science-${index}`, (index + 3) % 9, Math.floor((index + 3) / 9), 0, 'science'),
+      ),
     ]);
     const result = resolve(
       state,
@@ -864,16 +873,122 @@ describe('baseline turn resolver', () => {
       'BUILDING_UPGRADED',
       'BUILDING_UPGRADED',
     ]);
-    expect(result.nextState.countries[0]?.cells.map((cell) => cell.buildingType)).toEqual([
-      'gold_mine',
-      'field_level_2',
-      'textile_workshop_level_2',
-    ]);
+    expect(
+      result.nextState.countries[0]?.cells
+        .filter((cell) => cell.buildingType !== 'science')
+        .map((cell) => cell.buildingType),
+    ).toEqual(['gold_mine', 'field_level_2', 'textile_workshop_level_2']);
     const actionPointsUsed = result.economicReport?.['actionPointsUsed'] as
       Record<string, number> | undefined;
     expect(actionPointsUsed?.[countryId] ?? 0).toBe(0);
     const economy = (result.economicReport?.['countries'] as Array<Record<string, unknown>>)[0];
-    expect(economy).toMatchObject({ initialBuildingUpkeep: 6, expenses: 6 });
+    expect(economy).toMatchObject({ initialBuildingUpkeep: 21, expenses: 21 });
+  });
+
+  it('uses the live science-centre count for dam unlocks and keeps existing dams when science falls', () => {
+    const cells = [
+      economyCell('science-one', 0, 0, 0, 'science'),
+      economyCell('science-two', 1, 0, 0, 'science'),
+      economyCell('science-three', 2, 0, 0, 'science'),
+      {
+        ...economyCell('empty-a', 4, 2, 1),
+        structureType: null,
+      },
+      economyCell('empty-b', 5, 2, 1),
+    ];
+    const baseState = createEconomyState(cells);
+    const terrain = Array.from({ length: 45 }, () => 'l');
+    terrain[1 * 9 + 4] = 'w';
+    terrain[1 * 9 + 5] = 'w';
+    const state = {
+      ...baseState,
+      map: { ...baseState.map, terrain: terrain.join('') },
+    };
+
+    const first = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000301', 'construction', {
+          x: 4,
+          y: 2,
+          buildingType: 'dam',
+        }),
+      ],
+      createRandom().source,
+    );
+    expect(first.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'STRUCTURE_CONSTRUCTED',
+    });
+
+    const secondState = { ...first.nextState, turnNumber: 2 };
+    const second = resolve(
+      secondState,
+      [
+        createOrder('40000000-0000-4000-8000-000000000302', 'demolition', {
+          x: 2,
+          y: 0,
+        }),
+        createOrder('40000000-0000-4000-8000-000000000303', 'construction', {
+          x: 5,
+          y: 2,
+          buildingType: 'dam',
+        }),
+      ],
+      createRandom([], 2).source,
+    );
+
+    expect(second.orderResults.map((item) => item.resultCode)).toEqual([
+      'BUILDING_DEMOLISHED',
+      'SCIENCE_REQUIRED',
+    ]);
+    const country = second.nextState.countries[0];
+    expect(country?.cells.find((cell) => cell.id === 'empty-a')?.structureType).toBe('dam');
+    expect(country?.cells.find((cell) => cell.id === 'empty-b')?.structureType ?? null).toBeNull();
+    expect(country?.cells.filter((cell) => cell.buildingType === 'science')).toHaveLength(2);
+  });
+
+  it('requires two current science centres to build a greenhouse', () => {
+    const oneCentre = createEconomyState([
+      economyCell('gold', 0, 0, 10, 'gold_mine'),
+      economyCell('field', 1, 0, 1, 'field'),
+      economyCell('science-one', 3, 0, 0, 'science'),
+    ]);
+    const locked = resolve(
+      oneCentre,
+      [
+        createOrder('40000000-0000-4000-8000-000000000311', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'greenhouse',
+        }),
+      ],
+      createRandom().source,
+    );
+    expect(locked.orderResults[0]?.resultCode).toBe('SCIENCE_REQUIRED');
+
+    const twoCentres = createEconomyState([
+      economyCell('gold', 0, 0, 10, 'gold_mine'),
+      economyCell('field', 1, 0, 1, 'field'),
+      economyCell('science-one', 3, 0, 0, 'science'),
+      economyCell('science-two', 4, 0, 0, 'science'),
+    ]);
+    const unlocked = resolve(
+      twoCentres,
+      [
+        createOrder('40000000-0000-4000-8000-000000000312', 'construction', {
+          x: 1,
+          y: 0,
+          buildingType: 'greenhouse',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(unlocked.orderResults[0]?.resultCode).toBe('STRUCTURE_CONSTRUCTED');
+    expect(
+      unlocked.nextState.countries[0]?.cells.find((cell) => cell.id === 'field')?.structureType,
+    ).toBe('greenhouse');
   });
 
   it('adds only one flood surcharge to a cell that has both a field and a greenhouse', () => {

@@ -26,6 +26,7 @@ export {
   listCampaignOrders,
   listCampaignOrderResults,
   closeOrders,
+  closeExpiredOrderWindows,
   rollbackCampaignTurn,
   completeTurnJob,
   StaleTurnJobLeaseError,

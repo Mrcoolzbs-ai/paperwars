@@ -85,9 +85,12 @@ describe('browser client', () => {
         script.body.indexOf('function renderFoundedCards'),
       ),
     );
-    expect(mapRenderer).toContain("ctx.fillText('З'");
-    expect(mapRenderer).not.toContain('strokeRect');
+    expect(mapRenderer).toContain('img.src = meta.asset ||');
+    expect(mapRenderer).toContain('ctx.drawImage(cached.img');
+    expect(mapRenderer).toContain('ctx.fillText(marker');
     expect(mapRenderer).not.toContain("'#302700'");
+    expect(script.body).toContain("ctx.strokeStyle = '#2a9b4a'");
+    expect(script.body).toContain('strokeRect(px + cellSize * 0.08');
     expect(script.body).toContain('countryLabelX');
     expect(script.body).toContain('countryBorderTop - 4');
     expect(countryCardRenderer).toContain("['♟', 'Люди'");
@@ -99,9 +102,9 @@ describe('browser client', () => {
     expect(script.body).toContain('Сессия активна, но список кампаний не загрузился');
     expect(script.body).toContain('Авторизация прошла успешно, но список кампаний не загрузился');
     expect(script.body).toContain('Building symbols are rendered after country labels');
-    expect(script.body).toContain("ctx.fillText('З'");
+    expect(script.body).not.toContain("ctx.fillText('З'");
     expect(script.body).toContain('Эффект: ');
-    expect(countryCardRenderer).toContain('Приказы через глобальную карту');
+    expect(countryCardRenderer).not.toContain('Приказы через глобальную карту');
     expect(script.body).toContain("addEventListener('contextmenu'");
     expect(script.body).toContain("createMapOrder('construction'");
     expect(script.body).toContain("createMapOrder('colonization'");
@@ -119,6 +122,11 @@ describe('browser client', () => {
     expect(script.body).toContain("'/campaigns/' + encodeURIComponent(campaignId) + '/chat'");
     expect(script.body).toContain('function renderChatRooms');
     expect(script.body).toContain('function openChatModal');
+    expect(script.body).toContain('function setChatDockView(view)');
+    expect(script.body).toContain('function filterChatRooms');
+    expect(script.body).toContain('function returnToChatList');
+    expect(script.body).toContain("state.chatDockView === 'conversation'");
+    expect(script.body).toContain('greenhouse: 2,');
     expect(script.body).toContain('setInterval');
     expect(script.body).toContain('function mapColonizationAvailability');
     expect(script.body).toContain('function mapColonizationRegion');
@@ -145,7 +153,12 @@ describe('browser client', () => {
     expect(home.body).toContain('id="confirm-map-orders"');
     expect(home.body).toContain('id="chat-open-button"');
     expect(home.body).toContain('id="chat-modal"');
+    expect(home.body).toContain('id="chat-list-view"');
+    expect(home.body).toContain('id="chat-search"');
+    expect(home.body).toContain('id="chat-list-status"');
     expect(home.body).toContain('id="chat-room-list"');
+    expect(home.body).toContain('id="chat-conversation-view"');
+    expect(home.body).toContain('id="chat-back-button"');
     expect(home.body).toContain('id="chat-compose-form"');
     expect(home.body).toContain('id="profile-button"');
     expect(home.body).toContain('id="profile-screen"');
@@ -161,6 +174,9 @@ describe('browser client', () => {
     expect(stylesheet.body).toContain('.map-context-menu');
     expect(stylesheet.body).toContain('.map-order-summary');
     expect(stylesheet.body).toContain('.chat-modal');
+    expect(stylesheet.body).toContain('.chat-dock-launcher');
+    expect(stylesheet.body).toContain('.chat-dock-window');
+    expect(stylesheet.body).toContain('.chat-search-wrap');
     expect(stylesheet.body).toContain('.chat-room-button');
     expect(stylesheet.body).toContain('.chat-message');
     expect(stylesheet.body).toContain('.profile-layout');

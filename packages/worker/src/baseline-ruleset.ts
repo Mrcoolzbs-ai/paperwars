@@ -73,6 +73,7 @@ export type BaselineOrder = OrderEnvelope<Record<string, unknown>>;
 
 const ADDITIONAL_BUILDING_TYPES = new Set([
   'factory',
+  'factory_level_2',
   'field',
   'rice_field',
   'field_level_2',
@@ -88,6 +89,19 @@ const ADDITIONAL_BUILDING_TYPES = new Set([
   'greenhouse',
   'dam',
 ]);
+
+/**
+ * Science is a live capability level: one currently owned science centre
+ * contributes one science. It is deliberately not accumulated between turns.
+ */
+const SCIENCE_REQUIRED_BY_BUILDING: Readonly<Record<string, number>> = {
+  rice_field: 2,
+  greenhouse: 2,
+  dam: 3,
+  field_level_2: 10,
+  factory_level_2: 10,
+  textile_workshop_level_2: 15,
+};
 
 function stableUuid(value: string): string {
   const chars = createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 32).split('');
@@ -143,39 +157,50 @@ function adjacentToWater(
   width: number,
   height: number,
 ): boolean {
-  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-      if (offsetX === 0 && offsetY === 0) continue;
-      const nextX = x + offsetX;
-      const nextY = y + offsetY;
-      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
-        return true;
-      }
-    }
-  }
-  return false;
+  return adjacentWaterCount(x, y, terrain, width, height) > 0;
 }
 
-function adjacentRiverCount(
+function adjacentToCardinalWater(
   x: number,
   y: number,
   terrain: string,
   width: number,
   height: number,
-): number {
+): boolean {
   const adjacent = [
     [x - 1, y],
     [x + 1, y],
     [x, y - 1],
     [x, y + 1],
   ];
-  return adjacent.filter(
+  return adjacent.some(
     ([nextX, nextY]) =>
       nextX !== undefined &&
       nextY !== undefined &&
       isInsideMap(nextX, nextY, width, height) &&
-      terrain[nextY * width + nextX] === 'r',
-  ).length;
+      terrain[nextY * width + nextX] !== 'l',
+  );
+}
+
+function adjacentWaterCount(
+  x: number,
+  y: number,
+  terrain: string,
+  width: number,
+  height: number,
+): number {
+  let count = 0;
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (isInsideMap(nextX, nextY, width, height) && terrain[nextY * width + nextX] !== 'l') {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
 
 function componentIsDisabled(
@@ -207,7 +232,9 @@ function getCountrySupply(
   mapWidth = 0,
   mapHeight = mapWidth > 0 ? Math.ceil(terrain.length / mapWidth) : 0,
 ): CountrySupply {
-  const factories = country.cells.filter((cell) => cell.buildingType === 'factory');
+  const factories = country.cells.filter(
+    (cell) => cell.buildingType === 'factory' || cell.buildingType === 'factory_level_2',
+  );
   const active = (cell: BaselineCellState): boolean =>
     !componentIsDisabled(cell, 'building', disabledComponents);
   const activeFactories = factories.filter(active);
@@ -267,8 +294,8 @@ function getCountrySupply(
     } else if (cell.buildingType === 'hunter') {
       output = season === 'spring' ? 15 : 5;
     } else if (cell.buildingType === 'fisher') {
-      const riverCells = adjacentRiverCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
-      output = riverCells * (season === 'spring' ? 10 : 5);
+      const adjacentWaterCells = adjacentWaterCount(cell.x, cell.y, terrain, mapWidth, mapHeight);
+      output = adjacentWaterCells * (season === 'spring' ? 10 : 5);
     }
     food += output;
   }
@@ -277,7 +304,10 @@ function getCountrySupply(
   return {
     population,
     food,
-    goods: activeFactories.length * 10,
+    goods: activeFactories.reduce(
+      (sum, cell) => sum + (cell.buildingType === 'factory_level_2' ? 15 : 10),
+      0,
+    ),
     clothing,
     cottonFields: activeCottonFields.length,
     textileWorkshops: activeWorkshops.length,
@@ -286,7 +316,13 @@ function getCountrySupply(
 }
 
 function buildingUpkeep(buildingType: string | null): number {
-  if (buildingType === 'tower' || buildingType === 'field_level_2') return 2;
+  if (
+    buildingType === 'tower' ||
+    buildingType === 'field_level_2' ||
+    buildingType === 'factory_level_2'
+  ) {
+    return 2;
+  }
   if (buildingType === 'textile_workshop_level_2') return 3;
   return buildingType ? 1 : 0;
 }
@@ -554,25 +590,35 @@ export function createBaselineTurnResolver(): TurnResolver<
                 reason: 'flood',
               });
               if (destroyRoll('building') <= 35) {
-                updated = { ...updated, buildingType: null };
+                updated = {
+                  ...updated,
+                  buildingType: null,
+                  population: Math.max(0, cell.population) + 1,
+                };
                 emit(`season:${nextTurnNumber}`, country.id, 'building.destroyed', {
                   countryId: country.id,
                   cellId: cell.id,
                   x: cell.x,
                   y: cell.y,
                   buildingType: cell.buildingType,
+                  population: updated.population,
                   reason: 'flood',
                 });
               }
             }
           } else if (cell.buildingType && destroyRoll('building') <= 35) {
-            updated = { ...updated, buildingType: null };
+            updated = {
+              ...updated,
+              buildingType: null,
+              population: Math.max(0, cell.population) + 1,
+            };
             emit(`season:${nextTurnNumber}`, country.id, 'building.destroyed', {
               countryId: country.id,
               cellId: cell.id,
               x: cell.x,
               y: cell.y,
               buildingType: cell.buildingType,
+              population: updated.population,
               reason: 'flood',
             });
           } else if (cell.structureType && destroyRoll('structure') <= 35) {
@@ -603,9 +649,11 @@ export function createBaselineTurnResolver(): TurnResolver<
       const actionsUsed = actionsUsedByCountry.get(country.id) ?? 0;
       const requestedBuildingType = String(order.payload['buildingType'] ?? '');
       const isFreeUpgrade =
-        order.type === 'construction' &&
-        (requestedBuildingType === 'field_level_2' ||
-          requestedBuildingType === 'textile_workshop_level_2');
+        order.type === 'structure_removal' ||
+        (order.type === 'construction' &&
+          (requestedBuildingType === 'field_level_2' ||
+            requestedBuildingType === 'factory_level_2' ||
+            requestedBuildingType === 'textile_workshop_level_2'));
       if (
         !adminCountryIds.has(country.id) &&
         !isFreeUpgrade &&
@@ -631,6 +679,113 @@ export function createBaselineTurnResolver(): TurnResolver<
         continue;
       }
 
+      if (order.type === 'structure_removal') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || cell.structureType === null || cell.structureType === undefined) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'STRUCTURE_NOT_FOUND',
+              'На этой клетке нет мини-сооружения для демонтажа.',
+            ),
+          );
+          continue;
+        }
+        const structureType = cell.structureType;
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id ? { ...candidate, structureType: null } : candidate,
+        );
+        emit(order.id, country.id, 'structure.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          structureType,
+          reason: 'manual_removal',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'STRUCTURE_REMOVED',
+          message: 'Мини-сооружение демонтировано без расхода ОД.',
+          data: { x, y, structureType },
+        });
+        continue;
+      }
+
+      if (order.type === 'demolition') {
+        const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (cell === undefined || terrain[y * mapWidth + x] !== 'l') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'CELL_NOT_OWNED',
+              'Сносить можно только здание на своей клетке суши.',
+            ),
+          );
+          continue;
+        }
+        if (!cell.buildingType) {
+          orderResults.push(
+            rejection(order.id, 'BUILDING_NOT_FOUND', 'На этой клетке нет здания для сноса.'),
+          );
+          continue;
+        }
+        if (cell.buildingType === 'capital' || cell.buildingType === 'gold_mine') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'BUILDING_CANNOT_BE_DEMOLISHED',
+              'Столицу и золотую шахту сносить нельзя.',
+            ),
+          );
+          continue;
+        }
+        const buildingType = cell.buildingType;
+        const removedGreenhouse = cell.structureType === 'greenhouse';
+        const population = Math.max(0, cell.population) + 1;
+        country.cells = country.cells.map((candidate) =>
+          candidate.id === cell.id
+            ? {
+                ...candidate,
+                buildingType: null,
+                structureType: removedGreenhouse ? null : (candidate.structureType ?? null),
+                population,
+              }
+            : candidate,
+        );
+        if (removedGreenhouse) {
+          emit(order.id, country.id, 'structure.destroyed', {
+            orderId: order.id,
+            countryId: country.id,
+            cellId: cell.id,
+            x,
+            y,
+            structureType: 'greenhouse',
+            reason: 'demolition',
+          });
+        }
+        emit(order.id, country.id, 'building.destroyed', {
+          orderId: order.id,
+          countryId: country.id,
+          cellId: cell.id,
+          x,
+          y,
+          buildingType,
+          population,
+          reason: 'demolition',
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'BUILDING_DEMOLISHED',
+          message: 'Здание снесено. Освободившаяся клетка возвращает одного жителя.',
+          data: { x, y, buildingType, population },
+        });
+        continue;
+      }
+
       if (order.type === 'construction') {
         const cell = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
         const buildingType = String(order.payload['buildingType'] ?? '');
@@ -647,7 +802,46 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
+        const requiredScience = SCIENCE_REQUIRED_BY_BUILDING[buildingType] ?? 0;
+        const currentScience = country.cells.filter(
+          (candidate) => candidate.buildingType === 'science',
+        ).length;
+        if (currentScience < requiredScience) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'SCIENCE_REQUIRED',
+              `Для этой постройки требуется ${requiredScience} науки. Сейчас у государства ${currentScience}.`,
+            ),
+          );
+          continue;
+        }
+
+        if (buildingType === 'fisher' && !adjacentToWater(x, y, terrain, mapWidth, mapHeight)) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'FISHER_REQUIRES_WATER',
+              'Рыбака можно построить только рядом с водой или рекой, в том числе по диагонали.',
+            ),
+          );
+          continue;
+        }
+
         if (buildingType === 'greenhouse' || buildingType === 'dam') {
+          if (
+            buildingType === 'dam' &&
+            !adjacentToCardinalWater(x, y, terrain, mapWidth, mapHeight)
+          ) {
+            orderResults.push(
+              rejection(
+                order.id,
+                'DAM_REQUIRES_WATER',
+                'Дамбу можно поставить только на клетке у воды или реки.',
+              ),
+            );
+            continue;
+          }
           if (cell.structureType) {
             orderResults.push(
               rejection(
@@ -702,6 +896,7 @@ export function createBaselineTurnResolver(): TurnResolver<
 
         const upgrades: Record<string, string> = {
           field_level_2: 'field',
+          factory_level_2: 'factory',
           textile_workshop_level_2: 'textile_workshop',
         };
         const upgradeFrom = upgrades[buildingType];

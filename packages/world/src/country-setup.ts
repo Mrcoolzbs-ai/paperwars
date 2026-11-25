@@ -648,10 +648,9 @@ async function buildSnapshot(
 }
 
 /**
- * Corrects legacy turn-one population data using the deterministic world terrain.
- * Only unoccupied dry-land cells may contain a resident. Turn-one snapshots are
- * rebuilt from the corrected relational state so the API and simulation agree.
- * Campaigns whose first turn has already been queued are left untouched.
+ * Corrects legacy turn-one population from the territory occupancy rule: every
+ * empty owned cell contributes one resident, regardless of terrain. Rebuilds the
+ * turn-one snapshot so the API and simulation agree. Leaves queued turns untouched.
  */
 export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
   const campaigns = await pool.query<{ readonly id: string }>(
@@ -1645,8 +1644,14 @@ export function createCountrySetupService(options: {
       if (!country) return null;
       const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
-          `SELECT COALESCE(sum(population), 0)::integer AS resident_count
-           FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
+          `SELECT count(*)::integer AS resident_count
+           FROM country_cells AS owned
+           LEFT JOIN country_buildings AS building
+             ON building.campaign_id = owned.campaign_id
+            AND building.country_id = owned.country_id
+            AND building.cell_id = owned.cell_id
+           WHERE owned.campaign_id = $1 AND owned.country_id = $2
+             AND building.id IS NULL`,
           [campaignId, country.country_id],
         ),
         options.pool.query<{ type: StartBuildingType; count: number }>(

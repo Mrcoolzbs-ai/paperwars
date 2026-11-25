@@ -22,7 +22,6 @@
       <span class="server-state"><i></i> СЕРВЕР В СЕТИ</span>
       <span id="user-label" class="user-label hidden"></span>
       <button id="profile-button" class="button button-quiet hidden" type="button">Профиль</button>
-      <button id="chat-open-button" class="button button-outline hidden" type="button" aria-haspopup="dialog" aria-controls="chat-modal">Чаты</button>
       <button id="logout-button" class="button button-quiet hidden" type="button">Выйти</button>
     </div>
   </header>
@@ -423,50 +422,59 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </main>
-  <div id="chat-modal" class="chat-modal hidden" role="dialog" aria-modal="true" aria-labelledby="chat-modal-title">
-    <button id="chat-modal-backdrop" class="chat-modal-backdrop" type="button" data-chat-close aria-label="Закрыть чаты" tabindex="-1" aria-hidden="true"></button>
-    <section class="chat-modal-window">
-      <header class="chat-modal-header">
-        <div>
-          <div class="panel-kicker">СВЯЗЬ И ДИПЛОМАТИЯ</div>
-          <h2 id="chat-modal-title">Чаты Paper Wars</h2>
-        </div>
-        <button id="chat-close-button" class="chat-close-button" type="button" aria-label="Закрыть чаты">×</button>
-      </header>
-      <div class="chat-modal-layout">
-        <aside class="chat-sidebar">
-          <div class="chat-room-section-label">ОБЩИЙ КАНАЛ</div>
-          <nav id="chat-room-list" class="chat-room-list" aria-label="Список чатов">
+  <button id="chat-open-button" class="chat-dock-launcher hidden" type="button" aria-haspopup="dialog" aria-controls="chat-modal" aria-expanded="false" aria-label="Открыть чаты">
+    <span class="chat-launcher-icon" aria-hidden="true">✉</span>
+    <span class="visually-hidden">Чаты</span>
+    <span id="chat-launcher-alert" class="chat-launcher-alert hidden" aria-hidden="true"></span>
+  </button>
+  <div id="chat-modal" class="chat-modal chat-dock hidden" role="dialog" aria-modal="false" aria-label="Чаты">
+    <section class="chat-dock-window">
+      <section id="chat-list-view" class="chat-dock-view chat-list-view">
+        <header class="chat-dock-header">
+          <h2 id="chat-modal-title">Чаты</h2>
+          <button id="chat-close-button" class="chat-dock-close" type="button" aria-label="Скрыть список чатов">×</button>
+        </header>
+        <nav id="chat-room-list" class="chat-room-list" aria-label="Список чатов">
+          <div class="chat-room-section"><div class="chat-room-section-label">ОБЩИЙ КАНАЛ</div>
             <button class="chat-room-button active" type="button" data-chat-room-scope="world" aria-current="true">
               <span class="chat-room-icon">◎</span>
               <span><strong>Мировой чат</strong><small>Все игроки Paper Wars</small></span>
             </button>
+          </div>
+          <div class="chat-room-section">
             <div class="chat-room-section-label">ТВОИ КАМПАНИИ</div>
             <div class="chat-room-empty">Загрузка списка кампаний…</div>
-          </nav>
-        </aside>
-        <section class="chat-conversation">
-          <header class="chat-conversation-header">
-            <div>
-              <h3 id="chat-room-title">Мировой чат</h3>
-              <p id="chat-room-hint">Общение всех игроков Paper Wars</p>
-            </div>
-            <span class="chat-live-indicator"><i></i> ОНЛАЙН-КАНАЛ</span>
-          </header>
-          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-relevant="additions text">
-            <div class="chat-empty-state">Загрузка сообщений…</div>
           </div>
-          <form id="chat-compose-form" class="chat-compose-form">
-            <label class="visually-hidden" for="chat-message-input">Сообщение</label>
-            <textarea id="chat-message-input" maxlength="2000" rows="2" placeholder="Написать сообщение…" required></textarea>
-            <button id="chat-send-button" class="button button-primary" type="submit">Отправить ↗</button>
-          </form>
-          <div class="chat-conversation-footer">
-            <span id="chat-status" role="status" aria-live="polite"></span>
-            <span>Enter — отправить · Shift+Enter — новая строка</span>
+        </nav>
+        <div class="chat-search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="chat-search" type="search" placeholder="Поиск" autocomplete="off" aria-label="Поиск чатов">
+        </div>
+        <div id="chat-list-status" class="chat-dock-status" role="status" aria-live="polite"></div>
+      </section>
+      <section id="chat-conversation-view" class="chat-dock-view chat-dock-conversation hidden">
+        <header class="chat-dock-header chat-dock-conversation-header">
+          <button id="chat-back-button" class="chat-dock-back" type="button" aria-label="Назад к списку чатов">‹</button>
+          <div class="chat-dock-room-heading">
+            <h3 id="chat-room-title">Мировой чат</h3>
+            <p id="chat-room-hint">Общение всех игроков Paper Wars</p>
           </div>
-        </section>
-      </div>
+          <span class="chat-live-indicator"><i></i></span>
+          <button id="chat-conversation-close-button" class="chat-dock-close" type="button" aria-label="Скрыть чат">×</button>
+        </header>
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-relevant="additions text">
+          <div class="chat-empty-state">Выбери чат, чтобы увидеть сообщения.</div>
+        </div>
+        <form id="chat-compose-form" class="chat-compose-form">
+          <label class="visually-hidden" for="chat-message-input">Сообщение</label>
+          <textarea id="chat-message-input" maxlength="2000" rows="2" placeholder="Написать сообщение…" required></textarea>
+          <button id="chat-send-button" class="button button-primary" type="submit" aria-label="Отправить сообщение">➤</button>
+        </form>
+        <div class="chat-conversation-footer">
+          <span id="chat-status" role="status" aria-live="polite"></span>
+          <span>Enter — отправить · Shift+Enter — новая строка</span>
+        </div>
+      </section>
     </section>
   </div>
   <footer class="site-footer"><span>© PAPER WARS: REBIRTH</span><span>BUILD A WORLD THAT REMEMBERS</span><a href="/health" target="_blank" rel="noreferrer">Состояние API ↗</a></footer>

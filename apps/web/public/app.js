@@ -31,6 +31,8 @@
     authMode: 'login',
     toastTimer: null,
     chatModalOpen: false,
+    chatDockView: 'list',
+    chatSearchQuery: '',
     chatScope: 'world',
     chatCampaignId: null,
     chatCampaigns: [],
@@ -138,35 +140,35 @@
   };
 
   const buildingMeta = {
-    factory:{label:'Фабрика',code:'Ф',required:2,asset:'/assets/buildings/factory.jpg'},
-    field:{label:'Поле',code:'П',required:2,asset:'/assets/buildings/field.jpg'},
-    gold_mine:{label:'Золотая шахта',code:'З',required:1},
-    capital:{label:'Столица',code:'★',required:1,asset:'/assets/buildings/capital.jpg'},
-    religious_building:{label:'Церковь',code:'☼',required:1},
-    science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg'},
-    barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg'},
-    tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg'},
-    rice_field:{label:'Рисовое поле',code:'Р',required:1},
-    field_level_2:{label:'Поле II уровня',code:'П²',required:2},
-    cotton_field:{label:'Хлопковое поле',code:'Х',required:1},
-    textile_workshop:{label:'Ткацкая мастерская',code:'ТМ',required:1},
-    textile_workshop_level_2:{label:'Ткацкая мастерская II уровня',code:'ТМ²',required:3},
-    hunter:{label:'Охотники',code:'О',required:1},
-    fisher:{label:'Рыбаки',code:'Р',required:1},
-    greenhouse:{label:'Теплица',code:'Т',required:1},
-    dam:{label:'Дамба',code:'Д',required:1},
+    factory:{label:'Фабрика',code:'Ф',required:2,asset:'/assets/buildings/factory.jpg',color:'#5b6570'},
+    factory_level_2:{label:'Завод II уровня',code:'Ф²',required:2,asset:'/assets/buildings/factory.jpg',color:'#5b6570'},
+    field:{label:'Поле',code:'П',required:2,asset:'/assets/buildings/field.jpg',color:'#6c9344'},
+    gold_mine:{label:'Золотая шахта',code:'З',required:1,asset:'/assets/buildings/gold-mark.jpg',color:'#c99722'},
+    capital:{label:'Столица',code:'★',required:1,asset:'/assets/buildings/capital.jpg',color:'#6b477d'},
+    religious_building:{label:'Церковь',code:'☼',required:1,color:'#9271a8',iconSvg:'<path d="M50 12 78 34v52H22V34Z"/><path d="M50 12v-8M41 4h18M40 86V57h20v29M34 42h32M50 26v10"/> <path d="M16 86h68"/>'},
+    science:{label:'Лаборатория',code:'Л',required:1,asset:'/assets/buildings/science.jpg',color:'#4c8298'},
+    barracks:{label:'Казармы',code:'К',required:1,asset:'/assets/buildings/barracks.jpg',color:'#9b634d'},
+    tower:{label:'Замок / башня',code:'Т',required:1,asset:'/assets/buildings/tower.jpg',color:'#52677f'},
+    rice_field:{label:'Рисовое поле',code:'Р',required:1,color:'#4d9b9a',iconSvg:'<path d="M14 78h72M18 64h64M22 50h56"/><path d="M28 66V32m0 13-10-8m10 0 10-8M50 52V18m0 14-10-8m10 3 10-9M72 66V36m0 12-9-8m9 2 9-9"/><path d="M8 84q12-7 24 0t24 0 24 0"/>'},
+    field_level_2:{label:'Поле II уровня',code:'П²',required:2,asset:'/assets/buildings/field.jpg',color:'#6c9344'},
+    cotton_field:{label:'Хлопковое поле',code:'Х',required:1,color:'#8f9f55',iconSvg:'<path d="M50 88V48m0 22L30 54m20 9 20-18"/><path d="M30 54c-10-10 2-22 12-15 2-13 20-14 23-1 12 0 16 16 5 22-5 3-12 1-15-4-4 6-17 5-25-2Z"/><circle cx="38" cy="46" r="5"/><circle cx="60" cy="45" r="6"/>'},
+    textile_workshop:{label:'Ткацкая мастерская',code:'ТМ',required:1,color:'#9a7853',iconSvg:'<path d="M18 18h64v64H18Z"/><path d="M26 28h48M26 72h48M32 28v44m12-44v44m12-44v44m12-44v44"/><path d="M12 40h76M12 60h76"/>'},
+    textile_workshop_level_2:{label:'Ткацкая мастерская II уровня',code:'ТМ²',required:3,color:'#9a7853',iconSvg:'<path d="M18 18h64v64H18Z"/><path d="M26 28h48M26 72h48M32 28v44m12-44v44m12-44v44m12-44v44"/><path d="M12 40h76M12 60h76"/><path d="m68 10 5 5 9-9"/>'},
+    hunter:{label:'Охотники',code:'О',required:1,color:'#8a694a',iconSvg:'<path d="M18 24q32 54 64 0M18 24l64 52M82 24 18 76"/><path d="m44 49 12-12m-4 12 10-10"/>'},
+    fisher:{label:'Рыбаки',code:'Р',required:1,color:'#3d8da7',iconSvg:'<path d="M12 52q24-27 52 0-28 27-52 0Z"/><path d="m64 52 22-17v34Z"/><circle cx="30" cy="48" r="3" fill="#111"/><path d="M50 24q20-6 28-18M72 6l8 1-2 8"/>'},
+    greenhouse:{label:'Теплица',code:'Т',required:1,color:'#4b9d55',iconSvg:'<path d="M14 82V42Q50 2 86 42v40Z"/><path d="M50 18v64M28 31v51M72 31v51M18 58h64"/><path d="M40 82V66q10-17 20 0v16"/>'},
+    dam:{label:'Дамба',code:'Д',required:1,color:'#287db5',iconSvg:'<path d="M14 24h72v52H14Z"/><path d="m14 24 22 52m0-52 22 52m0-52 22 52"/><path d="M10 84q10-8 20 0t20 0 20 0 20 0"/>'},
   };
   function buildingIconHtml(type,extraClass='') {
     const meta=buildingMeta[type];if(!meta)return '';
-    if(type==='gold_mine')return '<span class="building-gold-symbol '+extraClass+'" data-building-type="gold_mine" title="Золотая шахта">З</span>';
     if(meta.asset)return '<img class="building-icon-img '+extraClass+'" data-building-type="'+type+'" src="'+meta.asset+'" alt="'+escapeHtml(meta.label)+'" draggable="false">';
-    return '<svg class="building-icon-svg '+extraClass+'" viewBox="0 0 100 100" aria-label="'+escapeHtml(meta.label)+'" fill="none" stroke="#111" stroke-width="6" stroke-linecap="round"><circle cx="50" cy="50" r="17"/><path d="M50 4v24M50 72v24M4 50h24M72 50h24M17 17l17 17M66 66l17 17M83 17 66 34M34 66 17 83"/></svg>';
+    if(meta.iconSvg)return '<svg class="building-icon-svg '+extraClass+'" viewBox="0 0 100 100" role="img" aria-label="'+escapeHtml(meta.label)+'" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">'+meta.iconSvg+'</svg>';
+    return '';
   }
   function drawBuildingMapIcon(ctx, type, x, y, size) {
     const meta = buildingMeta[type];
     if (!meta || size < 1.5) return;
 
-    const marker = type === 'gold_mine' ? 'З' : meta.code.slice(0, 1);
     const insetRatio = type === 'factory' || type === 'tower' ? 0.19 : 0.11;
     const inset = Math.max(0.35, size * insetRatio);
     const inner = Math.max(1, size - inset * 2);
@@ -178,44 +180,11 @@
     ctx.rect(x + 0.25, y + 0.25, Math.max(0.5, size - 0.5), Math.max(0.5, size - 0.5));
     ctx.clip();
 
-    if (type === 'gold_mine') {
-      ctx.fillStyle = '#d6a323';
-      ctx.font = '900 ' + Math.max(3, size * 0.82) + 'px Georgia,serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('З', x + size / 2, y + size / 2 + 0.3);
-      ctx.restore();
-      return;
-    }
-
     if (size < 5.5) {
-      const markerSize = Math.max(1.3, size * 0.72);
-      ctx.fillStyle = '#16251c';
-      ctx.fillRect(x + (size - markerSize) / 2, y + (size - markerSize) / 2, markerSize, markerSize);
-      ctx.fillStyle = '#fff';
-      ctx.font = '900 ' + Math.max(3, size * 0.7) + 'px Arial,sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(marker, x + size / 2, y + size / 2 + 0.2);
-      ctx.restore();
-      return;
-    }
-
-    if (type === 'religious_building') {
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(left, top, inner, inner);
-      ctx.strokeStyle = '#111';
-      ctx.lineWidth = Math.max(0.7, size * 0.065);
+      ctx.fillStyle = meta.color || '#52616b';
       ctx.beginPath();
-      ctx.arc(x + size / 2, y + size / 2, inner * 0.22, 0, Math.PI * 2);
-      for (let i = 0; i < 8; i += 1) {
-        const angle = i * Math.PI / 4;
-        const cx = x + size / 2;
-        const cy = y + size / 2;
-        ctx.moveTo(cx + Math.cos(angle) * inner * 0.31, cy + Math.sin(angle) * inner * 0.31);
-        ctx.lineTo(cx + Math.cos(angle) * inner * 0.47, cy + Math.sin(angle) * inner * 0.47);
-      }
-      ctx.stroke();
+      ctx.arc(x + size / 2, y + size / 2, Math.max(0.8, size * 0.32), 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
       return;
     }
@@ -234,7 +203,10 @@
         const canvas = $('#map-canvas');
         if (canvas && !$('#map-modal').classList.contains('hidden')) drawMapCanvas(canvas, false);
       };
-      img.src = meta.asset;
+      const svgSource = meta.iconSvg
+        ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="#17201b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">' + meta.iconSvg + '</svg>'
+        : '';
+      img.src = meta.asset || ('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgSource));
       state.buildingIconCache[type] = cached;
     }
 
@@ -372,6 +344,11 @@
     if (!status) return;
     status.textContent = message || '';
     status.classList.toggle('error', isError);
+    const listStatus = $('#chat-list-status');
+    if (listStatus) {
+      listStatus.textContent = message || '';
+      listStatus.classList.toggle('error', isError);
+    }
   }
 
   function formatChatTimestamp(value) {
@@ -463,7 +440,8 @@
     if (!button) return;
     const active = state.chatAlerts.size > 0;
     button.classList.toggle('chat-new-message-alert', active);
-    button.setAttribute('aria-label', active ? 'Чаты: есть новые сообщения' : 'Чаты');
+    button.setAttribute('aria-label', active ? 'Чаты: есть новые сообщения' : 'Открыть чаты');
+    $('#chat-launcher-alert')?.classList.toggle('hidden', !active);
   }
 
   function clearChatAlert(roomKey) {
@@ -512,10 +490,6 @@
     label.append(name, hint);
     button.append(iconNode, label);
     button.addEventListener('click', () => {
-      if (active) {
-        clearChatAlert(roomKey);
-        return;
-      }
       clearChatAlert(roomKey);
       onSelect();
     });
@@ -533,17 +507,51 @@
     host.append(entry);
   }
 
+  function setChatDockView(view) {
+    state.chatDockView = view;
+    $('#chat-list-view')?.classList.toggle('hidden', view !== 'list');
+    $('#chat-conversation-view')?.classList.toggle('hidden', view !== 'conversation');
+  }
+
+  function filterChatRooms() {
+    const query = state.chatSearchQuery.trim().toLocaleLowerCase('ru-RU');
+    const host = $('#chat-room-list');
+    if (!host) return;
+    let hasMatch = false;
+    $$('.chat-room-section', host).forEach((section) => {
+      const entries = $$('.chat-room-entry', section);
+      let sectionHasMatch = false;
+      for (const entry of entries) {
+        const matches = !query || entry.textContent.toLocaleLowerCase('ru-RU').includes(query);
+        entry.classList.toggle('hidden', !matches);
+        sectionHasMatch ||= matches;
+      }
+      const empty = $('.chat-room-empty', section);
+      if (empty) empty.classList.toggle('hidden', Boolean(query));
+      const visibleEmpty = Boolean(empty && !query && entries.length === 0);
+      section.classList.toggle('hidden', !sectionHasMatch && !visibleEmpty);
+      hasMatch ||= sectionHasMatch;
+    });
+    const noResults = $('#chat-no-results', host);
+    if (noResults) {
+      noResults.classList.toggle('hidden', !query || hasMatch);
+      noResults.textContent = 'Ничего не найдено';
+    }
+  }
+
   function renderChatRooms() {
     const host = $('#chat-room-list');
     if (!host) return;
     host.replaceChildren();
 
+    const generalSection = document.createElement('section');
+    generalSection.className = 'chat-room-section';
     const generalLabel = document.createElement('div');
     generalLabel.className = 'chat-room-section-label';
     generalLabel.textContent = 'ОБЩИЙ КАНАЛ';
-    host.append(generalLabel);
+    generalSection.append(generalLabel);
 
-    appendChatRoom(host, {
+    appendChatRoom(generalSection, {
       scope: 'world',
       title: 'Мировой чат',
       subtitle: 'Все игроки Paper Wars',
@@ -552,26 +560,31 @@
       onSelect: () => {
         state.chatScope = 'world';
         state.chatCampaignId = null;
+        setChatDockView('conversation');
         renderChatRooms();
         updateChatRoomHeader();
+        startChatPolling();
         void loadChatMessages();
       },
     });
+    host.append(generalSection);
 
+    const campaignSection = document.createElement('section');
+    campaignSection.className = 'chat-room-section';
     const campaignLabel = document.createElement('div');
     campaignLabel.className = 'chat-room-section-label';
     campaignLabel.textContent = 'ТВОИ КАМПАНИИ';
-    host.append(campaignLabel);
+    campaignSection.append(campaignLabel);
 
     if (state.chatCampaigns.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'chat-room-empty';
       empty.textContent = 'Ты пока не состоишь ни в одной кампании.';
-      host.append(empty);
+      campaignSection.append(empty);
     }
 
     for (const campaign of state.chatCampaigns) {
-      appendChatRoom(host, {
+      appendChatRoom(campaignSection, {
         scope: 'campaign',
         campaignId: campaign.id,
         title: campaign.name,
@@ -581,16 +594,25 @@
         onSelect: () => {
           state.chatScope = 'campaign';
           state.chatCampaignId = campaign.id;
+          setChatDockView('conversation');
           renderChatRooms();
           updateChatRoomHeader();
+          startChatPolling();
           void loadChatMessages();
         },
       });
     }
+    host.append(campaignSection);
+
+    const noResults = document.createElement('div');
+    noResults.id = 'chat-no-results';
+    noResults.className = 'chat-room-empty hidden';
+    host.append(noResults);
+    filterChatRooms();
   }
 
   async function loadChatMessages() {
-    if (!state.chatModalOpen || !state.token) return;
+    if (!state.chatModalOpen || state.chatDockView !== 'conversation' || !state.token) return;
     const scope = state.chatScope;
     const campaignId = state.chatCampaignId;
     if (scope === 'campaign' && !campaignId) return;
@@ -602,6 +624,7 @@
       const data = await request(path);
       if (
         !state.chatModalOpen ||
+        state.chatDockView !== 'conversation' ||
         requestId !== state.chatRequestId ||
         scope !== state.chatScope ||
         campaignId !== state.chatCampaignId
@@ -611,7 +634,11 @@
       markChatRoomSeen(chatRoomKey(scope, campaignId), messages);
       setChatStatus('');
     } catch (error) {
-      if (!state.chatModalOpen || requestId !== state.chatRequestId) return;
+      if (
+        !state.chatModalOpen ||
+        state.chatDockView !== 'conversation' ||
+        requestId !== state.chatRequestId
+      ) return;
       if (error.status === 401) {
         closeChatModal();
         state.user = null;
@@ -645,7 +672,11 @@
   function startChatPolling() {
     if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
     state.chatPollingTimer = setInterval(() => {
-      if (state.chatModalOpen && !document.hidden) void loadChatMessages();
+      if (
+        state.chatModalOpen &&
+        state.chatDockView === 'conversation' &&
+        !document.hidden
+      ) void loadChatMessages();
     }, 5000);
   }
 
@@ -675,6 +706,7 @@
       for (const { room, messages } of results) {
         const previous = new Set(state.chatSeenMessageIds[room.key] || []);
         const currentRoom = state.chatModalOpen &&
+          state.chatDockView === 'conversation' &&
           chatRoomKey(state.chatScope, state.chatCampaignId) === room.key;
         if (
           state.chatNotificationsPrimed &&
@@ -725,8 +757,17 @@
     if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
     state.chatPollingTimer = null;
     modal.classList.add('hidden');
-    document.body.classList.remove('chat-modal-open');
+    $('#chat-open-button')?.setAttribute('aria-expanded', 'false');
     $('#chat-open-button')?.focus();
+  }
+
+  function returnToChatList() {
+    if (!state.chatModalOpen) return;
+    state.chatRequestId += 1;
+    if (state.chatPollingTimer !== null) clearInterval(state.chatPollingTimer);
+    state.chatPollingTimer = null;
+    setChatDockView('list');
+    renderChatRooms();
   }
 
   async function openChatModal() {
@@ -734,21 +775,14 @@
     const modal = $('#chat-modal');
     if (!modal) return;
     state.chatModalOpen = true;
+    setChatDockView('list');
     modal.classList.remove('hidden');
-    document.body.classList.add('chat-modal-open');
+    $('#chat-open-button')?.setAttribute('aria-expanded', 'true');
     setChatStatus('');
-    const messageHost = $('#chat-messages');
-    messageHost.replaceChildren();
-    const loading = document.createElement('div');
-    loading.className = 'chat-empty-state';
-    loading.textContent = 'Подключаемся к комнатам…';
-    messageHost.append(loading);
     try {
       await refreshChatCampaigns();
       if (!state.chatModalOpen) return;
-      startChatPolling();
-      await loadChatMessages();
-      $('#chat-message-input').focus();
+      renderChatRooms();
     } catch (error) {
       if (error.status === 401) {
         closeChatModal();
@@ -806,7 +840,7 @@
     } finally {
       state.chatSending = false;
       $('#chat-send-button').disabled = false;
-      if (state.chatModalOpen) input.focus();
+      if (state.chatModalOpen && state.chatDockView === 'conversation') input.focus();
     }
   }
 
@@ -1638,6 +1672,56 @@
     return terrainCodeAt(x, y) === 'l';
   }
 
+  function mapAdjacentWaterCount(x, y) {
+    let count = 0;
+    const width = state.mapView?.width || 0;
+    const height = state.mapView?.height || 0;
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+      for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        if (offsetX === 0 && offsetY === 0) continue;
+        const nextX = x + offsetX;
+        const nextY = y + offsetY;
+        if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) continue;
+        if (terrainCodeAt(nextX, nextY) !== 'l') count += 1;
+      }
+    }
+    return count;
+  }
+
+  function mapCardinalWaterCount(x, y) {
+    const width = state.mapView?.width || 0;
+    const height = state.mapView?.height || 0;
+    return [[-1, 0], [1, 0], [0, -1], [0, 1]].filter(([dx, dy]) => {
+      const nextX = x + dx;
+      const nextY = y + dy;
+      return nextX >= 0 && nextY >= 0 && nextX < width && nextY < height &&
+        terrainCodeAt(nextX, nextY) !== 'l';
+    }).length;
+  }
+
+  const SCIENCE_REQUIRED_BY_BUILDING = {
+    rice_field: 2,
+    greenhouse: 2,
+    dam: 3,
+    field_level_2: 10,
+    factory_level_2: 10,
+    textile_workshop_level_2: 15,
+  };
+
+  function currentScienceLevel() {
+    const ownCountry = (state.mapView?.countries || []).find((item) => item.isMine);
+    if (ownCountry) {
+      return ownCountry.cells.filter((cell) => cell.buildingType === 'science').length;
+    }
+    return Math.max(0, Number(
+      (state.countryProfile?.buildings || []).find((item) => item.type === 'science')?.count || 0
+    ));
+  }
+
+  function scienceRequirementFor(type) {
+    return Number(SCIENCE_REQUIRED_BY_BUILDING[type] || 0);
+  }
+
   const mapBuildingOptions = [
     ['factory', 'Фабрика'],
     ['field', 'Поле'],
@@ -1653,8 +1737,9 @@
   ];
 
   function isFreeUpgradeOrder(order) {
-    return order?.type === 'construction' &&
-      ['field_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType);
+    return order?.type === 'structure_removal' ||
+      (order?.type === 'construction' &&
+        ['field_level_2', 'factory_level_2', 'textile_workshop_level_2'].includes(order.payload?.buildingType));
   }
 
   function mapOrderCoordinates(order) {
@@ -1747,16 +1832,21 @@
     const remainingActions = unlimitedActions ? '∞' : Math.max(0, 3 - actionCount);
     const draftCount = activeOrders.filter((order) => order.status !== 'confirmed').length;
     const confirmedCount = activeOrders.length - draftCount;
+    const status = state.turnStatus;
+    const deadlinePassed = Boolean(status?.deadlineAt &&
+      Date.now() >= new Date(status.deadlineAt).getTime());
     summary.hidden = !state.campaign?.countryId;
     summary.textContent = `ОД: ${actionCount}/${unlimitedActions ? '∞' : '3'} · осталось: ${remainingActions} · черновики: ${draftCount} · подтверждено: ${confirmedCount}`;
     confirm.hidden = !state.campaign?.countryId;
     confirm.disabled =
-      state.turnStatus?.ordersAccepting !== true || state.turnStatus?.ordersConfirmed === true;
-    confirm.textContent = state.turnStatus?.ordersConfirmed
+      status?.ordersAccepting !== true || status?.ordersConfirmed === true;
+    confirm.textContent = status?.ordersConfirmed
       ? 'Приказы подтверждены'
-      : draftCount > 0
-        ? `Подтвердить приказы (${draftCount})`
-        : 'Подтвердить ход без приказов';
+      : deadlinePassed
+        ? 'Ход закрывается автоматически'
+        : draftCount > 0
+          ? `Подтвердить приказы (${draftCount})`
+          : 'Подтвердить ход без приказов';
   }
 
   async function loadMapOrders() {
@@ -1779,7 +1869,11 @@
       return;
     }
     if (state.turnStatus?.ordersAccepting !== true) {
-      showToast('Сейчас приём приказов закрыт.', true);
+      const deadlinePassed = Boolean(state.turnStatus?.deadlineAt &&
+        Date.now() >= new Date(state.turnStatus.deadlineAt).getTime());
+      showToast(deadlinePassed
+        ? 'Срок приёма приказов истёк. Ход закроется автоматически.'
+        : 'Приём приказов закрыт. ' + (state.turnRoomError || 'Проверь, завершили ли все участники основание государств.'), true);
       return;
     }
     if (!isAdminMode() && mapActionCount() >= 3) {
@@ -1805,7 +1899,9 @@
       drawMapCanvas($('#map-canvas'), false);
       showToast(type === 'colonization'
         ? 'Приказ колонизации добавлен в список.'
-        : 'Приказ строительства добавлен в список.');
+        : type === 'demolition'
+          ? 'Приказ на снос добавлен в список.'
+          : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -1912,6 +2008,7 @@
       ownedCell &&
       !ownedCell.flooded &&
       ((ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') ||
+        ownedCell.buildingType === 'factory' ||
         ownedCell.buildingType === 'textile_workshop'),
     );
     const colonyAtCell = (countryAtCell?.territories || []).find((territory) => {
@@ -1940,17 +2037,34 @@
       ).join('');
       content += '</div>';
     } else if (state.turnStatus?.ordersAccepting !== true) {
-      content += '<p class="map-context-note">Приём приказов сейчас закрыт.</p>';
+      const status = state.turnStatus;
+      const deadlinePassed = Boolean(status?.deadlineAt &&
+        Date.now() >= new Date(status.deadlineAt).getTime());
+      const waitingForSetup = status?.ordersLocked === true &&
+        Number(status?.currentTurn || 1) === 1 && !status?.deadlineAt;
+      const intakeMessage = waitingForSetup
+        ? 'Ожидаем, пока все участники основают государства.'
+        : deadlinePassed
+          ? 'Срок приёма приказов истёк. Сервер автоматически закроет ход и запустит расчёт.'
+          : status?.turnJobStatus === 'pending' || status?.turnJobStatus === 'processing'
+            ? 'Ход уже обрабатывается.'
+            : 'Приём приказов сейчас закрыт.';
+      content += '<p class="map-context-note">' + intakeMessage + '</p>';
     } else if (actionsRemaining === 0 && !canFreeUpgrade) {
       content += '<p class="map-context-note">Все 3 очка действий на этот ход уже использованы.</p>';
     } else if (ownedCell) {
       const canBuild = actionsRemaining > 0 && isLand && !ownedCell.buildingType && Number(ownedCell.population) > 0;
       if (canBuild) {
         content += '<div class="map-context-group"><span>СТРОИТЕЛЬСТВО</span>';
-        content += mapBuildingOptions.map(([type, label]) =>
-          '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
-          type + '">' + label + '</button>',
-        ).join('');
+        content += mapBuildingOptions
+          .filter(([type]) => type !== 'fisher' || mapAdjacentWaterCount(cell.x, cell.y) > 0)
+          .map(([type, label]) => {
+            const required = scienceRequirementFor(type);
+            const locked = required > currentScienceLevel();
+            return '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="' +
+              type + '"' + (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+              label + (locked ? ' · Наука ' + required : '') + '</button>';
+          }).join('');
         content += '</div>';
       } else {
         content += '<p class="map-context-note">' +
@@ -1960,21 +2074,55 @@
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
-          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse">Построить теплицу · 1 ОД</button>';
+          const required = scienceRequirementFor('greenhouse');
+          const locked = currentScienceLevel() < required;
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="greenhouse"' +
+            (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+            (locked ? 'Теплица · Наука ' + required : 'Построить теплицу') + '</button>';
         }
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam">Построить дамбу · 1 ОД</button>';
+        if (mapCardinalWaterCount(cell.x, cell.y) > 0) {
+          const required = scienceRequirementFor('dam');
+          const locked = currentScienceLevel() < required;
+          content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="dam"' +
+            (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+            (locked ? 'Дамба · Наука ' + required : 'Построить дамбу') + '</button>';
+        }
         content += '</div>';
       } else if (ownedCell.structureType) {
-        content += '<small>На клетке уже установлена защита: теплица или дамба.</small>';
+        const structureLabel = ownedCell.structureType === 'greenhouse' ? 'теплицу' : 'дамбу';
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="structure-removal">Демонтировать ' +
+          structureLabel + '</button><small>Без расхода ОД.</small>';
+      }
+      if (actionsRemaining > 0 && ownedCell.buildingType &&
+          !['capital', 'gold_mine'].includes(ownedCell.buildingType)) {
+        content += '<button class="map-context-action map-context-remove" type="button" data-map-action="demolition">Снести: ' +
+          escapeHtml(buildingMeta[ownedCell.buildingType]?.label || 'здание') + '</button>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'field' && ownedCell.structureType !== 'greenhouse') {
+        const required = scienceRequirementFor('field_level_2');
+        const locked = currentScienceLevel() < required;
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2">Улучшить поле до II уровня · бесплатно</button>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="field_level_2"' +
+          (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+          (locked ? 'Поле II · Наука ' + required : 'Улучшить поле до II уровня · бесплатно') + '</button>';
+        content += '</div>';
+      }
+      if (!ownedCell.flooded && ownedCell.buildingType === 'factory') {
+        const required = scienceRequirementFor('factory_level_2');
+        const locked = currentScienceLevel() < required;
+        content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="factory_level_2"' +
+          (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+          (locked ? 'Завод II · Наука ' + required : 'Улучшить завод до II уровня · бесплатно') + '</button>';
         content += '</div>';
       }
       if (!ownedCell.flooded && ownedCell.buildingType === 'textile_workshop') {
+        const required = scienceRequirementFor('textile_workshop_level_2');
+        const locked = currentScienceLevel() < required;
         content += '<div class="map-context-group"><span>УЛУЧШЕНИЕ БЕЗ ОД</span>';
-        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2">Улучшить мастерскую · бесплатно</button>';
+        content += '<button class="map-context-action" type="button" data-map-action="construction" data-building-type="textile_workshop_level_2"' +
+          (locked ? ' disabled title="Требуется ' + required + ' науки"' : '') + '>' +
+          (locked ? 'Мастерская II · Наука ' + required : 'Улучшить мастерскую · бесплатно') + '</button>';
         content += '</div>';
       }
       if (actionsRemaining > 0 && canColonizeRegion) {
@@ -1990,9 +2138,6 @@
       content += '<p class="map-context-note">' + mapColonizationMessage(colonizationAvailability.reason) + '</p>';
     }
 
-    if (state.turnStatus?.ordersAccepting !== true && state.campaign?.countryId && !existingOrders.length) {
-      content += '<small>Окно приёма приказов закрыто или ещё не открылось.</small>';
-    }
     if (adminMode) {
       content += '<div class="map-context-group"><span>АДМИНИСТРАТОР</span>';
       if (countryAtCell) {
@@ -2031,6 +2176,10 @@
           });
         } else if (action === 'colonization') {
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
+        } else if (action === 'demolition') {
+          await createMapOrder('demolition', { x: cell.x, y: cell.y });
+        } else if (action === 'structure-removal') {
+          await createMapOrder('structure_removal', { x: cell.x, y: cell.y });
         } else if (action === 'remove-order') {
           await removeMapOrder(button.dataset.orderId);
         } else if (action === 'return-order-to-draft') {
@@ -2122,18 +2271,7 @@
         const py = top + cell.y * cellSize;
         ctx.fillStyle = mapIsLand(cell.x, cell.y) ? '#ffffff' : '#0876b9';
         ctx.fillRect(px, py, cellSize, cellSize);
-        if (!miniature && cell.flooded) {
-          ctx.fillStyle = 'rgba(22, 132, 190, 0.38)';
-          ctx.fillRect(px, py, cellSize, cellSize);
-          ctx.strokeStyle = 'rgba(10, 92, 150, 0.9)';
-          ctx.lineWidth = Math.max(1, cellSize * 0.08);
-          ctx.beginPath();
-          ctx.moveTo(px, py + cellSize * 0.25);
-          ctx.lineTo(px + cellSize, py + cellSize * 0.75);
-          ctx.moveTo(px, py + cellSize * 0.65);
-          ctx.lineTo(px + cellSize, py + cellSize * 0.15);
-          ctx.stroke();
-        }
+
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = miniature ? 0.45 : 0.8;
         ctx.strokeRect(px, py, cellSize, cellSize);
@@ -2172,17 +2310,64 @@
           if (cell.buildingType) {
             drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
           }
-          if (cell.structureType) {
+
+        if (!miniature && cell.flooded) {
+          const dropSize = Math.max(2.5, cellSize * 0.22);
+          const dropX = px + cellSize * 0.14;
+          const dropY = py + cellSize * 0.14;
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(dropX + dropSize * 0.5, dropY);
+          ctx.bezierCurveTo(
+            dropX + dropSize * 0.3, dropY + dropSize * 0.33,
+            dropX, dropY + dropSize * 0.62,
+            dropX + dropSize * 0.08, dropY + dropSize * 0.78,
+          );
+          ctx.bezierCurveTo(
+            dropX + dropSize * 0.17, dropY + dropSize * 1.12,
+            dropX + dropSize * 0.83, dropY + dropSize * 1.12,
+            dropX + dropSize * 0.92, dropY + dropSize * 0.78,
+          );
+          ctx.bezierCurveTo(
+            dropX + dropSize, dropY + dropSize * 0.62,
+            dropX + dropSize * 0.7, dropY + dropSize * 0.33,
+            dropX + dropSize * 0.5, dropY,
+          );
+          ctx.closePath();
+          ctx.fillStyle = '#138bc2';
+          ctx.strokeStyle = '#f3fbff';
+          ctx.lineWidth = Math.max(0.55, cellSize * 0.025);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+          if (cell.structureType === 'greenhouse' &&
+              ['field', 'cotton_field'].includes(cell.buildingType)) {
             ctx.save();
-            ctx.fillStyle = cell.structureType === 'dam' ? '#146a8a' : '#397b42';
-            const markerSize = Math.max(3, cellSize * 0.34);
-            ctx.fillRect(px + cellSize - markerSize - 1, py + 1, markerSize, markerSize);
-            ctx.fillStyle = '#fff';
-            ctx.font = '900 ' + Math.max(4, markerSize * 0.82) + 'px Arial,sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(cell.structureType === 'dam' ? 'Д' : 'Т',
-              px + cellSize - markerSize / 2 - 1, py + markerSize / 2 + 1);
+            ctx.strokeStyle = '#2a9b4a';
+            ctx.lineWidth = Math.max(1.5, cellSize * 0.075);
+            ctx.strokeRect(px + cellSize * 0.08, py + cellSize * 0.08,
+              cellSize * 0.84, cellSize * 0.84);
+            ctx.restore();
+          } else if (cell.structureType === 'dam') {
+            const edges = [
+              { dx: 0, dy: -1, x1: px, y1: py, x2: px + cellSize, y2: py },
+              { dx: 1, dy: 0, x1: px + cellSize, y1: py, x2: px + cellSize, y2: py + cellSize },
+              { dx: 0, dy: 1, x1: px, y1: py + cellSize, x2: px + cellSize, y2: py + cellSize },
+              { dx: -1, dy: 0, x1: px, y1: py, x2: px, y2: py + cellSize },
+            ];
+            ctx.save();
+            ctx.strokeStyle = '#147ec1';
+            ctx.lineWidth = Math.max(2, cellSize * 0.11);
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            for (const edge of edges) {
+              if (!mapIsLand(cell.x + edge.dx, cell.y + edge.dy)) {
+                ctx.moveTo(edge.x1, edge.y1);
+                ctx.lineTo(edge.x2, edge.y2);
+              }
+            }
+            ctx.stroke();
             ctx.restore();
           }
         }
@@ -2207,14 +2392,24 @@
           ctx.restore();
           continue;
         }
-        if (order.type !== 'construction') continue;
+        if (order.type !== 'construction' && order.type !== 'demolition') continue;
         const buildingType = order.payload?.buildingType;
-        if (!buildingMeta[buildingType]) continue;
         const px = left + point.x * cellSize;
         const py = top + point.y * cellSize;
         ctx.save();
         ctx.globalAlpha = order.status === 'confirmed' ? 0.58 : 0.34;
-        drawBuildingMapIcon(ctx, buildingType, px, py, cellSize);
+        if (order.type === 'demolition') {
+          const target = (state.mapView.countries || [])
+            .flatMap((item) => item.cells || [])
+            .find((item) => item.x === point.x && item.y === point.y);
+          if (target?.buildingType) drawBuildingMapIcon(ctx, target.buildingType, px, py, cellSize);
+          ctx.strokeStyle = '#c0392b';
+          ctx.lineWidth = Math.max(1.5, cellSize * 0.1);
+          ctx.setLineDash([Math.max(2, cellSize * 0.2), Math.max(1, cellSize * 0.12)]);
+          ctx.strokeRect(px + cellSize * 0.12, py + cellSize * 0.12, cellSize * 0.76, cellSize * 0.76);
+        } else if (buildingMeta[buildingType]) {
+          drawBuildingMapIcon(ctx, buildingType, px, py, cellSize);
+        }
         ctx.restore();
       }
     }
@@ -2527,6 +2722,8 @@
   function orderTypeLabel(type) {
     const labels = {
       construction: 'Строительство',
+      demolition: 'Снос здания',
+      structure_removal: 'Демонтаж мини-сооружения',
       colonization: 'Колонизация',
       movement: 'Перемещение',
       research: 'Исследование',
@@ -2693,6 +2890,88 @@
     if(!values?.length)return '<span class="country-culture-empty">Культура не задана</span>';
     return values.map((key)=>{const v=cultureInfo[key];if(!v)return '';const tip=v[0]+'\nЭффект: '+v[1];return '<button type="button" class="culture-symbol" data-tooltip="'+escapeHtml(tip)+'" title="'+escapeHtml(tip)+'" aria-label="'+escapeHtml(tip)+'"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+v[2]+'</svg></button>';}).join('');
   }
+  function estimateCountryEconomy(country) {
+    const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
+    const cells = mapCountry?.cells || [];
+    const turnNumber = Math.max(1, Number(state.mapView?.turnNumber || state.turnStatus?.currentTurn || 1));
+    const seasonNames = ['spring', 'summer', 'autumn', 'winter'];
+    const season = state.mapView?.season || seasonNames[Math.floor(((turnNumber - 1) % 24) / 6)];
+    const year = Number(state.mapView?.year || Math.floor((turnNumber - 1) / 24) + 1);
+    const seasonTurn = Number(state.mapView?.seasonTurn || ((turnNumber - 1) % 6) + 1);
+    const population = cells.length
+      ? cells.filter((cell) => !cell.buildingType).length
+      : Number(country.residentCount || 0);
+    const active = (cell) => cell.flooded !== true || cell.buildingType === 'rice_field';
+    const factories = cells.filter((cell) =>
+      ['factory', 'factory_level_2'].includes(cell.buildingType));
+    const gold = cells.filter((cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true).length;
+    const buildingUpkeep = cells.reduce((sum, cell) => {
+      if (!cell.buildingType) return sum;
+      if (cell.buildingType === 'tower' || cell.buildingType === 'field_level_2' ||
+          cell.buildingType === 'factory_level_2') return sum + 2;
+      if (cell.buildingType === 'textile_workshop_level_2') return sum + 3;
+      return sum + 1;
+    }, 0);
+    const structureUpkeep = cells.filter((cell) => cell.structureType).length;
+    const floodSurcharge = cells.filter((cell) => cell.flooded && cell.buildingType !== 'rice_field').length;
+    const expenses = buildingUpkeep + structureUpkeep + floodSurcharge;
+    const income = gold * population;
+    let food = 0;
+    for (const cell of cells) {
+      if (!cell.buildingType || !active(cell)) continue;
+      const factoryNearby = factories.some((factory) =>
+        Math.abs(factory.x - cell.x) <= 1 && Math.abs(factory.y - cell.y) <= 1);
+      let output = 0;
+      if (cell.buildingType === 'field' || cell.buildingType === 'field_level_2') {
+        if (season === 'winter' &&
+            !(cell.buildingType === 'field' && cell.structureType === 'greenhouse')) continue;
+        output = cell.buildingType === 'field_level_2' ? 15 : 10;
+        if (factoryNearby) output /= 2;
+      } else if (cell.buildingType === 'rice_field') {
+        if (season === 'winter') continue;
+        output = cell.flooded ? 15 : mapAdjacentWaterCount(cell.x, cell.y) > 0 ? 10 : 5;
+        if (factoryNearby) output /= 2;
+      } else if (cell.buildingType === 'hunter') {
+        output = season === 'spring' ? 15 : 5;
+      } else if (cell.buildingType === 'fisher') {
+        output = mapAdjacentWaterCount(cell.x, cell.y) * (season === 'spring' ? 10 : 5);
+      }
+      food += output;
+    }
+    const goods = factories.filter(active).reduce(
+      (sum, cell) => sum + (cell.buildingType === 'factory_level_2' ? 15 : 10),
+      0,
+    );
+    const activeCotton = cells.filter((cell) =>
+      cell.buildingType === 'cotton_field' && active(cell) &&
+      (season !== 'winter' || cell.structureType === 'greenhouse')).length;
+    let cottonSlots = season === 'winter' ? activeCotton : 0;
+    let clothing = 0;
+    const workshops = cells.filter((cell) =>
+      ['textile_workshop', 'textile_workshop_level_2'].includes(cell.buildingType) && active(cell));
+    for (const workshop of workshops) {
+      if (cottonSlots < 1) continue;
+      cottonSlots -= 1;
+      clothing += workshop.buildingType === 'textile_workshop_level_2' ? 20 : 10;
+    }
+    const floodedCells = cells.filter((cell) => cell.flooded).length;
+    return {
+      turnNumber, season, year, seasonTurn,
+      movementMultiplier: season === 'winter' ? 0.5 : 1,
+      population, gold, income, initialBuildingUpkeep: expenses, buildingUpkeep: expenses,
+      unitCount: 0, unitUpkeep: 0, budgetDeficit: income < expenses,
+      unitMovementAllowed: income >= expenses, expenses,
+      unpaidExpenses: Math.max(0, expenses - income), disabledBuildings: [],
+      food, foodDemand: population, foodShortage: food < population,
+      goods, goodsDemand: population, goodsShortage: goods < population,
+      clothing, clothingDemand: season === 'winter' ? population : 0,
+      clothingShortage: season === 'winter' && clothing < population,
+      unclothedPopulation: season === 'winter' ? Math.max(0, population - clothing) : 0,
+      cottonFields: activeCotton, textileWorkshops: workshops.length, floodedCells,
+      starvedColonies: 0, fledColonies: 0,
+    };
+  }
+
   function renderFoundedCards(country) {
     const faithType = country.officialSystem.type;
     const system = country.officialSystem;
@@ -2706,17 +2985,28 @@
     $('#country-card-host').classList.remove('hidden');
 
     const counts = new Map((country.buildings || []).map((item) => [item.type, item.count]));
-    const economy = country.economy || null;
-    const economyIncome = economy ? String(economy.income) : '—';
-    const economyExpenses = economy ? String(economy.expenses) : '—';
-    const economyStatus = economy
-      ? (economy.unpaidExpenses > 0 ? 'Есть неоплаченные расходы' : 'Содержание оплачено')
-      : 'Расчёт появится после первого завершённого хода';
+    const economy = estimateCountryEconomy(country);
+    const reportedEconomy = country.economy || null;
+    if (reportedEconomy) {
+      economy.disabledBuildings = reportedEconomy.disabledBuildings || [];
+      economy.starvedColonies = reportedEconomy.starvedColonies || 0;
+      economy.fledColonies = reportedEconomy.fledColonies || 0;
+    }
+    const economyIncome = String(economy.income);
+    const economyExpenses = String(economy.expenses);
+    const economyNet = economy.income - economy.expenses;
+    const economyStatus = economyNet >= 0
+      ? 'Положительный баланс за ход'
+      : 'Расходы превышают прибавку';
     const disabledBuildingsLabel = economy?.disabledBuildings?.map((building) =>
       (buildingMeta[building.type]?.label || building.type) + ' (' + building.x + ', ' + building.y + ')',
     ).join(', ') || '';
     const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
-    const seasonLabel = economy?.season ? seasonLabels[economy.season] || economy.season : '—';
+    const seasonLabel = seasonLabels[economy.season] || economy.season || '—';
+    const populationForCard = economy.population ?? country.residentCount ?? 0;
+    const scienceLevel = state.mapView?.countries?.find((item) => item.id === country.id)
+      ?.cells.filter((cell) => cell.buildingType === 'science').length ??
+      Number(counts.get('science') || 0);
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -2767,8 +3057,8 @@
       '</article>';
 
     const countryStats = [
-      ['♟', 'Люди', String(country.residentCount)],
-      ['⚛', 'Наука', String(counts.get('science') || 0)],
+      ['♟', 'Люди', String(populationForCard)],
+      ['⚛', 'Наука', String(scienceLevel)],
       ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
       ['♛', 'Правитель', 'Не назначен'],
     ];
@@ -2798,28 +3088,29 @@
         '<div class="country-doc-economy">' +
           '<div><b class="country-doc-income">☀</b><span>Текущий сезон</span><strong>' +
             escapeHtml(seasonLabel) + '</strong><small>' +
-            (economy ? 'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' : 'Ожидается первый расчёт') +
+            'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' +
           '</small></div>' +
           '<div><b class="country-doc-income">❄</b><span>Тёплая одежда</span><strong>' +
-            (economy && economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
+            (economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
           '</strong><small>' +
-            (economy && economy.season === 'winter'
+            (economy.season === 'winter'
               ? (economy.clothingShortage ? 'Не хватает одежды для ' + String(economy.unclothedPopulation || 0) + ' жителей' : 'Все жители обеспечены')
               : 'Одежда не накапливается') +
           '</small></div>' +
           '<div><b class="country-doc-income">≈</b><span>Затопленные клетки</span><strong>' +
-            String(economy?.floodedCells || 0) + '</strong><small>' +
-            (economy?.movementMultiplier === 0.5 ? 'Зимой скорость войск ×0,5' : 'Обычная скорость передвижения') +
+            String(economy.floodedCells || 0) + '</strong><small>' +
+            (economy.movementMultiplier === 0.5 ? 'Зимой скорость войск ×0,5' : 'Обычная скорость передвижения') +
           '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
-        '<div class="country-doc-economy">' +
-          '<div><b class="country-doc-gold">З</b><span>Золото · доход</span><strong>' +
-            (economy ? String(economy.gold) + ' × ' + String(economy.population) : String(counts.get('gold_mine') || 0)) +
-            '</strong><small>Доход: ' + escapeHtml(economyIncome) + ' монет за ход</small></div>' +
-          '<div><b class="country-doc-income">↗</b><span>Доход / содержание</span><strong>' +
-            escapeHtml(economyIncome) + ' / ' + escapeHtml(economyExpenses) + '</strong>' +
-            '<small>' + escapeHtml(economyStatus) + '</small></div>' +
+        '<div class="country-doc-economy country-doc-finance">' +
+          '<div><b class="country-doc-income">↗</b><span>Прибавка</span><strong>+' +
+            escapeHtml(economyIncome) + '</strong><small>Золото за ход</small></div>' +
+          '<div><b class="country-doc-gold">−</b><span>Расход</span><strong>' +
+            escapeHtml(economyExpenses) + '</strong><small>Содержание зданий и сооружений</small></div>' +
+          '<div><b class="country-doc-income">Σ</b><span>Итого</span><strong>' +
+            (economyNet >= 0 ? '+' : '−') + escapeHtml(String(Math.abs(economyNet))) +
+            '</strong><small>' + escapeHtml(economyStatus) + '</small></div>' +
         '</div>' +
         '<h3 class="country-doc-section-title">ПОЛИТИКА</h3>' +
         '<div class="country-doc-government"><b>♜</b><span>' +
@@ -2827,17 +3118,17 @@
         '</span></div>' +
         '<div class="country-doc-bottom">' +
           '<section><b class="country-doc-tile-icon">▥</b><strong>Товары</strong><span>' +
-            String(counts.get('factory') || 0) + ' фабрики</span><small>' +
-            (economy ? String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
-              (economy.goodsShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+            String((counts.get('factory') || 0) + (counts.get('factory_level_2') || 0)) + ' завода</span><small>' +
+            String(economy.goods) + ' из ' + String(economy.goodsDemand) + ' жителей · ' +
+              (economy.goodsShortage ? 'дефицит' : 'достаточно') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">⌂</b><strong>Продовольствие</strong><span>' +
             String((counts.get('field') || 0) + (counts.get('field_level_2') || 0) + (counts.get('rice_field') || 0)) + ' поля</span><small>' +
-            (economy ? String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
-              (economy.foodShortage ? 'дефицит' : 'достаточно') : 'Ожидается расчёт') + '</small></section>' +
+            String(economy.food) + ' из ' + String(economy.foodDemand) + ' жителей · ' +
+              (economy.foodShortage ? 'дефицит' : 'достаточно') + '</small></section>' +
           '<section><b class="country-doc-tile-icon">♧</b><strong>Тёплая одежда</strong><span>' +
             String((counts.get('textile_workshop') || 0) + (counts.get('textile_workshop_level_2') || 0)) + ' мастерских · ' +
             String(counts.get('cotton_field') || 0) + ' хлопковых полей</span><small>' +
-            (economy && economy.season === 'winter'
+            (economy.season === 'winter'
               ? String(economy.clothing || 0) + ' из ' + String(economy.clothingDemand || economy.population) + ' жителей · ' +
                 (economy.clothingShortage ? 'не хватает ' + String(economy.unclothedPopulation || 0) : 'достаточно')
               : 'Производство не накапливается; спрос зимой') + '</small></section>' +
@@ -2869,13 +3160,7 @@
               ? 'Не обеспечено тёплой одеждой жителей: ' + escapeHtml(economy.unclothedPopulation || 0) + '.'
               : '') + '</p></section>'
           : '') +
-        '<section class="country-doc-inactive-actions" aria-live="polite">' +
-          '<strong>Приказы через глобальную карту</strong>' +
-          '<p>Строительство и колонизация задаются на большой карте: открой её, выбери клетку и вызови контекстное меню.</p>' +
-        '</section>' +
-        '<footer class="country-doc-footer">Территория 5 × 5 · центр ' +
-          (country.territory.centerX ?? '—') + ', ' + (country.territory.centerY ?? '—') +
-        '</footer>' +
+
       '</article>';
   }
   function addPrincipleRow(name = '', description = '', polarity = 'positive') {
@@ -3290,7 +3575,10 @@
 
     $('#join-campaign-form').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const campaignId = $('#join-campaign-id').value.trim();
+      const rawCampaignId = $('#join-campaign-id').value.trim();
+      const campaignId = rawCampaignId.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+      )?.[0] || rawCampaignId;
       try {
         await request('/campaigns/' + encodeURIComponent(campaignId) + '/join', { method: 'POST' });
         $('#join-campaign-id').value = '';
@@ -3325,12 +3613,19 @@
 
     $('#refresh-open-campaigns').addEventListener('click', () => { void loadOpenCampaigns(); });
 
-    $('#chat-open-button').addEventListener('click', () => { void openChatModal(); });
+    $('#chat-open-button').addEventListener('click', () => {
+      if (state.chatModalOpen) closeChatModal();
+      else void openChatModal();
+    });
     $('#chat-close-button').addEventListener('click', closeChatModal);
-    $('#chat-modal').addEventListener('click', (event) => {
-      if (event.target === $('#chat-modal-backdrop') ||
-          event.target.classList.contains('chat-modal-backdrop') ||
-          event.target === $('#chat-modal')) closeChatModal();
+    $('#chat-conversation-close-button').addEventListener('click', closeChatModal);
+    $('#chat-back-button').addEventListener('click', returnToChatList);
+    $('#chat-search').addEventListener('input', (event) => {
+      state.chatSearchQuery = event.target.value;
+      filterChatRooms();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && state.chatModalOpen) closeChatModal();
     });
     $('#chat-compose-form').addEventListener('submit', sendChatMessage);
     $('#chat-message-input').addEventListener('keydown', (event) => {
@@ -3341,7 +3636,7 @@
     });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
-        if (state.chatModalOpen) void loadChatMessages();
+        if (state.chatModalOpen && state.chatDockView === 'conversation') void loadChatMessages();
         void pollChatNotifications();
       }
     });
