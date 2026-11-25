@@ -1396,6 +1396,8 @@ export function createBaselineTurnResolver(): TurnResolver<
         (sum, item) => sum + componentUpkeep(item.cell, item.component),
         0,
       );
+      const armyBudget = Math.max(0, income - initialBuildingUpkeep);
+      const armyBudgetRemaining = Math.max(0, armyBudget - unitUpkeep);
       const budgetDeficit = income < initialBuildingUpkeep + unitUpkeep;
       let remainingBuildingUpkeep = initialBuildingUpkeep;
       const disabledComponents = new Set<string>();
@@ -1491,6 +1493,8 @@ export function createBaselineTurnResolver(): TurnResolver<
         initialBuildingUpkeep,
         unitCount,
         unitUpkeep,
+        armyBudget,
+        armyBudgetRemaining,
         budgetDeficit,
         unitMovementAllowed: !budgetDeficit,
         expenses: remainingBuildingUpkeep + unitUpkeep,
