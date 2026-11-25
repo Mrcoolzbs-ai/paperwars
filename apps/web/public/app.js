@@ -3209,6 +3209,7 @@
     if (!state.campaign) return;
     const data = await request('/campaigns/' + state.campaign.id + '/map');
     state.mapView = data.map;
+    if (state.countryProfile) renderFoundedCards(state.countryProfile);
     const seasonLabel = $('#map-season-label');
     if (seasonLabel) {
       const labels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };

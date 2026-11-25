@@ -657,15 +657,15 @@ async function buildSnapshot(
 }
 
 /**
- * Reconciles legacy turn-one population from the map's terrain mask: only an
- * empty owned land cell contributes one resident. Water and rivers always
- * contribute zero. Rebuilds turn one and leaves queued turns untouched.
+ * Repairs legacy turn-one population from the terrain mask, then reconciles
+ * later relational population projections from the current authoritative snapshot.
+ * Campaigns with a queued job are left untouched.
  */
 export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
   const campaigns = await pool.query<{ readonly id: string }>(
     `SELECT campaign.id
      FROM campaigns AS campaign
-     WHERE campaign.current_turn = 1
+     WHERE campaign.current_turn >= 1
        AND campaign.map_width IS NOT NULL
        AND campaign.map_height IS NOT NULL
        AND EXISTS (
@@ -701,7 +701,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
       const campaign = campaignResult.rows[0];
       if (
         campaign === undefined ||
-        campaign.current_turn !== 1 ||
+        campaign.current_turn < 1 ||
         campaign.map_width === null ||
         campaign.map_height === null
       ) {
@@ -710,15 +710,15 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
         continue;
       }
 
-      const snapshot = await client.query<SnapshotLockRow>(
-        `SELECT version FROM world_snapshots
-         WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE`,
-        [item.id],
+      const snapshot = await client.query<{ readonly version: number; readonly state: unknown }>(
+        `SELECT version, state FROM world_snapshots
+         WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE`,
+        [item.id, campaign.current_turn],
       );
       const queuedTurn = await client.query(
         `SELECT id FROM turn_jobs
-         WHERE campaign_id = $1 AND turn_number = 1 FOR UPDATE`,
-        [item.id],
+         WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE`,
+        [item.id, campaign.current_turn],
       );
       if (queuedTurn.rows.length > 0) {
         await client.query('ROLLBACK');
@@ -726,7 +726,16 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
         continue;
       }
 
-      const world = generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height);
+      const snapshotPopulations = indexSnapshotPopulations(snapshot.rows[0]?.state);
+      if (campaign.current_turn > 1 && snapshotPopulations === null) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        continue;
+      }
+      const world =
+        campaign.current_turn === 1
+          ? generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height)
+          : null;
       const cells = await client.query<{
         readonly country_id: string;
         readonly cell_id: string;
@@ -755,8 +764,12 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
       let campaignChanged = false;
       for (const cell of cells.rows) {
         const expectedPopulation =
-          world.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building ? 1 : 0;
-        if (cell.population === expectedPopulation) continue;
+          campaign.current_turn === 1
+            ? world?.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building
+              ? 1
+              : 0
+            : snapshotPopulations?.byCell.get(cell.country_id + ':' + cell.cell_id);
+        if (expectedPopulation === undefined || cell.population === expectedPopulation) continue;
         await client.query(
           `UPDATE country_cells
            SET population = $4
@@ -767,7 +780,7 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
       }
 
       if (campaignChanged) {
-        if (snapshot.rows[0] !== undefined) {
+        if (campaign.current_turn === 1 && snapshot.rows[0] !== undefined) {
           const state = await buildSnapshot(
             client,
             item.id,
@@ -799,6 +812,61 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
   }
 
   return updatedCampaignCount;
+}
+
+interface SnapshotPopulationIndex {
+  readonly byCell: ReadonlyMap<string, number>;
+  readonly byCountry: ReadonlyMap<string, number>;
+}
+
+function indexSnapshotPopulations(state: unknown): SnapshotPopulationIndex | null {
+  if (
+    typeof state !== 'object' ||
+    state === null ||
+    !('countries' in state) ||
+    !Array.isArray(state.countries)
+  ) {
+    return null;
+  }
+  const byCell = new Map<string, number>();
+  const byCountry = new Map<string, number>();
+
+  for (const countryValue of state.countries) {
+    if (
+      typeof countryValue !== 'object' ||
+      countryValue === null ||
+      !('id' in countryValue) ||
+      typeof countryValue.id !== 'string' ||
+      !('cells' in countryValue) ||
+      !Array.isArray(countryValue.cells)
+    ) {
+      return null;
+    }
+
+    let residentCount = 0;
+    for (const cellValue of countryValue.cells) {
+      if (
+        typeof cellValue !== 'object' ||
+        cellValue === null ||
+        !('id' in cellValue) ||
+        typeof cellValue.id !== 'string' ||
+        !('population' in cellValue) ||
+        typeof cellValue.population !== 'number' ||
+        !Number.isSafeInteger(cellValue.population) ||
+        cellValue.population < 0
+      ) {
+        return null;
+      }
+      const population = cellValue.population as number;
+      byCell.set(countryValue.id + ':' + cellValue.id, population);
+      residentCount += population;
+    }
+    if (!Number.isSafeInteger(residentCount)) {
+      return null;
+    }
+    byCountry.set(countryValue.id, residentCount);
+  }
+  return { byCell, byCountry };
 }
 
 function getCountryEconomyFromReport(
@@ -906,6 +974,7 @@ export function createCountrySetupService(options: {
         [campaignId, currentTurn],
       );
       const snapshotState = snapshotResult.rows[0]?.state;
+      const snapshotPopulations = indexSnapshotPopulations(snapshotState);
       const cellOverlayByCoordinate = new Map<
         string,
         { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean }
@@ -987,6 +1056,7 @@ export function createCountrySetupService(options: {
         center_y: number;
         territory_width: number;
         territory_height: number;
+        cell_id: string;
         x: number;
         y: number;
         population: number;
@@ -997,7 +1067,7 @@ export function createCountrySetupService(options: {
                 country.flag_data_url, territory.id AS territory_id,
                 territory.territory_type, territory.center_x, territory.center_y,
                 territory.width AS territory_width, territory.height AS territory_height,
-                cell.x, cell.y, owned.population, building.building_type
+                cell.id AS cell_id, cell.x, cell.y, owned.population, building.building_type
          FROM countries AS country
          JOIN country_cells AS owned ON owned.campaign_id = country.campaign_id AND owned.country_id = country.id
          JOIN country_territories AS territory
@@ -1068,7 +1138,8 @@ export function createCountrySetupService(options: {
         country.cells.push({
           x: row.x,
           y: row.y,
-          population: row.population,
+          population:
+            snapshotPopulations?.byCell.get(row.country_id + ':' + row.cell_id) ?? row.population,
           buildingType: row.building_type,
           ...(cellOverlayByCoordinate.get(`${row.x},${row.y}`) ?? {}),
         });
@@ -1621,7 +1692,16 @@ export function createCountrySetupService(options: {
       const country = result.rows[0];
       if (!country) return null;
 
-      const [population, buildings, latestEconomy] = await Promise.all([
+      const [snapshot, population, buildings, latestEconomy] = await Promise.all([
+        options.pool.query<{ state: unknown }>(
+          `SELECT snapshot.state
+           FROM campaigns AS campaign
+           JOIN world_snapshots AS snapshot
+             ON snapshot.campaign_id = campaign.id
+            AND snapshot.turn_number = campaign.current_turn
+           WHERE campaign.id = $1`,
+          [campaignId],
+        ),
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(population), 0)::integer AS resident_count
            FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
@@ -1664,7 +1744,10 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: population.rows[0]?.resident_count ?? 0,
+        residentCount:
+          indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id) ??
+          population.rows[0]?.resident_count ??
+          0,
         economy,
       } satisfies CountryProfileView;
     },
@@ -1690,7 +1773,16 @@ export function createCountrySetupService(options: {
       );
       const country = result.rows[0];
       if (!country) return null;
-      const [population, buildings, latestEconomy] = await Promise.all([
+      const [snapshot, population, buildings, latestEconomy] = await Promise.all([
+        options.pool.query<{ state: unknown }>(
+          `SELECT snapshot.state
+           FROM campaigns AS campaign
+           JOIN world_snapshots AS snapshot
+             ON snapshot.campaign_id = campaign.id
+            AND snapshot.turn_number = campaign.current_turn
+           WHERE campaign.id = $1`,
+          [campaignId],
+        ),
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(owned.population), 0)::integer AS resident_count
            FROM country_cells AS owned
@@ -1734,7 +1826,10 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: population.rows[0]?.resident_count ?? 0,
+        residentCount:
+          indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id) ??
+          population.rows[0]?.resident_count ??
+          0,
         economy,
       } satisfies CountryProfileView;
     },
