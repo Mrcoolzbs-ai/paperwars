@@ -841,7 +841,11 @@ export function createBaselineTurnResolver(): TurnResolver<
             requestedName.trim().length > 60)
         ) {
           orderResults.push(
-            rejection(order.id, 'INVALID_GENERAL_NAME', 'Имя генерала должно содержать от 1 до 60 символов.'),
+            rejection(
+              order.id,
+              'INVALID_GENERAL_NAME',
+              'Имя генерала должно содержать от 1 до 60 символов.',
+            ),
           );
           continue;
         }
@@ -880,13 +884,20 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
 
         const generalId = stableUuid(
-          ['paperwars:general', snapshot.campaignId, snapshot.turnNumber, country.id, order.id].join(
-            ':',
-          ),
+          [
+            'paperwars:general',
+            snapshot.campaignId,
+            snapshot.turnNumber,
+            country.id,
+            order.id,
+          ].join(':'),
         );
         const general: GeneralState = {
           id: generalId,
-          name: typeof requestedName === 'string' ? requestedName.trim() : `Генерал ${country.generals.length + 1}`,
+          name:
+            typeof requestedName === 'string'
+              ? requestedName.trim()
+              : `Генерал ${country.generals.length + 1}`,
           stars,
           upkeep,
           barracksCellId: barracks.id,
@@ -948,12 +959,14 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           continue;
         }
-        const selectedUnits = rawUnitIds.map((id) =>
-          country.units.find((unit) => unit.id === id),
-        );
+        const selectedUnits = rawUnitIds.map((id) => country.units.find((unit) => unit.id === id));
         if (selectedUnits.some((unit) => unit === undefined)) {
           orderResults.push(
-            rejection(order.id, 'UNIT_NOT_FOUND', 'Один или несколько выбранных юнитов не найдены.'),
+            rejection(
+              order.id,
+              'UNIT_NOT_FOUND',
+              'Один или несколько выбранных юнитов не найдены.',
+            ),
           );
           continue;
         }
@@ -1013,7 +1026,11 @@ export function createBaselineTurnResolver(): TurnResolver<
             requestedName.trim().length > 60)
         ) {
           orderResults.push(
-            rejection(order.id, 'INVALID_ARMY_NAME', 'Название отряда должно содержать от 1 до 60 символов.'),
+            rejection(
+              order.id,
+              'INVALID_ARMY_NAME',
+              'Название отряда должно содержать от 1 до 60 символов.',
+            ),
           );
           continue;
         }
@@ -1026,7 +1043,10 @@ export function createBaselineTurnResolver(): TurnResolver<
         );
         const army: ArmyState = {
           id: armyId,
-          name: typeof requestedName === 'string' ? requestedName.trim() : `Отряд ${country.armies.length + 1}`,
+          name:
+            typeof requestedName === 'string'
+              ? requestedName.trim()
+              : `Отряд ${country.armies.length + 1}`,
           generalId,
           unitIds: [...rawUnitIds] as string[],
           barracksCellId: barracks.id,
