@@ -1692,9 +1692,14 @@ export function createCountrySetupService(options: {
       if (!country) return null;
       const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
-          `SELECT COALESCE(sum(owned.population), 0)::integer AS resident_count
+          `SELECT count(*)::integer AS resident_count
            FROM country_cells AS owned
-           WHERE owned.campaign_id = $1 AND owned.country_id = $2`,
+           LEFT JOIN country_buildings AS building
+             ON building.campaign_id = owned.campaign_id
+            AND building.country_id = owned.country_id
+            AND building.cell_id = owned.cell_id
+           WHERE owned.campaign_id = $1 AND owned.country_id = $2
+             AND building.id IS NULL`,
           [campaignId, country.country_id],
         ),
         options.pool.query<{ type: StartBuildingType; count: number }>(
