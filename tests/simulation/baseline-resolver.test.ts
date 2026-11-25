@@ -1285,7 +1285,9 @@ describe('baseline turn resolver', () => {
     expect(result.orderResults.map((item) => item.resultCode)).toEqual([
       'FLOODED_CELL_CANNOT_BE_BUILT',
     ]);
-    expect(result.nextState.countries[0]?.cells.find((cell) => cell.id === 'flooded-empty')).toMatchObject({
+    expect(
+      result.nextState.countries[0]?.cells.find((cell) => cell.id === 'flooded-empty'),
+    ).toMatchObject({
       population: 1,
       buildingType: null,
       flooded: true,
