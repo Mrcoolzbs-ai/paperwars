@@ -732,9 +732,10 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
         transactionOpen = false;
         continue;
       }
-      const world = campaign.current_turn === 1
-        ? generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height)
-        : null;
+      const world =
+        campaign.current_turn === 1
+          ? generateWorldMap(campaign.map_seed, campaign.map_width, campaign.map_height)
+          : null;
       const cells = await client.query<{
         readonly country_id: string;
         readonly cell_id: string;
@@ -762,9 +763,12 @@ export async function recalculateCountryPopulations(pool: Pool): Promise<number>
 
       let campaignChanged = false;
       for (const cell of cells.rows) {
-        const expectedPopulation = campaign.current_turn === 1
-          ? (world?.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building ? 1 : 0)
-          : snapshotPopulations?.byCell.get(cell.country_id + ':' + cell.cell_id);
+        const expectedPopulation =
+          campaign.current_turn === 1
+            ? world?.terrain[cell.y * campaign.map_width + cell.x] === 'l' && !cell.has_building
+              ? 1
+              : 0
+            : snapshotPopulations?.byCell.get(cell.country_id + ':' + cell.cell_id);
         if (expectedPopulation === undefined || cell.population === expectedPopulation) continue;
         await client.query(
           `UPDATE country_cells
@@ -816,8 +820,14 @@ interface SnapshotPopulationIndex {
 }
 
 function indexSnapshotPopulations(state: unknown): SnapshotPopulationIndex | null {
-  if (typeof state !== 'object' || state === null || !('countries' in state) ||
-      !Array.isArray(state.countries)) return null;
+  if (
+    typeof state !== 'object' ||
+    state === null ||
+    !('countries' in state) ||
+    !Array.isArray(state.countries)
+  ) {
+    return null;
+  }
   const byCell = new Map<string, number>();
   const byCountry = new Map<string, number>();
 
@@ -829,7 +839,9 @@ function indexSnapshotPopulations(state: unknown): SnapshotPopulationIndex | nul
       typeof countryValue.id !== 'string' ||
       !('cells' in countryValue) ||
       !Array.isArray(countryValue.cells)
-    ) return null;
+    ) {
+      return null;
+    }
 
     let residentCount = 0;
     for (const cellValue of countryValue.cells) {
@@ -842,12 +854,16 @@ function indexSnapshotPopulations(state: unknown): SnapshotPopulationIndex | nul
         typeof cellValue.population !== 'number' ||
         !Number.isSafeInteger(cellValue.population) ||
         cellValue.population < 0
-      ) return null;
+      ) {
+        return null;
+      }
       const population = cellValue.population as number;
       byCell.set(countryValue.id + ':' + cellValue.id, population);
       residentCount += population;
     }
-    if (!Number.isSafeInteger(residentCount)) return null;
+    if (!Number.isSafeInteger(residentCount)) {
+      return null;
+    }
     byCountry.set(countryValue.id, residentCount);
   }
   return { byCell, byCountry };
@@ -1122,7 +1138,8 @@ export function createCountrySetupService(options: {
         country.cells.push({
           x: row.x,
           y: row.y,
-          population: snapshotPopulations?.byCell.get(row.country_id + ':' + row.cell_id) ?? row.population,
+          population:
+          snapshotPopulations?.byCell.get(row.country_id + ':' + row.cell_id) ?? row.population,
           buildingType: row.building_type,
           ...(cellOverlayByCoordinate.get(`${row.x},${row.y}`) ?? {}),
         });
@@ -1727,8 +1744,10 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id)
-          ?? population.rows[0]?.resident_count ?? 0,
+        residentCount:
+          indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id) ??
+          population.rows[0]?.resident_count ??
+          0,
         economy,
       } satisfies CountryProfileView;
     },
@@ -1807,8 +1826,10 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id)
-          ?? population.rows[0]?.resident_count ?? 0,
+        residentCount:
+          indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id) ??
+          population.rows[0]?.resident_count ??
+          0,
         economy,
       } satisfies CountryProfileView;
     },
