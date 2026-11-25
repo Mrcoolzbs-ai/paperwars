@@ -1221,6 +1221,16 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           continue;
         }
+        if (cell.flooded === true) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'FLOODED_CELL_CANNOT_BE_BUILT',
+              'На затопленной клетке строить нельзя.',
+            ),
+          );
+          continue;
+        }
 
         const requiredScience = SCIENCE_REQUIRED_BY_BUILDING[buildingType] ?? 0;
         const currentScience = country.cells.filter(
@@ -1337,16 +1347,6 @@ export function createBaselineTurnResolver(): TurnResolver<
                 order.id,
                 'FIELD_UPGRADE_INCOMPATIBLE_WITH_GREENHOUSE',
                 'Поле второго уровня нельзя накрыть теплицей.',
-              ),
-            );
-            continue;
-          }
-          if (cell.flooded === true) {
-            orderResults.push(
-              rejection(
-                order.id,
-                'FLOODED_CELL_CANNOT_BE_UPGRADED',
-                'Затопленную постройку нельзя улучшить до схода воды.',
               ),
             );
             continue;
