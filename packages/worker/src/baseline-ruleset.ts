@@ -865,6 +865,8 @@ export function createBaselineTurnResolver(): TurnResolver<
           id: unitId,
           type: unitType,
           barracksCellId: barracks.id,
+          barracksX: barracks.x,
+          barracksY: barracks.y,
           currentHealth: stats.health,
           recruitedAtTurn: snapshot.turnNumber,
         };
