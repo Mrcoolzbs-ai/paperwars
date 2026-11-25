@@ -1347,16 +1347,6 @@ export function createBaselineTurnResolver(): TurnResolver<
             );
             continue;
           }
-          if (cell.flooded === true) {
-            orderResults.push(
-              rejection(
-                order.id,
-                'FLOODED_CELL_CANNOT_BE_UPGRADED',
-                'Затопленную постройку нельзя улучшить до схода воды.',
-              ),
-            );
-            continue;
-          }
           country.cells = country.cells.map((candidate) =>
             candidate.id === cell.id ? { ...candidate, buildingType } : candidate,
           );
