@@ -315,7 +315,52 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       await campaigns.leaveCampaign(guests[1]!.user.id, campaign.id);
       expect(await campaigns.listCampaignsForUser(guests[1]!.user.id)).toHaveLength(0);
+
+      const ownerCountry = await current.pool.query<{ id: string }>(
+        'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
+        [campaign.id, owner.user.id, 'Late Join Test Country'],
+      );
+      const ownerCountryId = ownerCountry.rows[0]?.id;
+      if (!ownerCountryId) throw new Error('Expected owner country for late-join test');
+      await current.pool.query(
+        `UPDATE campaign_memberships
+         SET country_id = $2, orders_confirmed = TRUE
+         WHERE campaign_id = $1 AND user_id = $3`,
+        [campaign.id, ownerCountryId, owner.user.id],
+      );
+      await current.pool.query(
+        `INSERT INTO orders (
+           campaign_id, country_id, turn_number, order_type, payload, status
+         ) VALUES ($1, $2, 1, 'test.confirmed', '{}'::jsonb, 'confirmed')`,
+        [campaign.id, ownerCountryId],
+      );
+      await current.pool.query(
+        `UPDATE campaigns
+         SET orders_locked = FALSE, deadline_at = clock_timestamp() + INTERVAL '1 hour'
+         WHERE id = $1`,
+        [campaign.id],
+      );
+
+      const openCampaigns = await campaigns.listOpenCampaigns(guests[3]!.user.id);
+      expect(openCampaigns.some((item) => item.id === campaign.id)).toBe(true);
       await campaigns.joinCampaign(guests[3]!.user.id, campaign.id);
+
+      const paused = await current.pool.query<{
+        orders_locked: boolean;
+        deadline_at: Date | null;
+      }>('SELECT orders_locked, deadline_at FROM campaigns WHERE id = $1', [campaign.id]);
+      expect(paused.rows[0]).toEqual({ orders_locked: true, deadline_at: null });
+      const resetMembership = await current.pool.query<{ orders_confirmed: boolean }>(
+        'SELECT orders_confirmed FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+        [campaign.id, owner.user.id],
+      );
+      expect(resetMembership.rows).toEqual([{ orders_confirmed: false }]);
+      const restoredOrder = await current.pool.query<{ status: string }>(
+        'SELECT status FROM orders WHERE campaign_id = $1 AND country_id = $2 AND turn_number = 1',
+        [campaign.id, ownerCountryId],
+      );
+      expect(restoredOrder.rows).toEqual([{ status: 'draft' }]);
+
       ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
       expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
     });
