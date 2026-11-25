@@ -7,6 +7,12 @@ import type {
   TurnResolver,
 } from '@paper-wars/domain';
 import { toId } from '@paper-wars/shared';
+import {
+  getCombatUnitStats,
+  getUnitUpkeep,
+  isCombatUnitType,
+  type RecruitedUnitState,
+} from './unit-catalog.js';
 
 export interface BaselineRulesetParameters {
   readonly actionPointsPerTurn: 3;
@@ -38,8 +44,8 @@ export interface BaselineCountryState {
   readonly officialSystem: Readonly<Record<string, unknown>>;
   /** Enabled by worker hydration for real campaign states; omitted in legacy unit fixtures. */
   readonly economyEnabled?: boolean;
-  /** Future unit state; each unit reserves one coin per turn until upkeep rates are defined. */
-  readonly units?: readonly unknown[];
+  /** Recruited units are persisted in the country snapshot and stationed at a barracks. */
+  readonly units?: readonly RecruitedUnitState[];
   readonly cells: readonly BaselineCellState[];
 }
 
