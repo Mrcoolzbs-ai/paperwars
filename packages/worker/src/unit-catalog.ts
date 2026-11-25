@@ -42,6 +42,8 @@ export interface RecruitedUnitState {
   readonly id: string;
   readonly type: CombatUnitType;
   readonly barracksCellId: string;
+  readonly barracksX: number;
+  readonly barracksY: number;
   readonly currentHealth: number;
   readonly recruitedAtTurn: number;
 }
