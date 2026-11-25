@@ -2393,6 +2393,28 @@
           if (cell.buildingType) {
             drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
           }
+          const garrisonCount = (country.units || []).filter(
+            (unit) => unit.barracksX === cell.x && unit.barracksY === cell.y,
+          ).length;
+          if (garrisonCount > 0 && cellSize >= 9) {
+            const badgeRadius = Math.max(4, Math.min(8, cellSize * 0.22));
+            const badgeX = px + cellSize - badgeRadius - 1;
+            const badgeY = py + cellSize - badgeRadius - 1;
+            ctx.save();
+            ctx.fillStyle = '#16324a';
+            ctx.strokeStyle = '#d8eaff';
+            ctx.lineWidth = Math.max(0.6, cellSize * 0.025);
+            ctx.beginPath();
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold ' + Math.max(7, badgeRadius * 1.35) + 'px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(garrisonCount), badgeX, badgeY);
+            ctx.restore();
+          }
 
         if (!miniature && cell.flooded) {
           const dropSize = Math.max(2.5, cellSize * 0.22);
@@ -2472,6 +2494,26 @@
           ctx.setLineDash(confirmed ? [] : [Math.max(2, cellSize * 0.35), Math.max(1, cellSize * 0.16)]);
           ctx.fillRect(regionLeft, regionTop, regionSize, regionSize);
           ctx.strokeRect(regionLeft + 1, regionTop + 1, regionSize - 2, regionSize - 2);
+          ctx.restore();
+          continue;
+        }
+        if (order.type === 'unit_recruitment') {
+          const px = left + point.x * cellSize;
+          const py = top + point.y * cellSize;
+          ctx.save();
+          ctx.globalAlpha = order.status === 'confirmed' ? 0.85 : 0.55;
+          ctx.fillStyle = '#16324a';
+          ctx.strokeStyle = '#d8eaff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(px + cellSize * 0.5, py + cellSize * 0.5, Math.max(3, cellSize * 0.22), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold ' + Math.max(7, cellSize * 0.28) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⚔', px + cellSize * 0.5, py + cellSize * 0.51);
           ctx.restore();
           continue;
         }
