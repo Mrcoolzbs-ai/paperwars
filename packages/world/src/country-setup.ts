@@ -132,6 +132,7 @@ interface SnapshotCountry {
     readonly name: string;
     readonly principles: readonly SocialSystemPrinciple[];
   };
+  readonly units: CampaignMapUnitView[];
   readonly cells: Array<{
     readonly id: string;
     readonly x: number;
