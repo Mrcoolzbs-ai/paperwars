@@ -7,7 +7,8 @@ export type AdminServiceErrorCode =
   | 'ADMIN_CODE_RATE_LIMITED'
   | 'ADMIN_NOT_FOUND'
   | 'ADMIN_ACCOUNT_PROTECTED'
-  | 'ADMIN_USER_NOT_FOUND';
+  | 'ADMIN_USER_NOT_FOUND'
+  | 'ADMIN_CAMPAIGN_NOT_FOUND';
 
 export class AdminServiceError extends Error {
   constructor(
@@ -53,6 +54,7 @@ export interface AdminService {
     displayName: unknown,
   ): Promise<AdminUserView>;
   deleteUser(adminUserId: string, targetUserId: string): Promise<void>;
+  deleteCampaign(adminUserId: string, campaignId: string): Promise<void>;
 }
 
 export interface AdminServiceOptions {
@@ -67,6 +69,12 @@ const maxAttempts = 5;
 function validateUserId(value: string): void {
   if (!uuidPattern.test(value)) {
     throw new AdminServiceError('ADMIN_USER_NOT_FOUND', 'Пользователь не найден.');
+  }
+}
+
+function validateCampaignId(value: string): void {
+  if (!uuidPattern.test(value)) {
+    throw new AdminServiceError('ADMIN_CAMPAIGN_NOT_FOUND', 'Кампания не найдена.');
   }
 }
 
@@ -291,6 +299,56 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
         playerCount: row.player_count,
         createdAt: row.created_at,
       }));
+    },
+
+    async deleteCampaign(adminUserId, campaignId) {
+      await requireAdmin(adminUserId);
+      validateCampaignId(campaignId);
+      const client = await pool.connect();
+      let transactionOpen = false;
+      try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        const target = await client.query(
+          'SELECT id FROM campaigns WHERE id = $1 FOR UPDATE',
+          [campaignId],
+        );
+        if (target.rows.length === 0) {
+          throw new AdminServiceError('ADMIN_CAMPAIGN_NOT_FOUND', 'Кампания не найдена.');
+        }
+
+        await client.query(
+          `DELETE FROM discovery_access
+           WHERE discovery_id IN (SELECT id FROM discovery_records WHERE campaign_id = $1)`,
+          [campaignId],
+        );
+        await client.query(
+          `DELETE FROM discovery_history
+           WHERE discovery_id IN (SELECT id FROM discovery_records WHERE campaign_id = $1)`,
+          [campaignId],
+        );
+        await client.query('DELETE FROM discovery_records WHERE campaign_id = $1', [campaignId]);
+        await client.query('DELETE FROM game_events WHERE campaign_id = $1', [campaignId]);
+        await client.query('DELETE FROM orders WHERE campaign_id = $1', [campaignId]);
+        await client.query(
+          'UPDATE campaign_memberships SET country_id = NULL WHERE campaign_id = $1',
+          [campaignId],
+        );
+        await client.query(
+          `UPDATE countries
+           SET setup_completed = FALSE, official_system_type = NULL, official_system_id = NULL
+           WHERE campaign_id = $1`,
+          [campaignId],
+        );
+        await client.query('DELETE FROM campaigns WHERE id = $1', [campaignId]);
+        await client.query('COMMIT');
+        transactionOpen = false;
+      } catch (error) {
+        if (transactionOpen) await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async renameUser(adminUserId, targetUserId, displayNameInput) {

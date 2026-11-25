@@ -560,6 +560,12 @@ export async function closeExpiredOrderWindows(pool: Pool, limit = 25): Promise<
        AND orders_locked = FALSE
        AND deadline_at IS NOT NULL
        AND deadline_at <= clock_timestamp()
+       AND EXISTS (
+         SELECT 1
+         FROM campaign_memberships AS member
+         WHERE member.campaign_id = campaigns.id
+           AND member.status = 'active'
+       )
      ORDER BY deadline_at, id
      LIMIT $1`,
     [limit],
