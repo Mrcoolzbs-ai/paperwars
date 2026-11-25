@@ -903,6 +903,22 @@ export function createCountrySetupService(options: {
         { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean }
       >();
       const snapshotCountries = snapshotState?.['countries'];
+      const unitsByCountryId = new Map<string, readonly unknown[]>();
+      if (Array.isArray(snapshotCountries)) {
+        for (const countryValue of snapshotCountries) {
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('id' in countryValue) ||
+            typeof countryValue.id !== 'string' ||
+            !('units' in countryValue) ||
+            !Array.isArray(countryValue.units)
+          ) {
+            continue;
+          }
+          unitsByCountryId.set(countryValue.id, countryValue.units);
+        }
+      }
       if (Array.isArray(snapshotCountries)) {
         for (const countryValue of snapshotCountries) {
           if (
@@ -993,6 +1009,7 @@ export function createCountrySetupService(options: {
             structureType?: 'greenhouse' | 'dam' | null;
             flooded?: boolean;
           }>;
+          units: readonly unknown[];
         }
       >();
       for (const row of data.rows) {
@@ -1005,6 +1022,7 @@ export function createCountrySetupService(options: {
             flagDataUrl: row.flag_data_url,
             territories: [],
             cells: [],
+            units: unitsByCountryId.get(row.country_id) ?? [],
           };
           groups.set(row.country_id, country);
         }
