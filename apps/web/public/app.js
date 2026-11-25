@@ -3097,9 +3097,27 @@
     const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
     const seasonLabel = seasonLabels[economy.season] || economy.season || '—';
     const populationForCard = economy.population ?? country.residentCount ?? 0;
-    const scienceLevel = state.mapView?.countries?.find((item) => item.id === country.id)
-      ?.cells.filter((cell) => cell.buildingType === 'science').length ??
+    const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
+    const scienceLevel = mapCountry?.cells.filter((cell) => cell.buildingType === 'science').length ??
       Number(counts.get('science') || 0);
+    const armyUnits = mapCountry?.units || [];
+    const armyRows = Array.from(armyUnits.reduce((groups, unit) => {
+      const key = unit.type + ':' + unit.barracksX + ':' + unit.barracksY;
+      const current = groups.get(key) || { type: unit.type, x: unit.barracksX, y: unit.barracksY, count: 0 };
+      current.count += 1;
+      groups.set(key, current);
+      return groups;
+    }, new Map()).values()).map((group) => {
+      const meta = COMBAT_UNIT_UI[group.type];
+      const stats = combatUnitStatsForUi(group.type, scienceLevel);
+      return '<div class="country-doc-unit-item"><strong>' +
+        escapeHtml(meta?.name || group.type) + ' × ' + String(group.count) + '</strong>' +
+        '<small>Казарма (' + group.x + ', ' + group.y + ') · Линия ' +
+        String(stats?.line ?? '—') + ' · И ' + String(stats?.initiative ?? '—') +
+        ' · Ув ' + String(stats?.dodge ?? '—') + '/6 · Бр ' + String(stats?.armor ?? '—') +
+        ' · Атк ' + String(stats?.attack ?? '—') + ' · HP ' + String(stats?.health ?? '—') +
+        '</small></div>';
+    }).join('');
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -3153,7 +3171,7 @@
       ['♟', 'Люди', String(populationForCard)],
       ['⚛', 'Наука', String(scienceLevel)],
       ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
-      ['♛', 'Правитель', 'Не назначен'],
+      ['⚔', 'Юниты', String(armyUnits.length)],
     ];
     $('#country-card-host').innerHTML =
       '<article class="archive-card country-doc-card">' +
@@ -3171,9 +3189,13 @@
           ).join('') +
         '</div>' +
         '<div class="country-doc-middle">' +
-          '<section class="country-doc-military"><h3>Военные ресурсы</h3>' +
-            '<div><b>⚔</b><span>—</span><span>—</span></div>' +
-            '<small>Ресурсы армии пока не рассчитываются симуляцией.</small>' +
+          '<section class="country-doc-military"><h3>Армия и гарнизоны</h3>' +
+            '<div><b>⚔</b><span>' + String(armyUnits.length) + ' юнитов</span><strong>' +
+              String(economy.unitUpkeep || 0) + ' мон. / ход</strong></div>' +
+            '<small>Бюджет армии: ' + String(economy.armyBudget || 0) +
+              ' · Свободно: ' + String(economy.armyBudgetRemaining || 0) + '</small>' +
+            (armyRows ? '<div class="country-doc-unit-list">' + armyRows + '</div>' :
+              '<small>Пока нет нанятых юнитов. Найм доступен через контекстное меню казармы на большой карте.</small>') +
           '</section>' +
           '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
         '</div>' +
