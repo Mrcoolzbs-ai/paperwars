@@ -149,6 +149,9 @@ describe('browser client', () => {
     expect(script.body).toContain('function handleMapCommandClick');
     expect(script.body).toContain('Кто отправил:');
     expect(script.body).toContain('lastChatMessage');
+    expect(script.body).toContain(
+      '{ dx: -1, dy: 0, x1: px, y1: py, x2: px, y2: py + cellSize }',
+    );
     expect(script.body).toContain('cell.population || 0');
     expect(script.body).not.toContain('СЕЗОН И ПОГОДА');
     expect(script.body).toContain('rgba(241, 155, 104, 0.08)');
