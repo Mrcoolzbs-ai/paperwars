@@ -395,9 +395,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           );
         }
         if (!target.orders_locked && target.deadline_elapsed) {
-          throw new AuthValidationError(
-            'Срок приёма приказов первого хода уже истёк.',
-          );
+          throw new AuthValidationError('Срок приёма приказов первого хода уже истёк.');
         }
 
         if (!target.orders_locked) {
