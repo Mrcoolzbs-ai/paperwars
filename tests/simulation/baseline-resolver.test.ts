@@ -170,6 +170,122 @@ function createSeasonState(
 }
 
 describe('baseline turn resolver', () => {
+  it('recruits a science-qualified unit at a barracks and persists its garrison', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('science', 2, 1, 0, 'science'),
+      economyCell('residents', 3, 3, 10),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000401', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'swordsman',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'UNIT_RECRUITED',
+    });
+    const country = result.nextState.countries[0];
+    expect(country?.units).toHaveLength(1);
+    expect(country?.units?.[0]).toMatchObject({
+      type: 'swordsman',
+      barracksCellId: 'barracks',
+      barracksX: 1,
+      barracksY: 1,
+      currentHealth: 2,
+      recruitedAtTurn: 1,
+    });
+    expect(result.events.find((event) => event.type === 'unit.recruited')?.payload).toMatchObject({
+      unitType: 'swordsman',
+      barracksCellId: 'barracks',
+      upkeep: 1,
+      scienceLevel: 1,
+    });
+    expect(result.economicReport.countries[0]).toMatchObject({
+      unitCount: 1,
+      unitUpkeep: 1,
+    });
+  });
+
+  it('rejects recruitment without the required current science level', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('science', 2, 1, 0, 'science'),
+      economyCell('residents', 3, 3, 10),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000402', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'cavalryman',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'rejected',
+      resultCode: 'SCIENCE_REQUIRED',
+    });
+    expect(result.nextState.countries[0]?.units).toHaveLength(0);
+  });
+
+  it('requires the selected cell to contain one of the country barracks', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('science', 2, 1, 0, 'science'),
+      economyCell('residents', 3, 3, 10),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000403', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'swordsman',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]?.resultCode).toBe('BARRACKS_REQUIRED');
+    expect(result.nextState.countries[0]?.units).toHaveLength(0);
+  });
+
+  it('does not allow army maintenance above the available army budget', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('science', 2, 1, 0, 'science'),
+      economyCell('residents', 3, 3, 1),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000404', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'swordsman',
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]?.resultCode).toBe('ARMY_BUDGET_EXCEEDED');
+    expect(result.nextState.countries[0]?.units).toHaveLength(0);
+  });
+
   it('colonizes every free land cell in the 3x3 square and rolls one d100 per cell', () => {
     const random = createRandom([1, 100, 2, 99, 45, 67, 88, 3, 52]);
     const result = resolve(
