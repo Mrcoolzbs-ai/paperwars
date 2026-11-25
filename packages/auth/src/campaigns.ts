@@ -540,18 +540,6 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
              WHERE first_turn_job.campaign_id = c.id AND first_turn_job.turn_number = 1
            )
            AND NOT EXISTS (
-             SELECT 1 FROM campaign_memberships AS confirmed_members
-             WHERE confirmed_members.campaign_id = c.id
-               AND confirmed_members.status = 'active'
-               AND confirmed_members.orders_confirmed = TRUE
-           )
-           AND NOT EXISTS (
-             SELECT 1 FROM orders AS confirmed_orders
-             WHERE confirmed_orders.campaign_id = c.id
-               AND confirmed_orders.turn_number = 1
-               AND confirmed_orders.status IN ('confirmed', 'finalized')
-           )
-           AND NOT EXISTS (
              SELECT 1 FROM campaign_memberships AS own_membership
              WHERE own_membership.campaign_id = c.id
                AND own_membership.user_id = $1
