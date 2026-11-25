@@ -142,6 +142,11 @@ describe('browser client', () => {
     expect(script.body).toContain('setInterval');
     expect(script.body).toContain('function mapColonizationAvailability');
     expect(script.body).toContain('function mapColonizationRegion');
+    expect(script.body).toContain('function applyChatRoomPreviews');
+    expect(script.body).toContain("request('/chat/previews')");
+    expect(script.body).toContain('Хотя бы одна клетка новой колонии должна соприкасаться');
+    expect(script.body).toContain('owned.buildingType');
+    expect(script.body).toContain('owned.structureType');
     expect(script.body).toContain('rgba(241, 155, 104, 0.08)');
     expect(script.body).not.toContain("order.type === 'colonization' ? 'К' : 'С'");
     expect(script.body).toContain("request('/auth/profile')");
@@ -195,6 +200,8 @@ describe('browser client', () => {
     expect(stylesheet.body).toContain('.chat-search-wrap');
     expect(stylesheet.body).toContain('.chat-room-button');
     expect(stylesheet.body).toContain('.chat-message');
+    expect(stylesheet.body).toContain('bottom:84px');
+    expect(stylesheet.body).toContain('z-index:5301');
     expect(stylesheet.body).toContain('.profile-layout');
     expect(stylesheet.body).toContain('.profile-account-mark');
     expect(icon.statusCode).toBe(200);
