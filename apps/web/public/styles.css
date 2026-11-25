@@ -1493,3 +1493,54 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
   letter-spacing: .12em;
   text-transform: uppercase;
 }
+
+
+/* In-map command centre */
+.map-command-toolbar { position:relative; z-index:11; display:grid; gap:9px; padding:10px 14px; border:1px solid #405344; border-top:0; background:#101a14; }
+.map-command-buttons { display:flex; flex-wrap:wrap; gap:8px; }
+.map-command-button { min-height:37px; padding:8px 16px; border:1px solid #63715f; border-radius:3px; background:#1a2a20; color:#e6eadf; font:700 11px "DM Mono",monospace; cursor:pointer; }
+.map-command-button:hover,.map-command-button.active { border-color:#d8bd79; background:#35402d; color:#f0dba7; }
+.map-command-options { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; padding-top:2px; }
+.map-command-building-list,.map-command-recruit-list { display:flex; flex-wrap:wrap; gap:7px; min-width:0; }
+.map-command-option { display:inline-flex; align-items:center; gap:8px; min-height:42px; padding:6px 9px; border:1px solid #455c4b; border-radius:3px; background:#17251c; color:#e6eddf; text-align:left; cursor:pointer; }
+.map-command-option:hover:not(:disabled) { border-color:#d8bd79; background:#27382b; }
+.map-command-option:disabled { opacity:.38; cursor:not-allowed; }
+.map-command-option-icon { display:grid; place-items:center; width:27px; height:27px; }
+.map-command-option-icon img,.map-command-option-icon svg { width:26px; height:26px; object-fit:contain; }
+.map-command-option-label { display:grid; gap:3px; }
+.map-command-option-label strong { font-size:11px; }
+.map-command-option-label small { color:#aab9a9; font-size:9px; }
+.map-command-demolition { border-color:#9b3b35; background:#351b1a; }
+.map-command-demolition:hover:not(:disabled) { border-color:#ee6b5f; background:#4c211f; }
+.map-command-x { color:#f06459; font:900 27px/1 Arial,sans-serif; }
+.map-command-cancel { min-height:34px; padding:7px 11px; border:1px solid #59665d; background:#1b2820; color:#c9d3c7; cursor:pointer; }
+.map-command-help { color:#b4c2b1; font:10px/1.45 Arial,sans-serif; }
+.map-command-recruit-head { display:grid; gap:7px; min-width:200px; }
+.map-command-recruit-head strong { color:#e9eee6; font-size:11px; }
+.map-command-recruit-row { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:190px; padding:8px 9px; border:1px solid #40566a; background:#152736; }
+.map-command-recruit-row > div { display:grid; gap:3px; }
+.map-command-recruit-row strong { color:#eaf2f7; font-size:10px; }
+.map-command-recruit-row small { color:#a9bdcd; font-size:9px; }
+.map-command-recruit-button { padding:6px 10px; border:1px solid #8eaa87; background:#263b2a; color:#e7f0e4; cursor:pointer; font-size:10px; }
+.map-command-recruit-button:disabled { opacity:.4; cursor:not-allowed; }
+.map-cell-tooltip { position:absolute; z-index:25; width:min(292px,calc(100% - 24px)); display:grid; gap:5px; padding:10px 12px; border:1px solid #9b875f; border-radius:3px; background:rgba(13,22,17,.96); color:#dfe8dc; box-shadow:0 8px 24px #0008; pointer-events:none; }
+.map-cell-tooltip strong { color:#f1ddb0; font:700 11px "DM Mono",monospace; }
+.map-cell-tooltip span { color:#d2ddcf; font-size:10px; line-height:1.4; }
+.map-cell-tooltip small { color:#a9b7a6; font-size:9px; line-height:1.4; }
+.chat-room-copy { display:grid; gap:4px; min-width:0; }
+.chat-room-title-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+.chat-room-title-row strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-room-turn { flex:0 0 auto; color:#d7bf86; font:700 8px "DM Mono",monospace; letter-spacing:.06em; }
+.chat-room-copy small { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; color:#9eaa9d; line-height:1.35; }
+#tab-admin .admin-tools-actions { margin:12px 0; }
+#admin-campaign-status { margin:8px 0 16px; }
+@media(max-width:700px) {
+  .map-command-toolbar { padding:8px; }
+  .map-command-button { flex:1 1 28%; min-width:0; padding:8px 5px; font-size:9px; }
+  .map-command-options { align-items:stretch; }
+  .map-command-building-list,.map-command-recruit-list { width:100%; }
+  .map-command-option { flex:1 1 calc(50% - 7px); }
+  .map-command-recruit-row { flex:1 1 100%; }
+  .chat-room-title-row { align-items:flex-start; }
+  .chat-room-turn { font-size:7px; }
+}

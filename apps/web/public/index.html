@@ -152,21 +152,7 @@
         <p class="profile-description">Включай режим только тогда, когда нужно управлять миром. Выключение возвращает обычные игровые ограничения, но не отзывает право администратора.</p>
         <button id="admin-mode-toggle" class="button button-outline" type="button">Включить инструменты администратора</button>
         <div id="admin-tools-content" class="admin-tools-content hidden">
-          <label class="field">
-            <span>Кампания для управления</span>
-            <select id="admin-campaign-select"></select>
-          </label>
-          <button id="admin-open-map" class="button button-outline" type="button">Открыть карту выбранной кампании</button>
-          <div class="admin-tools-actions">
-            <button id="admin-force-end-turn" class="button button-primary" type="button">Принудительно завершить ход</button>
-            <button id="admin-rollback-turn" class="button button-outline" type="button">Откатить последний ход</button>
-          </div>
-          <h3>Результаты колонизации · d100</h3>
-          <div id="admin-discoveries-list" class="admin-data-list">Выбери кампанию, чтобы увидеть результаты бросков.</div>
-          <h3>Карточка государства и учения</h3>
-          <div id="admin-country-card" class="admin-data-list">Открой карту, выбери клетку чужой территории и запроси карточку государства.</div>
-          <h3>Игроки</h3>
-          <div id="admin-users-list" class="admin-data-list">Загрузка списка игроков…</div>
+          <p class="muted">Открой кампанию и используй вкладку «Администрирование» внутри неё. Управление ходом и состоянием мира привязано к открытой кампании.</p>
         </div>
         <p id="admin-tools-message" class="form-message" role="status"></p>
       </section>
@@ -258,6 +244,7 @@
         <button class="workspace-tab" data-tab="turn" type="button">Ход и летопись</button>
         <button id="systems-tab-label" class="workspace-tab" data-tab="systems" type="button">Вера и идеология</button>
         <button id="country-tab-label" class="workspace-tab" data-tab="country" type="button">Основание страны</button>
+        <button id="admin-workspace-tab" class="workspace-tab hidden" data-tab="admin" type="button">Администрирование</button>
       </nav>
 
       <div id="map-modal" class="map-modal hidden" role="dialog" aria-modal="true" aria-label="Карта кампании">
@@ -270,7 +257,16 @@
         </div>
         <span id="map-order-summary" class="map-order-summary">Приказов пока нет</span>
       </div>
+      <div id="map-command-toolbar" class="map-command-toolbar hidden">
+        <div class="map-command-buttons" role="group" aria-label="Создать приказ">
+          <button id="map-command-colonization" class="map-command-button" type="button">Колонизация</button>
+          <button id="map-command-construction" class="map-command-button" type="button">Строительство</button>
+          <button id="map-command-recruitment" class="map-command-button" type="button">Найм</button>
+        </div>
+        <div id="map-command-options" class="map-command-options hidden" aria-live="polite"></div>
+      </div>
       <canvas id="map-canvas" class="map-canvas" aria-label="Интерактивная стратегическая карта"></canvas>
+      <div id="map-cell-tooltip" class="map-cell-tooltip hidden" role="status" aria-live="polite"></div>
       <div id="map-context-menu" class="map-context-menu hidden" role="menu" aria-label="Действия на клетке"></div>
       <section id="admin-map-country-card" class="admin-map-country-card hidden" aria-live="polite" aria-label="Карточка государства"></section>
       <div class="map-modal-footer"><span>ЛКМ — выбрать / перетащить</span><span>Колесо мыши — масштаб</span><span>ПКМ — действие на клетке · касание на телефоне</span><span>С — строительство · К — колонизация · жёлтый — подтверждено</span></div>
@@ -415,8 +411,26 @@
       </section>
 
       <section id="tab-admin" class="tab-panel hidden">
-        <div class="section-intro"><div><div class="panel-kicker">УПРАВЛЕНИЕ КАЧЕСТВОМ</div><h2>Совет хранителей.</h2><p class="muted">Проверяй заявки игроков и принимай решение об одобрении.</p></div><button id="refresh-pending" class="button button-outline" type="button">Обновить список ↻</button></div>
-        <div class="panel admin-panel"><div id="pending-list" class="systems-list"><div class="empty-state compact">Загрузка заявок…</div></div></div>
+        <section class="panel admin-panel">
+          <div class="section-intro">
+            <div><div class="panel-kicker">ТЕКУЩАЯ КАМПАНИЯ</div><h2>Администрирование мира</h2><p id="admin-campaign-context" class="muted">Действия применяются только к открытой кампании.</p></div>
+          </div>
+          <div class="admin-tools-actions">
+            <button id="admin-force-end-turn" class="button button-primary" type="button">Принудительно завершить ход</button>
+            <button id="admin-rollback-turn" class="button button-outline" type="button">Откатить последний ход</button>
+          </div>
+          <p id="admin-campaign-status" class="form-message" role="status"></p>
+          <h3>Результаты разведки · d100</h3>
+          <div id="admin-discoveries-list" class="admin-data-list">Загрузка результатов текущей кампании…</div>
+          <h3>Карточка государства и учения</h3>
+          <div id="admin-country-card" class="admin-data-list">Открой карту и выбери государство для просмотра досье.</div>
+          <h3>Игроки</h3>
+          <div id="admin-users-list" class="admin-data-list">Загрузка списка игроков…</div>
+        </section>
+        <section class="panel admin-panel">
+          <div class="section-intro"><div><div class="panel-kicker">УПРАВЛЕНИЕ КАЧЕСТВОМ</div><h2>Совет хранителей</h2><p class="muted">Проверяй заявки игроков и принимай решение об одобрении.</p></div><button id="refresh-pending" class="button button-outline" type="button">Обновить список ↻</button></div>
+          <div id="pending-list" class="systems-list"><div class="empty-state compact">Загрузка заявок…</div></div>
+        </section>
       </section>
     </section>
 
