@@ -1262,10 +1262,7 @@ describe('baseline turn resolver', () => {
   });
 
   it('rejects construction on a flooded owned land cell', () => {
-    const floodedCell = {
-      ...economyCell('flooded-empty', 1, 0, 1),
-      flooded: true,
-    };
+    const floodedCell = { ...economyCell('flooded-empty', 1, 0, 1), flooded: true };
     const state = createEconomyState([
       economyCell('gold', 0, 0, 10, 'gold_mine'),
       floodedCell,
