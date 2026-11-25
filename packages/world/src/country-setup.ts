@@ -839,6 +839,7 @@ function indexSnapshotPopulations(state: unknown): SnapshotPopulationIndex | nul
         !('id' in cellValue) ||
         typeof cellValue.id !== 'string' ||
         !('population' in cellValue) ||
+        typeof cellValue.population !== 'number' ||
         !Number.isSafeInteger(cellValue.population) ||
         cellValue.population < 0
       ) return null;
@@ -957,6 +958,7 @@ export function createCountrySetupService(options: {
         [campaignId, currentTurn],
       );
       const snapshotState = snapshotResult.rows[0]?.state;
+      const snapshotPopulations = indexSnapshotPopulations(snapshotState);
       const cellOverlayByCoordinate = new Map<
         string,
         { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean }
@@ -1038,6 +1040,7 @@ export function createCountrySetupService(options: {
         center_y: number;
         territory_width: number;
         territory_height: number;
+        cell_id: string;
         x: number;
         y: number;
         population: number;
@@ -1048,7 +1051,7 @@ export function createCountrySetupService(options: {
                 country.flag_data_url, territory.id AS territory_id,
                 territory.territory_type, territory.center_x, territory.center_y,
                 territory.width AS territory_width, territory.height AS territory_height,
-                cell.x, cell.y, owned.population, building.building_type
+                cell.id AS cell_id, cell.x, cell.y, owned.population, building.building_type
          FROM countries AS country
          JOIN country_cells AS owned ON owned.campaign_id = country.campaign_id AND owned.country_id = country.id
          JOIN country_territories AS territory
@@ -1119,7 +1122,7 @@ export function createCountrySetupService(options: {
         country.cells.push({
           x: row.x,
           y: row.y,
-          population: row.population,
+          population: snapshotPopulations?.byCell.get(row.country_id + ':' + row.cell_id) ?? row.population,
           buildingType: row.building_type,
           ...(cellOverlayByCoordinate.get(`${row.x},${row.y}`) ?? {}),
         });
@@ -1672,7 +1675,16 @@ export function createCountrySetupService(options: {
       const country = result.rows[0];
       if (!country) return null;
 
-      const [population, buildings, latestEconomy] = await Promise.all([
+      const [snapshot, population, buildings, latestEconomy] = await Promise.all([
+        options.pool.query<{ state: unknown }>(
+          `SELECT snapshot.state
+           FROM campaigns AS campaign
+           JOIN world_snapshots AS snapshot
+             ON snapshot.campaign_id = campaign.id
+            AND snapshot.turn_number = campaign.current_turn
+           WHERE campaign.id = $1`,
+          [campaignId],
+        ),
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(population), 0)::integer AS resident_count
            FROM country_cells WHERE campaign_id = $1 AND country_id = $2`,
@@ -1715,7 +1727,8 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: population.rows[0]?.resident_count ?? 0,
+        residentCount: indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id)
+          ?? population.rows[0]?.resident_count ?? 0,
         economy,
       } satisfies CountryProfileView;
     },
@@ -1741,7 +1754,16 @@ export function createCountrySetupService(options: {
       );
       const country = result.rows[0];
       if (!country) return null;
-      const [population, buildings, latestEconomy] = await Promise.all([
+      const [snapshot, population, buildings, latestEconomy] = await Promise.all([
+        options.pool.query<{ state: unknown }>(
+          `SELECT snapshot.state
+           FROM campaigns AS campaign
+           JOIN world_snapshots AS snapshot
+             ON snapshot.campaign_id = campaign.id
+            AND snapshot.turn_number = campaign.current_turn
+           WHERE campaign.id = $1`,
+          [campaignId],
+        ),
         options.pool.query<{ resident_count: number }>(
           `SELECT COALESCE(sum(owned.population), 0)::integer AS resident_count
            FROM country_cells AS owned

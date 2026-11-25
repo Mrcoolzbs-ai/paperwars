@@ -458,6 +458,61 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const isDryLand = correctedMap.terrain[cell.y * correctedMap.width + cell.x] === 'l';
         expect(cell.population).toBe(isDryLand && cell.buildingType === null ? 1 : 0);
       }
+
+      // For later turns, the snapshot—not a stale relational projection—is
+      // the canonical population source used by the country card and map.
+      const builtCell = await current.pool.query<{ cell_id: string }>(
+        `SELECT owned.cell_id
+         FROM country_cells AS owned
+         JOIN country_buildings AS building
+           ON building.campaign_id = owned.campaign_id
+          AND building.country_id = owned.country_id
+          AND building.cell_id = owned.cell_id
+         WHERE owned.campaign_id = $1 AND owned.country_id = $2
+         LIMIT 1`,
+        [campaign.id, firstCountry.id],
+      );
+      const builtCellId = builtCell.rows[0]?.cell_id;
+      if (!builtCellId) throw new Error('Expected one of the starting building cells');
+      await current.pool.query(
+        `INSERT INTO world_snapshots (
+           campaign_id, turn_number, version, state_schema_version, ruleset_version, state
+         )
+         SELECT campaign_id, 2, 1, state_schema_version, ruleset_version, state
+         FROM world_snapshots
+         WHERE campaign_id = $1 AND turn_number = 1`,
+        [campaign.id],
+      );
+      await current.pool.query('UPDATE campaigns SET current_turn = 2 WHERE id = $1', [campaign.id]);
+      await current.pool.query(
+        'UPDATE country_cells SET population = 1 WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
+        [campaign.id, firstCountry.id, builtCellId],
+      );
+
+      const snapshotBackedProfile = await countrySetup.getMyCountry(firstUser.user.id, campaign.id);
+      expect(snapshotBackedProfile?.residentCount).toBe(expectedFirstResidents);
+      const snapshotBackedMap = await countrySetup.getCampaignMap(firstUser.user.id, campaign.id);
+      const snapshotBackedCountry = snapshotBackedMap.countries.find(
+        (country) => country.id === firstCountry.id,
+      );
+      const builtCellCoordinates = await current.pool.query<{ x: number; y: number }>(
+        'SELECT x, y FROM cells WHERE campaign_id = $1 AND id = $2',
+        [campaign.id, builtCellId],
+      );
+      const builtCoordinates = builtCellCoordinates.rows[0];
+      expect(builtCoordinates).toBeDefined();
+      expect(snapshotBackedCountry?.cells.find(
+        (cell) => cell.x === builtCoordinates!.x && cell.y === builtCoordinates!.y,
+      )?.population).toBe(0);
+
+      await expect(recalculateCountryPopulations(current.pool)).resolves.toBeGreaterThan(0);
+      const repairedProjection = await current.pool.query<{ population: number }>(
+        'SELECT population FROM country_cells WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
+        [campaign.id, firstCountry.id, builtCellId],
+      );
+      expect(repairedProjection.rows[0]?.population).toBe(0);
+      const repairedLaterTurnProfile = await countrySetup.getMyCountry(firstUser.user.id, campaign.id);
+      expect(repairedLaterTurnProfile?.residentCount).toBe(expectedFirstResidents);
     });
 
     it('enforces social system balance, the seven-system limit and optional moderation', async () => {
