@@ -922,7 +922,8 @@ async function persistResolution<
          SET current_turn = $2,
              orders_locked = FALSE,
              orders_locked_at = NULL,
-             deadline_at = clock_timestamp() + make_interval(hours => turn_duration_hours)
+             deadline_at = GREATEST(COALESCE(deadline_at, clock_timestamp()), clock_timestamp()) +
+               make_interval(hours => turn_duration_hours)
          WHERE id = $1`,
         [lease.campaignId, nextTurnNumber],
       );

@@ -1479,29 +1479,11 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
-        const sideLength = radius * 2 + 1;
-        const adjacentSides = [
-          Array.from(
-            { length: sideLength },
-            (_, offset) => [x - radius + offset, y - radius - 1] as const,
-          ),
-          Array.from(
-            { length: sideLength },
-            (_, offset) => [x - radius + offset, y + radius + 1] as const,
-          ),
-          Array.from(
-            { length: sideLength },
-            (_, offset) => [x - radius - 1, y - radius + offset] as const,
-          ),
-          Array.from(
-            { length: sideLength },
-            (_, offset) => [x + radius + 1, y - radius + offset] as const,
-          ),
-        ];
-        const touchesOwnTerritory = adjacentSides.some((side) =>
-          side.every(
-            ([adjacentX, adjacentY]) =>
-              ownership.get(coordinateKey(adjacentX, adjacentY)) === country.id,
+        const adjacentOffsets = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+        const touchesOwnTerritory = candidates.some((cell) =>
+          adjacentOffsets.some(
+            ([dx, dy]) =>
+              ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id,
           ),
         );
 
@@ -1510,7 +1492,7 @@ export function createBaselineTurnResolver(): TurnResolver<
             rejection(
               order.id,
               'COLONIZATION_NOT_ADJACENT',
-              'Новая колония должна примыкать ко всему государству полной стороной из трёх клеток.',
+              'Хотя бы одна клетка новой колонии должна соприкасаться стороной с собственной территорией или ранее запланированной колонией.',
             ),
           );
           continue;

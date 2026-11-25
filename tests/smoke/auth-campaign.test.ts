@@ -320,6 +320,115 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
     });
 
+    it('allows a late first-turn member before anyone confirms and allows leaving during processing', async () => {
+      const current = getPersistence();
+      const auth = createAuthService({
+        pool: current.pool,
+        accessTokens: signer,
+        refreshTokenTtlSeconds: 3600,
+      });
+      const owner = await createEmailLoginUser(
+        auth,
+        current.pool,
+        `late-join-owner-${randomUUID()}@example.test`,
+        'late join owner password secure',
+      );
+      const latePlayer = await createEmailLoginUser(
+        auth,
+        current.pool,
+        `late-join-player-${randomUUID()}@example.test`,
+        'late join player password secure',
+      );
+      const campaigns = createCampaignService({
+        pool: current.pool,
+        keyProvider,
+        rulesetVersion: 'baseline-v1',
+        rngVersion: 'rng-v1',
+      });
+      const campaign = await campaigns.createCampaign(
+        owner.user.id,
+        `late-join-world-${randomUUID()}`,
+        { mapWidth: 40, mapHeight: 40, mapSeed: 'late-join-world' },
+      );
+
+      try {
+        const ownerCountry = await current.pool.query<{ id: string }>(
+          'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
+          [campaign.id, owner.user.id, 'Late Join Owner'],
+        );
+        const ownerCountryId = ownerCountry.rows[0]?.id;
+        if (!ownerCountryId) throw new Error('Expected owner country');
+
+        await current.pool.query(
+          'UPDATE campaign_memberships SET country_id = $3 WHERE campaign_id = $1 AND user_id = $2',
+          [campaign.id, owner.user.id, ownerCountryId],
+        );
+        await current.pool.query(
+          `INSERT INTO orders (
+             campaign_id, country_id, turn_number, order_type, schema_version, payload, status
+           ) VALUES ($1, $2, 1, 'construction', 1, '{}'::jsonb, 'draft')`,
+          [campaign.id, ownerCountryId],
+        );
+        await current.pool.query(
+          `UPDATE campaigns SET orders_locked = FALSE,
+             deadline_at = clock_timestamp() + INTERVAL '1 hour'
+           WHERE id = $1`,
+          [campaign.id],
+        );
+
+        const openCampaigns = await campaigns.listOpenCampaigns(latePlayer.user.id);
+        expect(openCampaigns.some((item) => item.id === campaign.id)).toBe(true);
+        await campaigns.joinCampaign(latePlayer.user.id, campaign.id);
+
+        const paused = await current.pool.query<{
+          orders_locked: boolean;
+          deadline_at: Date | null;
+        }>('SELECT orders_locked, deadline_at FROM campaigns WHERE id = $1', [campaign.id]);
+        expect(paused.rows[0]).toEqual({ orders_locked: true, deadline_at: null });
+
+        const preservedDraft = await current.pool.query<{ status: string }>(
+          `SELECT status FROM orders
+           WHERE campaign_id = $1 AND country_id = $2 AND turn_number = 1`,
+          [campaign.id, ownerCountryId],
+        );
+        expect(preservedDraft.rows).toEqual([{ status: 'draft' }]);
+
+        const lateCountry = await current.pool.query<{ id: string }>(
+          'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
+          [campaign.id, latePlayer.user.id, 'Late Player Country'],
+        );
+        const lateCountryId = lateCountry.rows[0]?.id;
+        if (!lateCountryId) throw new Error('Expected late player country');
+        await current.pool.query(
+          'UPDATE campaign_memberships SET country_id = $3 WHERE campaign_id = $1 AND user_id = $2',
+          [campaign.id, latePlayer.user.id, lateCountryId],
+        );
+
+        await current.pool.query(
+          `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status)
+           VALUES ($1, $2, 1, 1, 'pending')`,
+          [`turn:${campaign.id}:1`, campaign.id],
+        );
+        await campaigns.leaveCampaign(latePlayer.user.id, campaign.id);
+
+        const membership = await current.pool.query<{ status: string }>(
+          'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+          [campaign.id, latePlayer.user.id],
+        );
+        expect(membership.rows).toEqual([{ status: 'left' }]);
+        const pendingJob = await current.pool.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+          [campaign.id],
+        );
+        expect(pendingJob.rows).toEqual([{ status: 'pending' }]);
+      } finally {
+        await current.pool.query('DELETE FROM campaigns WHERE id = $1', [campaign.id]);
+        await current.pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [
+          [owner.user.id, latePlayer.user.id],
+        ]);
+      }
+    });
+
     it('rolls back a campaign and owner membership when initial seed insertion fails', async () => {
       const current = getPersistence();
       const auth = createAuthService({

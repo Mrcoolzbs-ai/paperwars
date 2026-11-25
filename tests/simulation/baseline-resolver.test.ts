@@ -737,7 +737,7 @@ describe('baseline turn resolver', () => {
     expect(random.calls).toHaveLength(0);
   });
 
-  it('rejects a colony that touches the country at only one cell', () => {
+  it('accepts a colony that touches the country along a single cell edge', () => {
     const random = createRandom();
     const result = resolve(
       createState('l'.repeat(25)),
@@ -745,10 +745,41 @@ describe('baseline turn resolver', () => {
       random.source,
     );
     expect(result.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'COLONIZATION_ACCEPTED',
+    });
+    expect(result.nextState.countries[0]?.cells).toHaveLength(10);
+    expect(random.calls).toHaveLength(9);
+  });
+
+  it('rejects a colony that touches own territory only diagonally', () => {
+    const state = createState('l'.repeat(25));
+    const country = state.countries[0]!;
+    const diagonalOnlyState: BaselineWorldState = {
+      ...state,
+      countries: [
+        {
+          ...country,
+          cells: [
+            {
+              ...country.cells[0]!,
+              x: 0,
+              y: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const random = createRandom();
+    const result = resolve(
+      diagonalOnlyState,
+      [createOrder('40000000-0000-4000-8000-000000000021')],
+      random.source,
+    );
+    expect(result.orderResults[0]).toMatchObject({
       status: 'rejected',
       resultCode: 'COLONIZATION_NOT_ADJACENT',
     });
-    expect(result.nextState.countries[0]?.cells).toHaveLength(1);
     expect(random.calls).toHaveLength(0);
   });
 
