@@ -354,8 +354,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           orders_locked: boolean;
           map_width: number | null;
           map_height: number | null;
+          deadline_elapsed: boolean;
         }>(
-          'SELECT id, status, current_turn, orders_locked, map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
+          `SELECT id, status, current_turn, orders_locked, map_width, map_height,
+                  deadline_at IS NOT NULL AND deadline_at <= clock_timestamp() AS deadline_elapsed
+           FROM campaigns WHERE id = $1 FOR UPDATE`,
           [normalizedCampaignId],
         );
         const target = campaign.rows[0];
@@ -389,6 +392,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         if (firstTurnJob.rows.length > 0) {
           throw new AuthValidationError(
             'Первый ход уже обрабатывается и больше не принимает новых участников.',
+          );
+        }
+        if (!target.orders_locked && target.deadline_elapsed) {
+          throw new AuthValidationError(
+            'Срок приёма приказов первого хода уже истёк.',
           );
         }
 
