@@ -2977,6 +2977,12 @@
   function estimateCountryEconomy(country) {
     const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
     const cells = mapCountry?.cells || [];
+    const units = mapCountry?.units || [];
+    const unitCount = units.length;
+    const unitUpkeep = units.reduce(
+      (sum, unit) => sum + (COMBAT_UNIT_UI[unit.type]?.upkeep || 1),
+      0,
+    );
     const turnNumber = Math.max(1, Number(state.mapView?.turnNumber || state.turnStatus?.currentTurn || 1));
     const seasonNames = ['spring', 'summer', 'autumn', 'winter'];
     const season = state.mapView?.season || seasonNames[Math.floor(((turnNumber - 1) % 24) / 6)];
@@ -2998,8 +3004,10 @@
     }, 0);
     const structureUpkeep = cells.filter((cell) => cell.structureType).length;
     const floodSurcharge = cells.filter((cell) => cell.flooded && cell.buildingType !== 'rice_field').length;
-    const expenses = buildingUpkeep + structureUpkeep + floodSurcharge;
+    const buildingExpenses = buildingUpkeep + structureUpkeep + floodSurcharge;
+    const expenses = buildingExpenses + unitUpkeep;
     const income = gold * population;
+    const armyBudget = Math.max(0, income - buildingExpenses);
     let food = 0;
     for (const cell of cells) {
       if (!cell.buildingType || !active(cell)) continue;
@@ -3042,8 +3050,9 @@
     return {
       turnNumber, season, year, seasonTurn,
       movementMultiplier: season === 'winter' ? 0.5 : 1,
-      population, gold, income, initialBuildingUpkeep: expenses, buildingUpkeep: expenses,
-      unitCount: 0, unitUpkeep: 0, budgetDeficit: income < expenses,
+      population, gold, income, initialBuildingUpkeep: buildingExpenses, buildingUpkeep: buildingExpenses,
+      unitCount, unitUpkeep, armyBudget, armyBudgetRemaining: Math.max(0, armyBudget - unitUpkeep),
+      budgetDeficit: income < expenses,
       unitMovementAllowed: income >= expenses, expenses,
       unpaidExpenses: Math.max(0, expenses - income), disabledBuildings: [],
       food, foodDemand: population, foodShortage: food < population,
