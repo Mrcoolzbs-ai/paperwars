@@ -413,6 +413,27 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
+    it('closes a turn when its only active participant confirms', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(1);
+      try {
+        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+        const closed = await closeOrders(pool, fixture.campaignId);
+        expect(closed).toMatchObject({
+          campaignId: fixture.campaignId,
+          turnNumber: 1,
+          finalizedOrderCount: 0,
+        });
+        const job = await pool.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+          [fixture.campaignId],
+        );
+        expect(job.rows).toEqual([{ status: 'pending' }]);
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
     it('does not mutate orders or campaign when the current snapshot is missing', async () => {
       const pool = getPool();
       const fixture = await createFixture(1, true, false);
@@ -690,7 +711,7 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('prevents a member from leaving while a turn job is pending or processing', async () => {
+    it('allows a member to leave while a turn job is pending', async () => {
       const pool = getPool();
       const fixture = await createFixture(1);
       const campaigns = createCampaignService({
@@ -705,14 +726,18 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
            VALUES ($1, $2, 1, 7, 'pending')`,
           [`turn:${fixture.campaignId}:1`, fixture.campaignId],
         );
-        await expect(
-          campaigns.leaveCampaign(fixture.userIds[0]!, fixture.campaignId),
-        ).rejects.toMatchObject({ code: 'ORDERS_ALREADY_LOCKED' });
+        await campaigns.leaveCampaign(fixture.userIds[0]!, fixture.campaignId);
+
         const membership = await pool.query<{ status: string }>(
           'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
           [fixture.campaignId, fixture.userIds[0]],
         );
-        expect(membership.rows[0]?.status).toBe('active');
+        expect(membership.rows[0]?.status).toBe('left');
+        const job = await pool.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+          [fixture.campaignId],
+        );
+        expect(job.rows).toEqual([{ status: 'pending' }]);
       } finally {
         await removeFixture(fixture);
       }

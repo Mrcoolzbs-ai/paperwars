@@ -994,6 +994,16 @@ function registerChatRoutes(
     }
   });
 
+  app.get('/chat/previews', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const previews = await chatService.listRoomPreviews(user.id);
+      return reply.send({ previews });
+    } catch (error) {
+      return sendChatError(error, reply);
+    }
+  });
+
   app.post('/chat/world', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));

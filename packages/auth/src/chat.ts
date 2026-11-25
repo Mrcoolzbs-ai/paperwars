@@ -25,8 +25,17 @@ export class ChatServiceError extends Error {
   }
 }
 
+export interface ChatRoomPreviews {
+  readonly world: readonly ChatMessageView[];
+  readonly campaigns: readonly {
+    readonly campaignId: string;
+    readonly messages: readonly ChatMessageView[];
+  }[];
+}
+
 export interface ChatService {
   listWorldMessages(userId: string): Promise<readonly ChatMessageView[]>;
+  listRoomPreviews(userId: string): Promise<ChatRoomPreviews>;
   sendWorldMessage(userId: string, message: unknown): Promise<ChatMessageView>;
   listCampaignMessages(userId: string, campaignId: string): Promise<readonly ChatMessageView[]>;
   sendCampaignMessage(
@@ -42,6 +51,7 @@ export interface ChatServiceOptions {
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const messageLimit = 50;
+const roomPreviewLimit = 20;
 const messageRateWindowSeconds = 10;
 const messageRateLimit = 5;
 
@@ -169,6 +179,81 @@ async function listMessages(
   return result.rows.reverse().map(projectMessage);
 }
 
+async function listRoomPreviews(pool: Pool, userId: string): Promise<ChatRoomPreviews> {
+  const result = await pool.query<ChatMessageRow>(
+    `WITH campaign_rooms AS (
+       SELECT DISTINCT campaign_id
+       FROM campaign_memberships
+       WHERE user_id = $1 AND status = 'active'
+     ),
+     world_messages AS (
+       SELECT
+         'world'::text AS scope,
+         NULL::uuid AS "campaignId",
+         m.id,
+         u.display_name AS "authorLabel",
+         m.message,
+         m.created_at AS "createdAt",
+         m.user_id = $1::uuid AS "isMine"
+       FROM chat_messages AS m
+       JOIN users AS u ON u.id = m.user_id
+       WHERE m.scope = 'world'
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT $2
+     ),
+     campaign_messages AS (
+       SELECT
+         'campaign'::text AS scope,
+         message.campaign_id AS "campaignId",
+         message.id,
+         message."authorLabel",
+         message.message,
+         message."createdAt",
+         message."isMine"
+       FROM campaign_rooms AS room
+       CROSS JOIN LATERAL (
+         SELECT
+           m.campaign_id,
+           m.id,
+           u.display_name AS "authorLabel",
+           m.message,
+           m.created_at AS "createdAt",
+           m.user_id = $1::uuid AS "isMine"
+         FROM chat_messages AS m
+         JOIN users AS u ON u.id = m.user_id
+         WHERE m.scope = 'campaign' AND m.campaign_id = room.campaign_id
+         ORDER BY m.created_at DESC, m.id DESC
+         LIMIT $2
+       ) AS message
+     )
+     SELECT * FROM world_messages
+     UNION ALL
+     SELECT * FROM campaign_messages
+     ORDER BY scope, "campaignId" NULLS FIRST, "createdAt", id`,
+    [userId, roomPreviewLimit],
+  );
+
+  const world: ChatMessageView[] = [];
+  const campaigns = new Map<string, ChatMessageView[]>();
+  for (const row of result.rows) {
+    const message = projectMessage(row);
+    if (row.scope === 'world') {
+      world.push(message);
+    } else if (row.campaignId) {
+      const room = campaigns.get(row.campaignId) || [];
+      room.push(message);
+      campaigns.set(row.campaignId, room);
+    }
+  }
+  return {
+    world,
+    campaigns: [...campaigns.entries()].map(([campaignId, messages]) => ({
+      campaignId,
+      messages,
+    })),
+  };
+}
+
 async function insertMessage(
   client: PoolClient,
   userId: string,
@@ -244,6 +329,11 @@ export function createChatService(options: ChatServiceOptions): ChatService {
           client.release();
         }
       });
+    },
+
+    async listRoomPreviews(userId) {
+      validateUuid(userId, 'User');
+      return listRoomPreviews(pool, userId);
     },
 
     async sendWorldMessage(userId, messageInput) {

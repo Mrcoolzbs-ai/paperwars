@@ -354,8 +354,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           orders_locked: boolean;
           map_width: number | null;
           map_height: number | null;
+          deadline_elapsed: boolean;
         }>(
-          'SELECT id, status, current_turn, orders_locked, map_width, map_height FROM campaigns WHERE id = $1 FOR UPDATE',
+          `SELECT id, status, current_turn, orders_locked, map_width, map_height,
+                  deadline_at IS NOT NULL AND deadline_at <= clock_timestamp() AS deadline_elapsed
+           FROM campaigns WHERE id = $1 FOR UPDATE`,
           [normalizedCampaignId],
         );
         const target = campaign.rows[0];
@@ -374,13 +377,48 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         if (
           target.status !== 'active' ||
           target.current_turn !== 1 ||
-          !target.orders_locked ||
           target.map_width === null ||
           target.map_height === null
         ) {
           throw new AuthValidationError(
-            'Кампания уже начала первый ход и больше не принимает новых игроков. ' +
-              'Подключиться можно до завершения основания государств.',
+            'Кампания уже завершила первый ход подготовки и больше не принимает новых игроков.',
+          );
+        }
+
+        const firstTurnJob = await client.query(
+          'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 LIMIT 1',
+          [normalizedCampaignId],
+        );
+        if (firstTurnJob.rows.length > 0) {
+          throw new AuthValidationError(
+            'Первый ход уже обрабатывается и больше не принимает новых участников.',
+          );
+        }
+        if (!target.orders_locked && target.deadline_elapsed) {
+          throw new AuthValidationError('Срок приёма приказов первого хода уже истёк.');
+        }
+
+        if (!target.orders_locked) {
+          // Confirmations are reversible until closeOrders atomically creates the
+          // TurnJob. Pause the first turn and return submitted orders to drafts so
+          // every participant can review the complete player roster.
+          await client.query(
+            `UPDATE campaigns
+             SET orders_locked = TRUE, orders_locked_at = NULL, deadline_at = NULL
+             WHERE id = $1 AND current_turn = 1 AND orders_locked = FALSE`,
+            [normalizedCampaignId],
+          );
+          await client.query(
+            `UPDATE campaign_memberships
+             SET orders_confirmed = FALSE
+             WHERE campaign_id = $1 AND status = 'active'`,
+            [normalizedCampaignId],
+          );
+          await client.query(
+            `UPDATE orders
+             SET status = 'draft', updated_at = clock_timestamp()
+             WHERE campaign_id = $1 AND turn_number = 1 AND status = 'confirmed'`,
+            [normalizedCampaignId],
           );
         }
         if (existing.rows[0]?.status !== 'active') {
@@ -436,17 +474,12 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           'SELECT version FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
           [campaignId, target.current_turn],
         );
-        const job = await client.query<{ status: string }>(
+        await client.query(
           'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
           [campaignId, target.current_turn],
         );
-        if (job.rows.some((row) => row.status === 'pending' || row.status === 'processing')) {
-          throw new CampaignTurnProcessingError(
-            'ORDERS_ALREADY_LOCKED',
-            'A campaign member cannot leave while the current turn is being processed',
-          );
-        }
-
+        // Once the job exists, all orders are already finalized/discarded. Leaving
+        // changes only membership; it does not mutate the immutable worker input.
         const membership = await client.query<{ campaign_id: string; country_id: string | null }>(
           'SELECT campaign_id, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
           [campaignId, userId, 'active'],
@@ -456,7 +489,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           throw new AuthValidationError('You are not an active member of this campaign');
         }
 
-        if (!target.orders_locked && member.country_id !== null) {
+        if (member.country_id !== null) {
+          // A queued turn already finalized its orders, so this only discards
+          // mutable drafts when leaving before a TurnJob has been created.
           await client.query(
             `UPDATE orders
              SET status = 'discarded', updated_at = clock_timestamp()
@@ -506,9 +541,17 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
          FROM campaigns AS c
          WHERE c.status = 'active'
            AND c.current_turn = 1
-           AND c.orders_locked = TRUE
            AND c.map_width IS NOT NULL
            AND c.map_height IS NOT NULL
+           AND (
+             c.orders_locked = TRUE
+             OR c.deadline_at IS NULL
+             OR c.deadline_at > clock_timestamp()
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM turn_jobs AS first_turn_job
+             WHERE first_turn_job.campaign_id = c.id AND first_turn_job.turn_number = 1
+           )
            AND NOT EXISTS (
              SELECT 1 FROM campaign_memberships AS own_membership
              WHERE own_membership.campaign_id = c.id

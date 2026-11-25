@@ -224,6 +224,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       const fixture = await createFixture(true);
       const eventId = randomUUID();
       try {
+        await pool.query(
+          `UPDATE campaigns
+           SET deadline_at = clock_timestamp() + INTERVAL '1 hour'
+           WHERE id = $1`,
+          [fixture.campaignId],
+        );
+        const sourceDeadline = await pool.query<{ deadline_at: Date }>(
+          'SELECT deadline_at FROM campaigns WHERE id = $1',
+          [fixture.campaignId],
+        );
+        const previousDeadline = sourceDeadline.rows[0]?.deadline_at;
+        if (!previousDeadline) throw new Error('Expected the source turn deadline');
+
         const worker = createTurnWorker({
           pool,
           workerId: 'worker-test-success',
@@ -255,6 +268,12 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           orders_locked: false,
           deadline_at: expect.any(Date),
         });
+        expect(
+          Math.abs(
+            campaign.rows[0]!.deadline_at.getTime() -
+              (previousDeadline.getTime() + 24 * 60 * 60 * 1000),
+          ),
+        ).toBeLessThan(2000);
 
         const snapshot = await pool.query<{
           version: number;
