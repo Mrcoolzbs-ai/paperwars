@@ -657,9 +657,9 @@ async function buildSnapshot(
 }
 
 /**
- * Corrects legacy turn-one population from the terrain-aware occupancy rule:
- * only an empty owned land cell contributes one resident. Water and rivers always
- * contribute zero. Rebuilds turn one and leaves queued turns untouched.
+ * Corrects legacy turn-one population from the territory occupancy rule: every
+ * empty owned cell contributes one resident, regardless of terrain. Rebuilds the
+ * turn-one snapshot so the API and simulation agree. Leaves queued turns untouched.
  */
 export async function recalculateCountryPopulations(pool: Pool): Promise<number> {
   const campaigns = await pool.query<{ readonly id: string }>(
@@ -1692,9 +1692,14 @@ export function createCountrySetupService(options: {
       if (!country) return null;
       const [population, buildings, latestEconomy] = await Promise.all([
         options.pool.query<{ resident_count: number }>(
-          `SELECT COALESCE(sum(owned.population), 0)::integer AS resident_count
+          `SELECT count(*)::integer AS resident_count
            FROM country_cells AS owned
-           WHERE owned.campaign_id = $1 AND owned.country_id = $2`,
+           LEFT JOIN country_buildings AS building
+             ON building.campaign_id = owned.campaign_id
+            AND building.country_id = owned.country_id
+            AND building.cell_id = owned.cell_id
+           WHERE owned.campaign_id = $1 AND owned.country_id = $2
+             AND building.id IS NULL`,
           [campaignId, country.country_id],
         ),
         options.pool.query<{ type: StartBuildingType; count: number }>(

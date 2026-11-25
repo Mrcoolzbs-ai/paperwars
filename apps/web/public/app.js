@@ -1810,12 +1810,45 @@
     return cells;
   }
 
-  function mapColonizationAvailability(centerX, centerY) {
-    const region = mapColonizationRegion(centerX, centerY);
-    if (!region) return { allowed: false, reason: 'bounds' };
+
+  const MAP_COMMAND_BUILDINGS = [
+    { type: 'factory', label: 'Фабрика' },
+    { type: 'field', label: 'Поле' },
+    { type: 'rice_field', label: 'Рисовое поле', science: 2 },
+    { type: 'cotton_field', label: 'Хлопковое поле' },
+    { type: 'textile_workshop', label: 'Ткацкая мастерская' },
+    { type: 'hunter', label: 'Охотники' },
+    { type: 'fisher', label: 'Рыбаки' },
+    { type: 'greenhouse', label: 'Теплица', science: 2 },
+    { type: 'dam', label: 'Дамба', science: 3 },
+    { type: 'science', label: 'Научный центр' },
+    { type: 'religious_building', label: 'Храм' },
+    { type: 'barracks', label: 'Казармы' },
+    { type: 'tower', label: 'Башня' },
+    { type: 'field_level_2', label: 'Поле II', science: 10, free: true },
+    { type: 'factory_level_2', label: 'Фабрика II', science: 10, free: true },
+    { type: 'textile_workshop_level_2', label: 'Ткацкая мастерская II', science: 15, free: true },
+  ];
+
+  function ownMapCountry() {
+    return (state.mapView?.countries || []).find((country) => country.isMine) || null;
+  }
+
+  function ownMapCellAt(x, y) {
+    return ownMapCountry()?.cells?.find((cell) => cell.x === x && cell.y === y) || null;
+  }
+
+  function mapCellHasPendingCommand(x, y) {
+    return (state.mapOrders || []).some((order) => {
+      const point = mapOrderCoordinates(order);
+      return order.status !== 'discarded' && point?.x === x && point?.y === y;
+    });
+  }
+
+  function createColonizationIndex() {
     const occupiedCoordinates = new Set();
     const ownCoordinates = new Set();
-    for (const country of state.mapView.countries || []) {
+    for (const country of state.mapView?.countries || []) {
       for (const cell of country.cells || []) {
         const key = cell.x + ',' + cell.y;
         occupiedCoordinates.add(key);
@@ -1827,30 +1860,366 @@
       if (order.type !== 'colonization' || order.status === 'discarded') continue;
       const point = mapOrderCoordinates(order);
       if (!point) continue;
-      const plannedRegion = mapColonizationRegion(point.x, point.y);
-      if (!plannedRegion) continue;
-      for (const cell of plannedRegion) plannedCoordinates.add(cell.x + ',' + cell.y);
-    }
-    for (const cell of region) {
-      const key = cell.x + ',' + cell.y;
-      if (occupiedCoordinates.has(key) || plannedCoordinates.has(key)) {
-        return { allowed: false, reason: 'overlap' };
+      for (const cell of mapColonizationRegion(point.x, point.y) || []) {
+        plannedCoordinates.add(cell.x + ',' + cell.y);
       }
     }
-    if (!region.some((cell) => mapIsLand(cell.x, cell.y))) {
-      return { allowed: false, reason: 'no-land' };
+    return { occupiedCoordinates, ownCoordinates, plannedCoordinates };
+  }
+
+  function mapColonizationAvailability(centerX, centerY, index = null) {
+    const region = mapColonizationRegion(centerX, centerY);
+    if (!region) return { allowed: false, reason: 'bounds' };
+    const source = index || createColonizationIndex();
+    const { occupiedCoordinates, ownCoordinates, plannedCoordinates } = source;
+    for (const cell of region) {
+      const key = cell.x + ',' + cell.y;
+      if (occupiedCoordinates.has(key) || plannedCoordinates.has(key)) return { allowed: false, reason: 'overlap' };
     }
-    const adjacentSides = [
+    if (!region.some((cell) => mapIsLand(cell.x, cell.y))) return { allowed: false, reason: 'no-land' };
+    const sides = [
       [[centerX - 1, centerY - 2], [centerX, centerY - 2], [centerX + 1, centerY - 2]],
       [[centerX - 1, centerY + 2], [centerX, centerY + 2], [centerX + 1, centerY + 2]],
       [[centerX - 2, centerY - 1], [centerX - 2, centerY], [centerX - 2, centerY + 1]],
       [[centerX + 2, centerY - 1], [centerX + 2, centerY], [centerX + 2, centerY + 1]],
     ];
-    const touchesOwnTerritory = adjacentSides.some((side) =>
+    const adjacent = sides.some((side) =>
       side.every(([x, y]) => ownCoordinates.has(x + ',' + y) || plannedCoordinates.has(x + ',' + y)),
     );
-    if (!touchesOwnTerritory) return { allowed: false, reason: 'not-adjacent' };
-    return { allowed: true, reason: 'available' };
+    return adjacent ? { allowed: true, reason: 'available' } : { allowed: false, reason: 'not-adjacent' };
+  }
+
+  function mapConstructionAvailability(type, cell) {
+    const owned = cell ? ownMapCellAt(cell.x, cell.y) : null;
+    if (!owned) return { allowed: false, reason: 'Только на своей территории.' };
+    if (!mapIsLand(cell.x, cell.y)) return { allowed: false, reason: 'На воде и реках строить нельзя.' };
+    if (type !== 'demolition' && owned.flooded === true) return { allowed: false, reason: 'На затопленной клетке строить нельзя.' };
+    if (mapCellHasPendingCommand(cell.x, cell.y)) return { allowed: false, reason: 'На клетке уже есть приказ.' };
+    if (type === 'demolition') {
+      return owned.buildingType && !['capital', 'gold_mine'].includes(owned.buildingType)
+        ? { allowed: true }
+        : { allowed: false, reason: 'Столицу и золотую шахту снести нельзя.' };
+    }
+    if (currentScienceLevel() < scienceRequirementFor(type)) return { allowed: false, reason: 'Недостаточно науки.' };
+    if (type === 'greenhouse' || type === 'dam') {
+      if (owned.structureType) return { allowed: false, reason: 'На клетке уже есть сооружение.' };
+      if (type === 'greenhouse' && !['field', 'cotton_field'].includes(owned.buildingType)) {
+        return { allowed: false, reason: 'Теплица ставится поверх поля или хлопкового поля.' };
+      }
+      if (type === 'dam' && mapCardinalWaterCount(cell.x, cell.y) === 0) {
+        return { allowed: false, reason: 'Для дамбы нужна вода по прямой стороне.' };
+      }
+      return { allowed: true };
+    }
+    const upgrades = { field_level_2: 'field', factory_level_2: 'factory', textile_workshop_level_2: 'textile_workshop' };
+    const baseType = upgrades[type];
+    if (baseType) {
+      if (owned.buildingType !== baseType) return { allowed: false, reason: 'На клетке нужна базовая постройка.' };
+      if (type === 'field_level_2' && owned.structureType === 'greenhouse') {
+        return { allowed: false, reason: 'Поле с теплицей нельзя улучшить до II уровня.' };
+      }
+      return { allowed: true };
+    }
+    if (owned.buildingType || owned.structureType || Number(owned.population || 0) < 1) {
+      return { allowed: false, reason: 'Нужна свободная клетка с жителем.' };
+    }
+    if (type === 'fisher' && mapAdjacentWaterCount(cell.x, cell.y) === 0) {
+      return { allowed: false, reason: 'Для рыбака нужна соседняя вода.' };
+    }
+    return { allowed: true };
+  }
+
+  function mapBuildingPreview(type, cell) {
+    const ownCells = ownMapCountry()?.cells || [];
+    const season = state.mapView?.season || 'spring';
+    const factories = ownCells.filter((item) => ['factory', 'factory_level_2'].includes(item.buildingType));
+    const factoryNearby = factories.some((item) => Math.abs(item.x - cell.x) <= 1 && Math.abs(item.y - cell.y) <= 1);
+    const water = mapAdjacentWaterCount(cell.x, cell.y);
+    let output = 0, unit = 'за ход', description = 'Специальная постройка; прямой выработки нет.';
+    if (type === 'factory' || type === 'factory_level_2') {
+      output = type === 'factory_level_2' ? 15 : 10; unit = 'товаров/ход'; description = 'Производит товары.';
+    } else if (['field', 'field_level_2', 'rice_field'].includes(type)) {
+      if (season === 'winter') output = type === 'field' && cell.structureType === 'greenhouse' ? 10 : 0;
+      else if (type === 'rice_field') output = cell.flooded ? 15 : water > 0 ? 10 : 5;
+      else output = type === 'field_level_2' ? 15 : 10;
+      if (factoryNearby) output /= 2;
+      unit = 'еды/ход';
+      description = factoryNearby ? 'Рядом фабрика: производство поля уменьшается вдвое.' : 'Зависит от сезона и соседства с водой.';
+    } else if (type === 'hunter') {
+      output = season === 'spring' ? 15 : 5; unit = 'еды/ход'; description = 'Охотники добывают продовольствие.';
+    } else if (type === 'fisher') {
+      output = water * (season === 'spring' ? 10 : 5); unit = 'еды/ход'; description = 'Учтено соседство с водой по восьми направлениям.';
+    } else if (type === 'cotton_field') {
+      output = 1; unit = 'поле сырья'; description = 'Даёт хлопок для тёплой одежды.';
+    } else if (type === 'textile_workshop' || type === 'textile_workshop_level_2') {
+      const cotton = ownCells.filter((item) => item.buildingType === 'cotton_field' && item.structureType === 'greenhouse').length;
+      output = season === 'winter' && cotton > 0 ? (type === 'textile_workshop_level_2' ? 20 : 10) : 0;
+      unit = 'одежды/ход'; description = 'Зимой использует доступные утеплённые хлопковые поля.';
+    } else if (type === 'greenhouse') {
+      unit = 'модификатор'; description = 'Позволяет полю работать зимой.';
+    } else if (type === 'dam') {
+      unit = 'защита'; description = 'Защищает клетку от затопления.';
+    } else if (type === 'science') {
+      output = 1; unit = 'науки'; description = 'Даёт один уровень текущей науки.';
+    } else if (type === 'demolition') {
+      output = Number(ownMapCellAt(cell.x, cell.y)?.population || 0) + 1; unit = 'житель'; description = 'Возвращает одного жителя.';
+    } else if (type === 'religious_building') {
+      description = 'Религиозное здание.';
+    } else if (type === 'barracks') {
+      description = 'Казарма для найма бойцов и генералов.';
+    } else if (type === 'tower') {
+      description = 'Оборонительная постройка.';
+    }
+    return { output, unit, description, colorValue: Math.max(0, Math.min(50, output)), factoryNearby, water };
+  }
+
+  function mapHeatColor(value) {
+    const ratio = Math.max(0, Math.min(1, value / 50));
+    const low = [181, 83, 42], high = [54, 158, 91];
+    const rgb = low.map((start, index) => Math.round(start + (high[index] - start) * ratio));
+    return 'rgb(' + rgb.join(',') + ')';
+  }
+
+  function mapHeatRgba(value, alpha) {
+    const rgb = mapHeatColor(value).slice(4, -1).split(',').map((part) => Number(part.trim()));
+    return 'rgba(' + rgb.join(',') + ', ' + alpha + ')';
+  }
+
+  function refreshMapCommandTargets() {
+    const mode = state.mapCommandMode, own = ownMapCountry();
+    state.mapCommandTargets = [];
+    if (!mode || !own) return;
+    if (mode === 'colonization') {
+      const index = createColonizationIndex();
+      for (let y = 1; y < state.mapView.height - 1; y += 1) {
+        for (let x = 1; x < state.mapView.width - 1; x += 1) {
+          if (mapColonizationAvailability(x, y, index).allowed) state.mapCommandTargets.push({ x, y });
+        }
+      }
+    } else if (mode === 'construction' && state.mapSelectedBuildingType) {
+      for (const cell of own.cells || []) {
+        if (mapConstructionAvailability(state.mapSelectedBuildingType, cell).allowed) {
+          state.mapCommandTargets.push({ x: cell.x, y: cell.y, score: mapBuildingPreview(state.mapSelectedBuildingType, cell).colorValue });
+        }
+      }
+    } else if (mode === 'recruitment') {
+      for (const cell of own.cells || []) {
+        if (cell.buildingType !== 'barracks' || cell.flooded === true) continue;
+        const reserved = (state.mapOrders || []).some((order) => {
+          const point = mapOrderCoordinates(order);
+          return order.status !== 'discarded' && point?.x === cell.x && point?.y === cell.y &&
+            ['unit_recruitment', 'general_recruitment', 'army_formation'].includes(order.type);
+        });
+        if (!reserved) state.mapCommandTargets.push({ x: cell.x, y: cell.y });
+      }
+    }
+  }
+
+  function mapCommandTargetAt(x, y) {
+    return state.mapCommandTargets.find((target) => target.x === x && target.y === y) || null;
+  }
+
+  function hideMapCellTooltip() {
+    $('#map-cell-tooltip')?.classList.add('hidden');
+  }
+
+  function showMapCellTooltip(content, clientX, clientY, pinned = false) {
+    const tooltip = $('#map-cell-tooltip'), modal = $('#map-modal');
+    if (!tooltip || !modal || !content) return hideMapCellTooltip();
+    tooltip.innerHTML = content;
+    tooltip.classList.remove('hidden');
+    state.mapTooltipPinned = pinned;
+    const rect = modal.getBoundingClientRect();
+    tooltip.style.left = Math.max(8, Math.min(rect.width - 310, clientX - rect.left + 14)) + 'px';
+    tooltip.style.top = Math.max(92, Math.min(rect.height - 100, clientY - rect.top + 14)) + 'px';
+  }
+
+  function buildingTooltipContent(type, cell) {
+    const info = mapBuildingPreview(type, cell);
+    const label = type === 'demolition' ? 'Снос' : (buildingMeta[type]?.label || type);
+    return '<strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(info.description) +
+      '</span><small>Выработка: ' + escapeHtml(String(info.output)) + ' ' + escapeHtml(info.unit) +
+      (info.factoryNearby ? ' · рядом фабрика, еда −50%' : '') +
+      (type === 'fisher' ? ' · воды вокруг: ' + info.water : '') + '</small>';
+  }
+
+  function tooltipForMapCell(cell) {
+    const country = (state.mapView?.countries || []).find((item) =>
+      (item.cells || []).some((owned) => owned.x === cell.x && owned.y === cell.y));
+    const owned = country?.cells?.find((item) => item.x === cell.x && item.y === cell.y);
+    if (!owned) return null;
+    if (owned.structureType === 'dam') return buildingTooltipContent('dam', owned);
+    if (owned.structureType === 'greenhouse') return buildingTooltipContent('greenhouse', owned);
+    return owned.buildingType ? buildingTooltipContent(owned.buildingType, owned) : null;
+  }
+
+  function renderMapCommandOptions() {
+    const host = $('#map-command-options');
+    if (!host) return;
+    host.replaceChildren();
+    if (!state.mapCommandMode) { host.classList.add('hidden'); return; }
+    host.classList.remove('hidden');
+    if (state.mapCommandMode === 'colonization') {
+      const note = document.createElement('span'); note.className = 'map-command-help';
+      note.textContent = state.mapCommandTargets.length
+        ? 'Подсвечены центры колонии 3×3. Наведи курсор для просмотра границ, ЛКМ — добавить черновик.'
+        : 'Доступных областей для колонизации нет.';
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'map-command-cancel'; cancel.textContent = 'Отмена';
+      cancel.addEventListener('click', clearMapCommandMode);
+      host.append(note, cancel); return;
+    }
+    if (state.mapCommandMode === 'construction' && !state.mapSelectedBuildingType) {
+      const list = document.createElement('div'); list.className = 'map-command-building-list';
+      const science = currentScienceLevel();
+      for (const item of MAP_COMMAND_BUILDINGS.filter((entry) => science >= (entry.science || 0))) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'map-command-option'; button.dataset.commandBuilding = item.type;
+        button.disabled = !isAdminMode() && mapActionCount() >= 3 && !item.free;
+        const icon = document.createElement('span'); icon.className = 'map-command-option-icon'; icon.innerHTML = buildingIconHtml(item.type);
+        const label = document.createElement('span'); label.className = 'map-command-option-label';
+        label.innerHTML = '<strong>' + escapeHtml(item.label) + '</strong><small>' + ((item.science || 0) + ' науки · ' + (item.free ? 'без ОД' : '1 ОД')) + '</small>';
+        button.append(icon, label); list.append(button);
+      }
+      const demolition = document.createElement('button');
+      demolition.type = 'button'; demolition.className = 'map-command-option map-command-demolition';
+      demolition.dataset.commandBuilding = '__demolition';
+      demolition.disabled = !isAdminMode() && mapActionCount() >= 3;
+      demolition.innerHTML = '<span class="map-command-x">×</span><span class="map-command-option-label"><strong>Снос</strong><small>1 ОД · красный крест</small></span>';
+      list.append(demolition);
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'map-command-cancel'; cancel.textContent = 'Отмена';
+      cancel.addEventListener('click', clearMapCommandMode);
+      host.append(list, cancel); return;
+    }
+    if (state.mapCommandMode === 'construction') {
+      const label = state.mapSelectedBuildingType === 'demolition' ? 'Снос' : (buildingMeta[state.mapSelectedBuildingType]?.label || state.mapSelectedBuildingType);
+      const note = document.createElement('span'); note.className = 'map-command-help';
+      note.textContent = label + ': подсвечены допустимые клетки. Наведение покажет выработку; ЛКМ добавит приказ в черновик.';
+      const back = document.createElement('button'); back.type = 'button'; back.className = 'map-command-cancel'; back.textContent = '← К списку построек';
+      back.addEventListener('click', () => {
+        state.mapSelectedBuildingType = null; refreshMapCommandTargets(); renderMapCommandOptions(); drawMapCanvas($('#map-canvas'), false);
+      });
+      host.append(note, back); return;
+    }
+    if (state.mapCommandMode === 'recruitment' && !state.mapSelectedBarracks) {
+      const note = document.createElement('span'); note.className = 'map-command-help';
+      note.textContent = state.mapCommandTargets.length ? 'Выбери подсвеченную свободную казарму.' : 'Нет свободных казарм на этот ход.';
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'map-command-cancel'; cancel.textContent = 'Отмена';
+      cancel.addEventListener('click', clearMapCommandMode);
+      host.append(note, cancel); return;
+    }
+    if (state.mapCommandMode === 'recruitment' && state.mapSelectedBarracks) {
+      const own = ownMapCountry();
+      const population = (own?.cells || []).reduce((sum, cell) => sum + Number(cell.population || 0), 0);
+      const economy = estimateCountryEconomy({ id: own.id, residentCount: population });
+      const budget = Number(economy.armyBudget || 0), maintenance = Number(economy.armyMaintenance || 0);
+      const science = currentScienceLevel();
+      const heading = document.createElement('strong');
+      heading.textContent = 'Казарма ' + state.mapSelectedBarracks.x + ', ' + state.mapSelectedBarracks.y +
+        ' · наука ' + science + ' · бюджет ' + budget + ' мон./ход';
+      const list = document.createElement('div'); list.className = 'map-command-recruit-list';
+      for (const [type, unit] of COMBAT_UNIT_OPTIONS.filter(([, item]) => science >= item.requiredScience)) {
+        const stats = combatUnitStatsForUi(type, science);
+        const row = document.createElement('article'); row.className = 'map-command-recruit-row';
+        const info = document.createElement('div');
+        info.innerHTML = '<strong>' + escapeHtml(unit.name) + '</strong><small>Содержание: ' + unit.upkeep + ' мон./ход</small>';
+        row.addEventListener('mouseenter', (event) => {
+          showMapCellTooltip('<strong>' + escapeHtml(unit.name) + '</strong><span>Инициатива ' + stats.initiative +
+            ' · уклонение ' + stats.dodge + '/6 · броня ' + stats.armor + ' · здоровье ' + stats.health +
+            ' · атака ' + stats.attack + ' · линия ' + stats.line + '</span><small>Содержание: ' + unit.upkeep +
+            ' мон./ход · наука ' + science + '</small>', event.clientX, event.clientY);
+        });
+        row.addEventListener('mouseleave', () => { if (!state.mapTooltipPinned) hideMapCellTooltip(); });
+        const recruit = document.createElement('button');
+        recruit.type = 'button'; recruit.className = 'map-command-recruit-button'; recruit.textContent = 'Нанять';
+        recruit.disabled = (!isAdminMode() && mapActionCount() >= 3) || maintenance + unit.upkeep > budget;
+        recruit.addEventListener('click', async () => {
+          await createMapOrder('unit_recruitment', { x: state.mapSelectedBarracks.x, y: state.mapSelectedBarracks.y, unitType: type });
+        });
+        row.append(info, recruit); list.append(row);
+      }
+      const back = document.createElement('button'); back.type = 'button'; back.className = 'map-command-cancel'; back.textContent = '← Выбрать другую казарму';
+      back.addEventListener('click', () => {
+        state.mapSelectedBarracks = null; refreshMapCommandTargets(); renderMapCommandOptions(); drawMapCanvas($('#map-canvas'), false);
+      });
+      host.append(heading, list, back);
+    }
+  }
+
+  function clearMapCommandMode() {
+    state.mapCommandMode = null; state.mapCommandTargets = [];
+    state.mapSelectedBuildingType = null; state.mapSelectedBarracks = null;
+    state.mapHoveredCell = null; state.mapTooltipPinned = false;
+    $('#map-command-options')?.classList.add('hidden');
+    $$('.map-command-button').forEach((button) => button.classList.remove('active'));
+    hideMapCellTooltip();
+    if ($('#map-canvas') && !$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
+  }
+
+  function setMapCommandMode(mode) {
+    if (!state.campaign?.countryId || !state.mapView) { showToast('Для приказов сначала нужно основать государство.', true); return; }
+    if (state.turnStatus?.ordersAccepting !== true) { showToast('Приём приказов сейчас закрыт.', true); return; }
+    if (state.mapCommandMode === mode) { clearMapCommandMode(); return; }
+    state.mapCommandMode = mode; state.mapSelectedBuildingType = null; state.mapSelectedBarracks = null;
+    state.mapHoveredCell = null; state.mapTooltipPinned = false;
+    $('#map-command-toolbar').classList.remove('hidden');
+    $$('.map-command-button').forEach((button) => button.classList.toggle('active', button.id === (
+      mode === 'colonization' ? 'map-command-colonization' : mode === 'construction' ? 'map-command-construction' : 'map-command-recruitment'
+    )));
+    refreshMapCommandTargets(); renderMapCommandOptions(); drawMapCanvas($('#map-canvas'), false);
+  }
+
+  function updateMapCellTooltip(cell, event, pinned = false) {
+    if (!cell) { if (!state.mapTooltipPinned) hideMapCellTooltip(); return; }
+    state.mapHoveredCell = cell.x + ',' + cell.y;
+    if (state.mapCommandMode === 'colonization' && mapCommandTargetAt(cell.x, cell.y)) {
+      const region = mapColonizationRegion(cell.x, cell.y);
+      showMapCellTooltip('<strong>Колония 3×3</strong><span>Доступная область · ' +
+        region.filter((item) => mapIsLand(item.x, item.y)).length + ' клеток суши</span><small>ЛКМ — добавить в черновик.</small>',
+        event.clientX, event.clientY, pinned); return;
+    }
+    if (state.mapCommandMode === 'construction' && state.mapSelectedBuildingType && mapCommandTargetAt(cell.x, cell.y)) {
+      const type = state.mapSelectedBuildingType, info = mapBuildingPreview(type, ownMapCellAt(cell.x, cell.y) || cell);
+      const label = type === 'demolition' ? 'Снос' : (buildingMeta[type]?.label || type);
+      showMapCellTooltip('<strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(info.description) +
+        '</span><small>Выработка: ' + info.output + ' ' + escapeHtml(info.unit) +
+        (info.factoryNearby ? ' · рядом фабрика: еда −50%' : '') +
+        (type === 'fisher' ? ' · воды вокруг: ' + info.water : '') + '</small><small>ЛКМ — добавить в черновик.</small>',
+        event.clientX, event.clientY, pinned); return;
+    }
+    if (state.mapCommandMode === 'recruitment' && !state.mapSelectedBarracks && mapCommandTargetAt(cell.x, cell.y)) {
+      showMapCellTooltip('<strong>Свободная казарма</strong><span>ЛКМ — выбрать казарму и открыть список бойцов.</span>',
+        event.clientX, event.clientY, pinned); return;
+    }
+    const existing = tooltipForMapCell(cell);
+    if (existing) showMapCellTooltip(existing, event.clientX, event.clientY, pinned);
+    else if (!pinned) hideMapCellTooltip();
+  }
+
+  function handleMapCommandClick(cell) {
+    if (!state.mapCommandMode) return false;
+    if (!mapCommandTargetAt(cell.x, cell.y)) { showToast('Эта клетка не подходит для выбранного приказа.', true); return true; }
+    if (state.mapCommandMode === 'colonization') {
+      void createMapOrder('colonization', { x: cell.x, y: cell.y }); return true;
+    }
+    if (state.mapCommandMode === 'construction') {
+      const type = state.mapSelectedBuildingType;
+      if (!type) return true;
+      if (type === 'demolition' && ownMapCellAt(cell.x, cell.y)?.structureType) {
+        void createMapOrder('structure_removal', { x: cell.x, y: cell.y });
+      } else {
+        void createMapOrder(type === 'demolition' ? 'demolition' : 'construction',
+          type === 'demolition' ? { x: cell.x, y: cell.y } : { x: cell.x, y: cell.y, buildingType: type });
+      }
+      return true;
+    }
+    if (state.mapCommandMode === 'recruitment' && !state.mapSelectedBarracks) {
+      state.mapSelectedBarracks = { x: cell.x, y: cell.y };
+      state.mapCommandTargets = []; state.mapTooltipPinned = false; hideMapCellTooltip();
+      renderMapCommandOptions(); drawMapCanvas($('#map-canvas'), false); return true;
+    }
+    return true;
   }
 
   function mapColonizationMessage(reason) {
