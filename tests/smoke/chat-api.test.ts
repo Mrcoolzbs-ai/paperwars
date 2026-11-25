@@ -237,6 +237,25 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           });
           expect(response.statusCode).toBe(201);
         }
+        const previews = await app.inject({
+          method: 'GET',
+          url: '/chat/previews',
+          headers: ownerHeaders,
+        });
+        expect(previews.statusCode).toBe(200);
+        const worldPreview = previews.json().previews.world;
+        expect(worldPreview[worldPreview.length - 1]).toMatchObject({
+          authorLabel: outsider.user.displayName,
+          message: 'Сообщение 5',
+        });
+        const campaignPreview = previews.json().previews.campaigns.find(
+          (room: { campaignId: string }) => room.campaignId === campaign.id,
+        );
+        expect(campaignPreview.messages[campaignPreview.messages.length - 1]).toMatchObject({
+          authorLabel: member.user.displayName,
+          message: 'Принято. Выделю ресурсы.',
+        });
+
         const rateLimited = await app.inject({
           method: 'POST',
           url: '/chat/world',
