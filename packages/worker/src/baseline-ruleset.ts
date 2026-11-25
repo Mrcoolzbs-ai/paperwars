@@ -1127,7 +1127,8 @@ export function createBaselineTurnResolver(): TurnResolver<
           0,
         );
         const armyBudget = Math.max(0, goldMines * population - buildingMaintenance);
-        const currentArmyMaintenance = getUnitUpkeep(country.units);
+        const currentArmyMaintenance =
+          getUnitUpkeep(country.units) + getGeneralsUpkeep(country.generals);
         if (currentArmyMaintenance + stats.upkeep > armyBudget) {
           orderResults.push(
             rejection(
@@ -1667,6 +1668,9 @@ export function createBaselineTurnResolver(): TurnResolver<
       let income = gold * population;
       const unitCount = country.units.length;
       const unitUpkeep = getUnitUpkeep(country.units);
+      const generalCount = country.generals.length;
+      const generalUpkeep = getGeneralsUpkeep(country.generals);
+      const armyMaintenance = unitUpkeep + generalUpkeep;
       const components = country.cells.flatMap((cell) => [
         ...(cell.buildingType
           ? [{ cell, component: 'building' as const, type: cell.buildingType }]
@@ -1680,8 +1684,8 @@ export function createBaselineTurnResolver(): TurnResolver<
         0,
       );
       const armyBudget = Math.max(0, income - initialBuildingUpkeep);
-      const armyBudgetRemaining = Math.max(0, armyBudget - unitUpkeep);
-      const budgetDeficit = income < initialBuildingUpkeep + unitUpkeep;
+      const armyBudgetRemaining = Math.max(0, armyBudget - armyMaintenance);
+      const budgetDeficit = income < initialBuildingUpkeep + armyMaintenance;
       let remainingBuildingUpkeep = initialBuildingUpkeep;
       const disabledComponents = new Set<string>();
       const disabledBuildings: Array<{
@@ -1693,7 +1697,7 @@ export function createBaselineTurnResolver(): TurnResolver<
       }> = [];
       const disableCandidates = [...components];
 
-      while (income < remainingBuildingUpkeep + unitUpkeep && disableCandidates.length > 0) {
+      while (income < remainingBuildingUpkeep + armyMaintenance && disableCandidates.length > 0) {
         const drawIndex = random.uniform(
           'economy',
           `${country.id}:disable-building:${snapshot.turnNumber}:${disabledBuildings.length}`,
@@ -1776,12 +1780,15 @@ export function createBaselineTurnResolver(): TurnResolver<
         initialBuildingUpkeep,
         unitCount,
         unitUpkeep,
+        generalCount,
+        generalUpkeep,
+        armyMaintenance,
         armyBudget,
         armyBudgetRemaining,
         budgetDeficit,
         unitMovementAllowed: !budgetDeficit,
-        expenses: remainingBuildingUpkeep + unitUpkeep,
-        unpaidExpenses: Math.max(0, remainingBuildingUpkeep + unitUpkeep - income),
+        expenses: remainingBuildingUpkeep + armyMaintenance,
+        unpaidExpenses: Math.max(0, remainingBuildingUpkeep + armyMaintenance - income),
         disabledBuildings,
         food: supply.food,
         foodDemand: population,
