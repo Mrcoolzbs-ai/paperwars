@@ -251,7 +251,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         const campaignPreview = previews.json().previews.campaigns.find(
           (room: { campaignId: string }) => room.campaignId === campaign.id,
         );
-        expect(campaignPreview.messages[campaignPreview.messages.length - 1]).toMatchObject({
+        expect(
+          campaignPreview.messages[campaignPreview.messages.length - 1],
+        ).toMatchObject({
           authorLabel: member.user.displayName,
           message: 'Принято. Выделю ресурсы.',
         });
