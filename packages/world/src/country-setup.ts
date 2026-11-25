@@ -1807,7 +1807,8 @@ export function createCountrySetupService(options: {
           height: 5 as const,
         },
         buildings: buildings.rows,
-        residentCount: population.rows[0]?.resident_count ?? 0,
+        residentCount: indexSnapshotPopulations(snapshot.rows[0]?.state)?.byCountry.get(country.country_id)
+          ?? population.rows[0]?.resident_count ?? 0,
         economy,
       } satisfies CountryProfileView;
     },
