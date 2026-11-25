@@ -811,6 +811,274 @@ export function createBaselineTurnResolver(): TurnResolver<
         continue;
       }
 
+      if (order.type === 'general_recruitment') {
+        const barracks = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (barracks === undefined || barracks.buildingType !== 'barracks') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'BARRACKS_REQUIRED',
+              'Нанимать генералов можно только в своей казарме.',
+            ),
+          );
+          continue;
+        }
+        if (order.payload['stars'] !== undefined || order.payload['quality'] !== undefined) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'GENERAL_QUALITY_SERVER_GENERATED',
+              'Качество генерала определяется сервером. Выбирать или перебрасывать его нельзя.',
+            ),
+          );
+          continue;
+        }
+        const requestedName = order.payload['name'];
+        if (
+          requestedName !== undefined &&
+          (typeof requestedName !== 'string' ||
+            requestedName.trim().length < 1 ||
+            requestedName.trim().length > 60)
+        ) {
+          orderResults.push(
+            rejection(order.id, 'INVALID_GENERAL_NAME', 'Имя генерала должно содержать от 1 до 60 символов.'),
+          );
+          continue;
+        }
+
+        const population = country.cells.reduce(
+          (sum, cell) => sum + Math.max(0, cell.population),
+          0,
+        );
+        const goldMines = country.cells.filter(
+          (cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true,
+        ).length;
+        const buildingMaintenance = country.cells.reduce(
+          (sum, cell) =>
+            sum + componentUpkeep(cell, 'building') + componentUpkeep(cell, 'structure'),
+          0,
+        );
+        const armyBudget = Math.max(0, goldMines * population - buildingMaintenance);
+        const currentArmyMaintenance =
+          getUnitUpkeep(country.units) + getGeneralsUpkeep(country.generals);
+        const stars = random.uniform(
+          'army',
+          `${country.id}:general-quality:${snapshot.turnNumber}:${order.id}`,
+          0,
+          6,
+        );
+        const upkeep = getGeneralUpkeep(stars);
+        if (currentArmyMaintenance + upkeep > armyBudget) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'ARMY_BUDGET_EXCEEDED',
+              `Найм генерала превышает бюджет армии. Доступно ${armyBudget} монет содержания, требуется ${currentArmyMaintenance + upkeep}.`,
+            ),
+          );
+          continue;
+        }
+
+        const generalId = stableUuid(
+          ['paperwars:general', snapshot.campaignId, snapshot.turnNumber, country.id, order.id].join(
+            ':',
+          ),
+        );
+        const general: GeneralState = {
+          id: generalId,
+          name: typeof requestedName === 'string' ? requestedName.trim() : `Генерал ${country.generals.length + 1}`,
+          stars,
+          upkeep,
+          barracksCellId: barracks.id,
+          barracksX: barracks.x,
+          barracksY: barracks.y,
+          recruitedAtTurn: snapshot.turnNumber,
+        };
+        country.generals.push(general);
+        emit(order.id, country.id, 'general.recruited', {
+          orderId: order.id,
+          countryId: country.id,
+          generalId,
+          name: general.name,
+          stars,
+          upkeep,
+          barracksCellId: barracks.id,
+          x,
+          y,
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'GENERAL_RECRUITED',
+          message: `${general.name}: сервер присвоил качество ${stars}/6. Содержание — ${upkeep} монет за ход.`,
+          data: { generalId, name: general.name, stars, upkeep, barracksCellId: barracks.id, x, y },
+        });
+        continue;
+      }
+
+      if (order.type === 'army_formation') {
+        const barracks = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (barracks === undefined || barracks.buildingType !== 'barracks') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'BARRACKS_REQUIRED',
+              'Сформировать отряд можно только в своей казарме.',
+            ),
+          );
+          continue;
+        }
+        const rawUnitIds = order.payload['unitIds'];
+        const generalId = order.payload['generalId'];
+        if (
+          !Array.isArray(rawUnitIds) ||
+          rawUnitIds.length < 1 ||
+          rawUnitIds.length > 40 ||
+          !rawUnitIds.every((id) => typeof id === 'string' && id.trim().length > 0) ||
+          new Set(rawUnitIds).size !== rawUnitIds.length ||
+          typeof generalId !== 'string' ||
+          generalId.trim().length === 0
+        ) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'INVALID_ARMY_COMPOSITION',
+              'Для отряда выбери от 1 до 40 разных юнитов и одного генерала.',
+            ),
+          );
+          continue;
+        }
+        const selectedUnits = rawUnitIds.map((id) =>
+          country.units.find((unit) => unit.id === id),
+        );
+        if (selectedUnits.some((unit) => unit === undefined)) {
+          orderResults.push(
+            rejection(order.id, 'UNIT_NOT_FOUND', 'Один или несколько выбранных юнитов не найдены.'),
+          );
+          continue;
+        }
+        const units = selectedUnits as RecruitedUnitState[];
+        if (units.some((unit) => unit.armyId !== undefined && unit.armyId !== null)) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'UNIT_ALREADY_ASSIGNED',
+              'Юнит уже входит в другой отряд. Один боец не может состоять в двух отрядах.',
+            ),
+          );
+          continue;
+        }
+        if (units.some((unit) => unit.barracksCellId !== barracks.id)) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'UNITS_AT_DIFFERENT_BARRACKS',
+              'Все выбранные юниты должны находиться в одной казарме.',
+            ),
+          );
+          continue;
+        }
+        const general = country.generals.find((candidate) => candidate.id === generalId);
+        if (general === undefined) {
+          orderResults.push(
+            rejection(order.id, 'GENERAL_NOT_FOUND', 'Выбранный генерал не найден в государстве.'),
+          );
+          continue;
+        }
+        if (general.armyId !== undefined && general.armyId !== null) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'GENERAL_ALREADY_ASSIGNED',
+              'Генерал уже командует другим отрядом.',
+            ),
+          );
+          continue;
+        }
+        if (general.barracksCellId !== barracks.id) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'GENERAL_AT_DIFFERENT_BARRACKS',
+              'Генерал и выбранные юниты должны находиться в одной казарме.',
+            ),
+          );
+          continue;
+        }
+        const requestedName = order.payload['name'];
+        if (
+          requestedName !== undefined &&
+          (typeof requestedName !== 'string' ||
+            requestedName.trim().length < 1 ||
+            requestedName.trim().length > 60)
+        ) {
+          orderResults.push(
+            rejection(order.id, 'INVALID_ARMY_NAME', 'Название отряда должно содержать от 1 до 60 символов.'),
+          );
+          continue;
+        }
+
+        const profile = getArmySizeProfile(units.length);
+        const armyId = stableUuid(
+          ['paperwars:army', snapshot.campaignId, snapshot.turnNumber, country.id, order.id].join(
+            ':',
+          ),
+        );
+        const army: ArmyState = {
+          id: armyId,
+          name: typeof requestedName === 'string' ? requestedName.trim() : `Отряд ${country.armies.length + 1}`,
+          generalId,
+          unitIds: [...rawUnitIds] as string[],
+          barracksCellId: barracks.id,
+          x: barracks.x,
+          y: barracks.y,
+          size: profile.size,
+          romanNumeral: profile.romanNumeral,
+          movementRange: profile.movementRange,
+          formedAtTurn: snapshot.turnNumber,
+        };
+        country.units = country.units.map((unit) =>
+          rawUnitIds.includes(unit.id) ? { ...unit, armyId } : unit,
+        );
+        country.generals = country.generals.map((candidate) =>
+          candidate.id === generalId ? { ...candidate, armyId } : candidate,
+        );
+        country.armies.push(army);
+        emit(order.id, country.id, 'army.formed', {
+          orderId: order.id,
+          countryId: country.id,
+          armyId,
+          armyName: army.name,
+          generalId,
+          unitIds: army.unitIds,
+          unitCount: units.length,
+          size: profile.size,
+          romanNumeral: profile.romanNumeral,
+          movementRange: profile.movementRange,
+          barracksCellId: barracks.id,
+          x,
+          y,
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'ARMY_FORMED',
+          message: `${army.name} сформирован: ${profile.size} отряд, ${units.length} юнитов. Командует ${general.name}.`,
+          data: {
+            armyId,
+            name: army.name,
+            generalId,
+            unitCount: units.length,
+            size: profile.size,
+            romanNumeral: profile.romanNumeral,
+            movementRange: profile.movementRange,
+            x,
+            y,
+          },
+        });
+        continue;
+      }
+
       if (order.type === 'unit_recruitment') {
         const unitType = order.payload['unitType'];
         const barracks = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
