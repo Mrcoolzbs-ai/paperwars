@@ -1,9 +1,5 @@
 export type CombatUnitType =
-  | 'swordsman'
-  | 'archer'
-  | 'shieldbearer'
-  | 'cavalryman'
-  | 'blade_master';
+  'swordsman' | 'archer' | 'shieldbearer' | 'cavalryman' | 'blade_master';
 
 export interface CombatUnitDefinition {
   readonly type: CombatUnitType;
@@ -126,7 +122,9 @@ function scienceIndex(type: CombatUnitType, currentScience: number): number {
   if (!Number.isSafeInteger(currentScience) || currentScience < definition.requiredScience) {
     throw new RangeError(`${definition.name} requires ${definition.requiredScience} science`);
   }
-  return Math.min(6, currentScience) - (type === 'shieldbearer' ? 2 : type === 'cavalryman' ? 3 : 1);
+  return (
+    Math.min(6, currentScience) - (type === 'shieldbearer' ? 2 : type === 'cavalryman' ? 3 : 1)
+  );
 }
 
 export function getCombatUnitDefinition(type: CombatUnitType): CombatUnitDefinition {
@@ -137,10 +135,7 @@ export function listCombatUnitDefinitions(): readonly CombatUnitDefinition[] {
   return Object.values(DEFINITIONS);
 }
 
-export function getCombatUnitStats(
-  type: CombatUnitType,
-  currentScience: number,
-): CombatUnitStats {
+export function getCombatUnitStats(type: CombatUnitType, currentScience: number): CombatUnitStats {
   const definition = DEFINITIONS[type];
   const index = scienceIndex(type, currentScience);
   return {
@@ -164,8 +159,6 @@ export function isCombatUnitType(value: unknown): value is CombatUnitType {
   return typeof value === 'string' && Object.hasOwn(DEFINITIONS, value);
 }
 
-export function getUnitUpkeep(
-  units: readonly Pick<RecruitedUnitState, 'type'>[],
-): number {
+export function getUnitUpkeep(units: readonly Pick<RecruitedUnitState, 'type'>[]): number {
   return units.reduce((sum, unit) => sum + DEFINITIONS[unit.type].upkeep, 0);
 }
