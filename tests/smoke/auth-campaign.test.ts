@@ -363,6 +363,40 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
 
       ownerCampaigns = await campaigns.listCampaignsForUser(owner.user.id);
       expect(ownerCampaigns[0]).toMatchObject({ playerCount: 4, maxPlayers: 4 });
+
+      const lateCountry = await current.pool.query<{ id: string }>(
+        'INSERT INTO countries (campaign_id, owner_user_id, name) VALUES ($1, $2, $3) RETURNING id',
+        [campaign.id, guests[3]!.user.id, 'Late Joiner Country'],
+      );
+      const lateCountryId = lateCountry.rows[0]?.id;
+      if (!lateCountryId) throw new Error('Expected late joiner country');
+      await current.pool.query(
+        'UPDATE campaign_memberships SET country_id = $3 WHERE campaign_id = $1 AND user_id = $2',
+        [campaign.id, guests[3]!.user.id, lateCountryId],
+      );
+      await current.pool.query(
+        `INSERT INTO world_snapshots (
+           campaign_id, turn_number, version, state_schema_version, ruleset_version, state
+         ) VALUES ($1, 1, 1, 1, 'baseline-v1', '{}'::jsonb)`,
+        [campaign.id],
+      );
+      await current.pool.query(
+        `INSERT INTO turn_jobs (job_key, campaign_id, turn_number, snapshot_version, status)
+         VALUES ($1, $2, 1, 1, 'pending')`,
+        [`turn:${campaign.id}:1`, campaign.id],
+      );
+
+      await campaigns.leaveCampaign(guests[3]!.user.id, campaign.id);
+      const departed = await current.pool.query<{ status: string }>(
+        'SELECT status FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2',
+        [campaign.id, guests[3]!.user.id],
+      );
+      expect(departed.rows).toEqual([{ status: 'left' }]);
+      const pendingJob = await current.pool.query<{ status: string }>(
+        'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+        [campaign.id],
+      );
+      expect(pendingJob.rows).toEqual([{ status: 'pending' }]);
     });
 
     it('rolls back a campaign and owner membership when initial seed insertion fails', async () => {
