@@ -60,12 +60,13 @@ function createOrder(
   id: string,
   type = 'colonization',
   payload: Record<string, unknown> = { x: 2, y: 2 },
+  turnNumber = 1,
 ) {
   return {
     id: toId<'OrderId'>(id),
     campaignId: toId<'CampaignId'>(campaignId),
     countryId: toId<'CountryId'>(countryId),
-    turnNumber: 1,
+    turnNumber,
     type,
     schemaVersion: 1,
     status: 'finalized',
@@ -336,6 +337,278 @@ describe('baseline turn resolver', () => {
 
     expect(result.orderResults[0]?.resultCode).toBe('ARMY_BUDGET_EXCEEDED');
     expect(result.nextState.countries[0]?.units).toHaveLength(0);
+  });
+
+  it('recruits a server-generated general and records the committed quality roll', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('science', 2, 1, 0, 'science'),
+      economyCell('residents', 3, 3, 20),
+    ]);
+    const random = createRandom([0]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000408', 'general_recruitment', {
+          x: 1,
+          y: 1,
+          name: 'Александр',
+        }),
+      ],
+      random.source,
+    );
+
+    expect(result.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'GENERAL_RECRUITED',
+      data: { name: 'Александр', stars: 0, upkeep: 2, x: 1, y: 1 },
+    });
+    expect(random.calls).toEqual([
+      {
+        domain: 'army',
+        drawId: `${countryId}:general-quality:1:40000000-0000-4000-8000-000000000408`,
+        min: 0,
+        max: 6,
+      },
+    ]);
+    expect(result.nextState.countries[0]?.generals).toMatchObject([
+      {
+        name: 'Александр',
+        stars: 0,
+        upkeep: 2,
+        barracksCellId: 'barracks',
+        barracksX: 1,
+        barracksY: 1,
+        recruitedAtTurn: 1,
+      },
+    ]);
+    expect(result.economicReport).toMatchObject({
+      countries: [{ generalCount: 1, generalUpkeep: 2, armyMaintenance: 2 }],
+    });
+  });
+
+  it('does not let a player select or reroll general quality', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('residents', 3, 3, 20),
+    ]);
+    const random = createRandom([6]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000409', 'general_recruitment', {
+          x: 1,
+          y: 1,
+          stars: 0,
+        }),
+      ],
+      random.source,
+    );
+
+    expect(result.orderResults[0]?.resultCode).toBe('GENERAL_QUALITY_SERVER_GENERATED');
+    expect(random.calls).toHaveLength(0);
+    expect(result.nextState.countries[0]?.generals).toHaveLength(0);
+  });
+
+  it('rejects a generated high-quality general when its upkeep exceeds ArmyBudget', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('residents', 3, 3, 20),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000410', 'general_recruitment', {
+          x: 1,
+          y: 1,
+        }),
+      ],
+      createRandom([6]).source,
+    );
+
+    expect(result.orderResults[0]?.resultCode).toBe('ARMY_BUDGET_EXCEEDED');
+    expect(result.nextState.countries[0]?.generals).toHaveLength(0);
+  });
+
+  it('forms a light army with one reserved general and the selected barracks units', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('science', 2, 1, 0, 'science'),
+      economyCell('residents', 3, 3, 20),
+    ]);
+    const recruited = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000411', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'swordsman',
+        }),
+        createOrder('40000000-0000-4000-8000-000000000412', 'general_recruitment', {
+          x: 1,
+          y: 1,
+          name: 'Командир',
+        }),
+      ],
+      createRandom([0]).source,
+    );
+    const recruitedCountry = recruited.nextState.countries[0];
+    const unitId = recruitedCountry?.units[0]?.id;
+    const generalId = recruitedCountry?.generals[0]?.id;
+    expect(unitId).toBeDefined();
+    expect(generalId).toBeDefined();
+
+    const nextTurn = { ...recruited.nextState, turnNumber: 2 };
+    const formed = resolve(
+      nextTurn,
+      [
+        createOrder(
+          '40000000-0000-4000-8000-000000000413',
+          'army_formation',
+          {
+            x: 1,
+            y: 1,
+            unitIds: [unitId],
+            generalId,
+            name: 'Первая дружина',
+          },
+          2,
+        ),
+      ],
+      createRandom([], 2).source,
+    );
+
+    expect(formed.orderResults[0]).toMatchObject({
+      status: 'accepted',
+      resultCode: 'ARMY_FORMED',
+      data: {
+        name: 'Первая дружина',
+        generalId,
+        unitCount: 1,
+        size: 'light',
+        romanNumeral: 'I',
+        movementRange: 7,
+        x: 1,
+        y: 1,
+      },
+    });
+    const formedCountry = formed.nextState.countries[0];
+    const armyId = formedCountry?.armies[0]?.id;
+    expect(formedCountry?.armies).toHaveLength(1);
+    expect(formedCountry?.armies[0]).toMatchObject({
+      name: 'Первая дружина',
+      generalId,
+      unitIds: [unitId],
+      barracksCellId: 'barracks',
+      size: 'light',
+      romanNumeral: 'I',
+      movementRange: 7,
+      formedAtTurn: 2,
+    });
+    expect(formedCountry?.units[0]?.armyId).toBe(armyId);
+    expect(formedCountry?.generals[0]?.armyId).toBe(armyId);
+    expect(formed.events.find((event) => event.type === 'army.formed')?.payload).toMatchObject({
+      armyId,
+      generalId,
+      unitIds: [unitId],
+      size: 'light',
+      romanNumeral: 'I',
+    });
+    expect(formed.economicReport).toMatchObject({
+      countries: [{ unitUpkeep: 1, generalUpkeep: 2, armyMaintenance: 3 }],
+    });
+  });
+
+  it('rejects an army above the 40-unit roster limit before reserving its general', () => {
+    const state = createEconomyState([
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('residents', 3, 3, 20),
+    ]);
+    const result = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000414', 'army_formation', {
+          x: 1,
+          y: 1,
+          generalId: 'general-id',
+          unitIds: Array.from({ length: 41 }, (_, index) => `unit-${index}`),
+        }),
+      ],
+      createRandom().source,
+    );
+
+    expect(result.orderResults[0]?.resultCode).toBe('INVALID_ARMY_COMPOSITION');
+    expect(result.nextState.countries[0]?.armies).toHaveLength(0);
+  });
+
+  it('does not allow an already formed unit to join a second army', () => {
+    const state = createEconomyState([
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('residents', 3, 3, 20),
+    ]);
+    const country = state.countries[0]!;
+    const withReservations = {
+      ...state,
+      turnNumber: 2,
+      countries: [
+        {
+          ...country,
+          units: [{
+            id: 'unit-1',
+            type: 'swordsman',
+            barracksCellId: 'barracks',
+            barracksX: 1,
+            barracksY: 1,
+            currentHealth: 2,
+            recruitedAtTurn: 1,
+            armyId: 'army-1',
+          }],
+          generals: [{
+            id: 'general-1',
+            name: 'Командир',
+            stars: 0,
+            upkeep: 2,
+            barracksCellId: 'barracks',
+            barracksX: 1,
+            barracksY: 1,
+            recruitedAtTurn: 1,
+            armyId: 'army-1',
+          }],
+          armies: [{
+            id: 'army-1',
+            name: 'Первый',
+            generalId: 'general-1',
+            unitIds: ['unit-1'],
+            barracksCellId: 'barracks',
+            x: 1,
+            y: 1,
+            size: 'light',
+            romanNumeral: 'I',
+            movementRange: 7,
+            formedAtTurn: 1,
+          }],
+        },
+      ],
+    } as unknown as BaselineWorldState;
+    const result = resolve(
+      withReservations,
+      [
+        createOrder('40000000-0000-4000-8000-000000000415', 'army_formation', {
+          x: 1,
+          y: 1,
+          generalId: 'general-1',
+          unitIds: ['unit-1'],
+        }, 2),
+      ],
+      createRandom([], 2).source,
+    );
+
+    expect(result.orderResults[0]?.resultCode).toBe('UNIT_ALREADY_ASSIGNED');
+    expect(result.nextState.countries[0]?.armies).toHaveLength(1);
   });
 
   it('colonizes every free land cell in the 3x3 square and rolls one d100 per cell', () => {
