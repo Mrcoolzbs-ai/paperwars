@@ -474,7 +474,7 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           'SELECT version FROM world_snapshots WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
           [campaignId, target.current_turn],
         );
-        const job = await client.query<{ status: string }>(
+        await client.query(
           'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
           [campaignId, target.current_turn],
         );
