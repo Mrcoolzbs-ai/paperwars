@@ -301,6 +301,7 @@ export function createAdminService(options: AdminServiceOptions): AdminService {
       }));
     },
 
+    // prettier-ignore
     async deleteCampaign(adminUserId, campaignId) {
       await requireAdmin(adminUserId);
       validateCampaignId(campaignId);
