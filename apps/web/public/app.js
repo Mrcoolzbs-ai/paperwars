@@ -2105,31 +2105,78 @@
         const roster = (ownCountry?.units || []).filter(
           (unit) => unit.barracksX === cell.x && unit.barracksY === cell.y,
         );
+        const generals = (ownCountry?.generals || []).filter(
+          (general) => general.barracksX === cell.x && general.barracksY === cell.y,
+        );
+        const armies = (ownCountry?.armies || []).filter(
+          (army) => army.x === cell.x && army.y === cell.y,
+        );
+        const unassignedUnits = roster.filter((unit) => !unit.armyId);
+        const unassignedGenerals = generals.filter((general) => !general.armyId);
         const scienceLevel = currentScienceLevel();
         const militaryEconomy = state.countryProfile
           ? estimateCountryEconomy(state.countryProfile)
           : null;
         const armyBudget = Math.max(
           0,
-          Number(militaryEconomy?.income || 0) -
-            Number(militaryEconomy?.buildingUpkeep || 0),
+          Number(militaryEconomy?.armyBudget ??
+            (Number(militaryEconomy?.income || 0) - Number(militaryEconomy?.buildingUpkeep || 0))),
         );
-        const currentArmyUpkeep = Number(militaryEconomy?.unitUpkeep || 0);
+        const currentArmyUpkeep = Number(militaryEconomy?.armyMaintenance ??
+          (Number(militaryEconomy?.unitUpkeep || 0) + Number(militaryEconomy?.generalUpkeep || 0)));
+        const generalMinimumUnaffordable = currentArmyUpkeep + 2 > armyBudget;
         content += '<div class="map-context-group"><span>ГАРНИЗОН КАЗАРМЫ · ' +
           roster.length + ' ЮНИТ.</span>';
         if (roster.length) {
           content += roster.map((unit) => {
             const stats = combatUnitStatsForUi(unit.type, scienceLevel);
+            const assignedArmy = unit.armyId
+              ? armies.find((army) => army.id === unit.armyId)
+              : null;
             return '<div class="map-context-unit-row"><strong>' +
-              escapeHtml(stats?.name || unit.type) + '</strong><small>HP ' +
-              String(unit.currentHealth) + ' · Атака ' + String(stats?.attack ?? '—') +
-              ' · Броня ' + String(stats?.armor ?? '—') + ' · Инициатива ' +
-              String(stats?.initiative ?? '—') + '</small></div>';
+              escapeHtml(stats?.name || unit.type) +
+              (assignedArmy ? ' · ' + assignedArmy.romanNumeral + ' ' + escapeHtml(assignedArmy.name) : '') +
+              '</strong><small>HP ' + String(unit.currentHealth) + ' · Атака ' +
+              String(stats?.attack ?? '—') + ' · Броня ' + String(stats?.armor ?? '—') +
+              ' · Инициатива ' + String(stats?.initiative ?? '—') +
+              (assignedArmy ? ' · В отряде' : ' · В резерве') + '</small></div>';
           }).join('');
         } else {
           content += '<small>Казарма пока пуста.</small>';
         }
-        content += '</div><div class="map-context-group"><span>НАЙМ · 1 ОД ЗА ЮНИТА</span>';
+        content += '</div>';
+
+        if (generals.length) {
+          content += '<div class="map-context-group"><span>ГЕНЕРАЛЫ · ' +
+            generals.length + '</span>';
+          content += generals.map((general) => {
+            const assignedArmy = general.armyId
+              ? armies.find((army) => army.id === general.armyId)
+              : null;
+            return '<div class="map-context-unit-row"><strong>' +
+              escapeHtml(general.name) + ' · ' + String(general.stars) + '/6 звёзд' +
+              '</strong><small>Содержание ' + String(general.upkeep) + ' мон./ход' +
+              (assignedArmy ? ' · Командует ' + assignedArmy.romanNumeral + ' ' + escapeHtml(assignedArmy.name) : ' · Свободен') +
+              '</small></div>';
+          }).join('');
+          content += '</div>';
+        }
+
+        if (armies.length) {
+          content += '<div class="map-context-group"><span>СФОРМИРОВАННЫЕ ОТРЯДЫ</span>';
+          content += armies.map((army) => {
+            const commander = generals.find((general) => general.id === army.generalId);
+            return '<div class="map-context-unit-row"><strong>' +
+              army.romanNumeral + ' · ' + escapeHtml(army.name) + ' · ' +
+              String(army.unitIds.length) + ' бойцов</strong><small>' +
+              escapeHtml(commander?.name || 'Генерал') + ' · ' +
+              String(commander?.stars ?? '—') + '/6 звёзд · Скорость ' +
+              String(army.movementRange) + '</small></div>';
+          }).join('');
+          content += '</div>';
+        }
+
+        content += '<div class="map-context-group"><span>НАЙМ · 1 ОД ЗА ЮНИТА</span>';
         content += COMBAT_UNIT_OPTIONS.map(([type, unit]) => {
           const required = unit.requiredScience;
           const lockedScience = scienceLevel < required;
@@ -2145,8 +2192,38 @@
             unit.name + ' · Наука ' + required + ' · ' + unit.upkeep + ' мон. за ход' +
             (reason ? ' · ' + reason : '') + '</button>';
         }).join('');
-        content += '<small>Доступный бюджет армии: ' + armyBudget +
-          ' монет за ход. Текущее содержание: ' + currentArmyUpkeep + '.</small></div>';
+        content += '<small>Доступно для армии: ' + armyBudget +
+          ' мон./ход · текущее содержание: ' + currentArmyUpkeep + ' мон./ход.</small></div>';
+
+        content += '<div class="map-context-group"><span>ГЕНЕРАЛ · 1 ОД</span>' +
+          '<input class="map-context-text-input" id="general-name-input" type="text" maxlength="60" placeholder="Имя (необязательно)" aria-label="Имя генерала">' +
+          '<button class="map-context-action" type="button" data-map-action="general-recruitment"' +
+          (actionsRemaining <= 0 || generalMinimumUnaffordable ? ' disabled title="Недостаточно очков действий или минимального бюджета"' : '') +
+          '>Нанять генерала · качество 0–6 определит сервер</button>' +
+          '<small>Содержание зависит от качества: от 2 до 34 монет за ход. Выбрать качество и перебросить результат нельзя.</small></div>';
+
+        if (unassignedUnits.length && unassignedGenerals.length) {
+          content += '<div class="map-context-group"><span>ФОРМИРОВАНИЕ ОТРЯДА · 1 ОД</span>';
+          content += '<label class="map-context-field">Командир<select id="army-general-select">' +
+            unassignedGenerals.map((general) =>
+              '<option value="' + escapeHtml(general.id) + '">' +
+              escapeHtml(general.name) + ' · ' + String(general.stars) + '/6 ★</option>',
+            ).join('') + '</select></label>';
+          content += '<small>Выбери от 1 до 40 свободных бойцов этой казармы. Каждый боец может входить только в один отряд.</small>';
+          content += unassignedUnits.map((unit) => {
+            const stats = combatUnitStatsForUi(unit.type, scienceLevel);
+            return '<label class="map-context-check-row"><input type="checkbox" data-army-unit-id="' +
+              escapeHtml(unit.id) + '"><span>' + escapeHtml(stats?.name || unit.type) +
+              ' · HP ' + String(unit.currentHealth) + '</span></label>';
+          }).join('');
+          content += '<label class="map-context-field">Название отряда<input class="map-context-text-input" id="army-name-input" type="text" maxlength="60" placeholder="Отряд ' +
+            String((ownCountry?.armies || []).length + 1) + '"></label>';
+          content += '<button class="map-context-action" type="button" data-map-action="army-formation"' +
+            (actionsRemaining <= 0 ? ' disabled title="Недостаточно очков действий"' : '') +
+            '>Сформировать отряд</button>';
+        } else {
+          content += '<div class="map-context-group"><span>ФОРМИРОВАНИЕ ОТРЯДА</span><small>Нужны свободные бойцы и свободный генерал в этой казарме.</small></div>';
+        }
       }
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
