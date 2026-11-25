@@ -207,6 +207,7 @@ export interface CampaignMapUnitView {
   readonly barracksY: number;
   readonly currentHealth: number;
   readonly recruitedAtTurn: number;
+  readonly armyId?: string | null;
 }
 
 export interface CampaignMapGeneralView {
