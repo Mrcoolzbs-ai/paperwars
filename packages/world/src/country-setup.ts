@@ -626,6 +626,7 @@ async function buildSnapshot(
           name: row.system_name,
           principles: row.system_principles,
         },
+        units: [],
         cells: [],
       };
       countries.set(row.country_id, country);
