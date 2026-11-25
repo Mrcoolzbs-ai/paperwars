@@ -541,27 +541,21 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
            AND c.current_turn = 1
            AND c.map_width IS NOT NULL
            AND c.map_height IS NOT NULL
-           AND (
-             c.orders_locked = TRUE
-             OR (
-               c.orders_locked = FALSE
-               AND NOT EXISTS (
-                 SELECT 1 FROM turn_jobs AS first_turn_job
-                 WHERE first_turn_job.campaign_id = c.id AND first_turn_job.turn_number = 1
-               )
-               AND NOT EXISTS (
-                 SELECT 1 FROM campaign_memberships AS confirmed_members
-                 WHERE confirmed_members.campaign_id = c.id
-                   AND confirmed_members.status = 'active'
-                   AND confirmed_members.orders_confirmed = TRUE
-               )
-               AND NOT EXISTS (
-                 SELECT 1 FROM orders AS confirmed_orders
-                 WHERE confirmed_orders.campaign_id = c.id
-                   AND confirmed_orders.turn_number = 1
-                   AND confirmed_orders.status IN ('confirmed', 'finalized')
-               )
-             )
+           AND NOT EXISTS (
+             SELECT 1 FROM turn_jobs AS first_turn_job
+             WHERE first_turn_job.campaign_id = c.id AND first_turn_job.turn_number = 1
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM campaign_memberships AS confirmed_members
+             WHERE confirmed_members.campaign_id = c.id
+               AND confirmed_members.status = 'active'
+               AND confirmed_members.orders_confirmed = TRUE
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM orders AS confirmed_orders
+             WHERE confirmed_orders.campaign_id = c.id
+               AND confirmed_orders.turn_number = 1
+               AND confirmed_orders.status IN ('confirmed', 'finalized')
            )
            AND NOT EXISTS (
              SELECT 1 FROM campaign_memberships AS own_membership
