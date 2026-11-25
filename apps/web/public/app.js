@@ -58,6 +58,12 @@
     mapTransform: null,
     mapLayout: null,
     mapDrag: null,
+    mapCommandMode: null,
+    mapCommandTargets: [],
+    mapSelectedBuildingType: null,
+    mapSelectedBarracks: null,
+    mapHoveredCell: null,
+    mapTooltipPinned: false,
   };
 
   const principleCatalog = {
@@ -483,11 +489,21 @@
     iconNode.className = 'chat-room-icon';
     iconNode.textContent = icon;
     const label = document.createElement('span');
+    label.className = 'chat-room-copy';
+    const heading = document.createElement('span');
+    heading.className = 'chat-room-title-row';
     const name = document.createElement('strong');
     name.textContent = title;
+    heading.append(name);
+    if (options.turnNumber !== undefined && options.turnNumber !== null) {
+      const turn = document.createElement('span');
+      turn.className = 'chat-room-turn';
+      turn.textContent = 'ХОД ' + String(options.turnNumber).padStart(2, '0');
+      heading.append(turn);
+    }
     const hint = document.createElement('small');
     hint.textContent = subtitle;
-    label.append(name, hint);
+    label.append(heading, hint);
     button.append(iconNode, label);
     button.addEventListener('click', () => {
       clearChatAlert(roomKey);
@@ -588,7 +604,10 @@
         scope: 'campaign',
         campaignId: campaign.id,
         title: campaign.name,
-        subtitle: 'Ход ' + String(campaign.currentTurn).padStart(2, '0'),
+        turnNumber: campaign.currentTurn,
+        subtitle: campaign.lastChatMessage
+          ? 'Кто отправил: ' + campaign.lastChatMessage.authorLabel + ' — ' + campaign.lastChatMessage.message
+          : 'Кто отправил: сообщений пока нет',
         icon: '⌂',
         active: state.chatScope === 'campaign' && state.chatCampaignId === campaign.id,
         onSelect: () => {
@@ -702,6 +721,19 @@
           if (error.status === 403 || error.status === 404) return { room, messages: [] };
           throw error;
         }
+      }));
+      const latestByCampaign = new Map();
+      for (const { room, messages } of results) {
+        if (!room.key.startsWith('campaign:') || messages.length === 0) continue;
+        const latest = messages[messages.length - 1];
+        latestByCampaign.set(room.key.slice('campaign:'.length), {
+          authorLabel: String(latest.authorLabel || 'Игрок'),
+          message: String(latest.message || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+        });
+      }
+      state.chatCampaigns = campaigns.map((campaign) => ({
+        ...campaign,
+        lastChatMessage: latestByCampaign.get(campaign.id) || null,
       }));
       for (const { room, messages } of results) {
         const previous = new Set(state.chatSeenMessageIds[room.key] || []);
@@ -1012,7 +1044,11 @@
       ? 'Выключить инструменты администратора'
       : 'Включить инструменты администратора';
     $('#admin-tools-content').classList.toggle('hidden', !state.adminModeEnabled);
-    if (profile.isAdmin && state.adminModeEnabled && state.activeScreen === 'profile') {
+    $('#admin-workspace-tab')?.classList.toggle('hidden', !isAdminMode());
+    if (!isAdminMode() && $('#tab-admin') && !$('#tab-admin').classList.contains('hidden')) {
+      activateTab('overview');
+    }
+    if (profile.isAdmin && state.adminModeEnabled) {
       void refreshAdminTools();
     }
   }
@@ -1034,7 +1070,34 @@
   }
 
   function adminSelectedCampaignId() {
-    return $('#admin-campaign-select')?.value || state.campaign?.id || '';
+    return state.campaign?.id || '';
+  }
+
+  function renderAdminCampaignStatus() {
+    const context = $('#admin-campaign-context');
+    const statusNode = $('#admin-campaign-status');
+    const closeButton = $('#admin-force-end-turn');
+    const rollbackButton = $('#admin-rollback-turn');
+    if (!context || !statusNode || !closeButton || !rollbackButton) return;
+    if (!state.campaign) {
+      context.textContent = 'Открой кампанию, чтобы управлять её ходом.';
+      statusNode.textContent = 'Кампания не выбрана.';
+      closeButton.disabled = true;
+      rollbackButton.disabled = true;
+      return;
+    }
+    const turnNumber = state.turnStatus?.currentTurn || state.campaign.currentTurn || 1;
+    context.textContent = state.campaign.name + ' · ход ' + turnNumber;
+    const jobStatus = state.turnStatus?.turnJobStatus;
+    const processing = jobStatus === 'pending' || jobStatus === 'processing';
+    const accepting = state.turnStatus?.ordersAccepting === true;
+    statusNode.textContent = processing
+      ? 'Задание хода поставлено в очередь или уже обрабатывается.'
+      : accepting
+        ? 'Приём приказов открыт. Принудительное завершение закроет приём и отправит подтверждённые приказы на расчёт.'
+        : 'Приём приказов закрыт или кампания ещё проходит этап основания государств.';
+    closeButton.disabled = !isAdminMode() || !accepting || processing;
+    rollbackButton.disabled = !isAdminMode() || state.campaign.status !== 'active' || !state.turnStatus;
   }
 
   function renderAdminDiscoveries(discoveries) {
@@ -1237,60 +1300,10 @@
 
   async function refreshAdminTools() {
     if (!isAdminMode()) return;
-    const select = $('#admin-campaign-select');
-    const previous = select.value || state.campaign?.id || '';
-    try {
-      const data = await request('/admin/campaigns');
-      state.adminCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
-      select.replaceChildren();
-      for (const campaign of state.adminCampaigns) {
-        const option = document.createElement('option');
-        option.value = campaign.id;
-        option.textContent =
-          campaign.name + ' · ход ' + campaign.currentTurn + ' · игроков ' + campaign.playerCount;
-        if (campaign.status !== 'active') option.textContent += ' · завершена';
-        select.append(option);
-      }
-      if (previous && [...select.options].some((option) => option.value === previous)) {
-        select.value = previous;
-      } else if (select.options.length > 0) {
-        select.selectedIndex = 0;
-      }
-    } catch (error) {
-      $('#admin-discoveries-list').textContent = userErrorMessage(error);
-      return;
-    }
-    await Promise.all([loadAdminUsers(), loadAdminDiscoveries()]);
-  }
-
-  function openAdminCampaignMap() {
-    if (!isAdminMode()) return;
-    const campaignId = adminSelectedCampaignId();
-    const selected = state.adminCampaigns.find((campaign) => campaign.id === campaignId);
-    if (!selected) {
-      showToast('Сначала выбери кампанию.', true);
-      return;
-    }
-    if (state.campaign?.id !== selected.id) {
-      if (!state.adminMapOpened) {
-        state.adminMapPreviousCampaign = state.campaign;
-        state.adminMapOpened = true;
-      }
-      state.campaign = {
-        id: selected.id,
-        name: selected.name,
-        status: selected.status,
-        currentTurn: selected.currentTurn,
-        ordersLocked: selected.ordersLocked,
-        countryId: null,
-      };
-      state.mapOrders = [];
-      state.turnStatus = null;
-      state.mapView = null;
-    }
-    state.mapTransform = null;
-    showScreen('game');
-    openMap();
+    renderAdminCampaignStatus();
+    const tasks = [loadAdminUsers()];
+    if (state.campaign) tasks.push(loadAdminDiscoveries());
+    await Promise.all(tasks);
   }
 
   async function toggleAdminMode() {
@@ -1373,45 +1386,49 @@
 
   async function adminForceEndTurn() {
     const campaignId = adminSelectedCampaignId();
-    if (!campaignId) return;
-    if (!window.confirm('Принудительно завершить приём приказов и отправить текущий ход на обработку?')) return;
+    if (!isAdminMode() || !campaignId) {
+      showToast('Открой кампанию и включи административный режим.', true);
+      return;
+    }
+    if (state.turnStatus?.ordersAccepting !== true) {
+      renderAdminCampaignStatus();
+      showToast('Эта кампания сейчас не принимает приказы или ход уже закрыт.', true);
+      return;
+    }
+    if (!window.confirm('Принудительно закрыть текущий ход кампании «' + state.campaign.name + '»? Подтверждённые приказы будут отправлены на расчёт, черновики — отброшены.')) return;
     const button = $('#admin-force-end-turn');
     button.disabled = true;
     try {
-      await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/force-end-turn', {
+      const result = await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/force-end-turn', {
         method: 'POST',
       });
-      showToast('Ход принудительно закрыт и отправлен на обработку.');
-      await loadCampaigns();
-      await loadTurnRoom();
-      await loadMapOrders();
+      if (!result.turnJob?.id) throw new Error('Сервер не подтвердил создание задания обработки хода.');
+      showToast('Ход закрыт. Задание создано, Worker начнёт расчёт автоматически.');
+      await Promise.all([loadCampaigns(), loadCampaignMap(), loadTurnRoom(), loadMapOrders()]);
+      await loadAdminDiscoveries();
     } catch (error) {
       showToast(userErrorMessage(error), true);
     } finally {
-      button.disabled = false;
+      renderAdminCampaignStatus();
     }
   }
 
   async function adminRollbackTurn() {
     const campaignId = adminSelectedCampaignId();
-    if (!campaignId) return;
-    if (!window.confirm('Откатить последний завершённый ход? Это удалит его результаты и вернёт мир к предыдущему состоянию.')) return;
+    if (!isAdminMode() || !campaignId || !state.turnStatus) return;
+    if (!window.confirm('Откатить последний завершённый ход кампании «' + (state.campaign?.name || '') + '»?')) return;
     const button = $('#admin-rollback-turn');
     button.disabled = true;
     try {
       const data = await request('/admin/campaigns/' + encodeURIComponent(campaignId) + '/rollback', {
         method: 'POST',
       });
-      showToast('Ход ' + data.turnNumber + ' отменён. Приказы можно отправить заново.');
-      await loadCampaigns();
-      await loadCampaignMap();
-      await loadTurnRoom();
-      await loadMapOrders();
-      await loadAdminDiscoveries();
+      showToast('Кампания возвращена к ходу ' + data.turnNumber + '.');
+      await Promise.all([loadCampaigns(), loadCampaignMap(), loadTurnRoom(), loadMapOrders(), loadAdminDiscoveries()]);
     } catch (error) {
       showToast(userErrorMessage(error), true);
     } finally {
-      button.disabled = false;
+      renderAdminCampaignStatus();
     }
   }
 
@@ -2469,8 +2486,8 @@
         const minY = territory.centerY - Math.floor(territory.height / 2);
         const countryLabelX = left + (minX + territory.width / 2) * cellSize;
         const countryBorderTop = top + minY * cellSize;
-        ctx.strokeStyle = territory.type === 'core' ? '#050505' : '#253b55';
-        ctx.lineWidth = territory.type === 'core' ? 3 : 2.2;
+        ctx.strokeStyle = '#050505';
+        ctx.lineWidth = 3;
         ctx.setLineDash([]);
         ctx.strokeRect(
           left + minX * cellSize + 1,
@@ -2492,6 +2509,9 @@
     // can never cover occupied-cell markers.
     if (!miniature) {
       for (const country of (state.mapView.countries || [])) {
+        const ownTerritoryCoordinates = new Set(
+          (country.cells || []).map((ownedCell) => ownedCell.x + ',' + ownedCell.y),
+        );
         for (const cell of country.cells || []) {
           const px = left + cell.x * cellSize;
           const py = top + cell.y * cellSize;
@@ -2594,7 +2614,10 @@
             ctx.lineCap = 'round';
             ctx.beginPath();
             for (const edge of edges) {
-              if (!mapIsLand(cell.x + edge.dx, cell.y + edge.dy)) {
+              const neighborX = cell.x + edge.dx;
+              const neighborY = cell.y + edge.dy;
+              const neighborKey = neighborX + ',' + neighborY;
+              if (!ownTerritoryCoordinates.has(neighborKey) && !mapIsLand(neighborX, neighborY)) {
                 ctx.moveTo(edge.x1, edge.y1);
                 ctx.lineTo(edge.x2, edge.y2);
               }
@@ -2822,6 +2845,10 @@
   }
 
   function activateTab(tab) {
+    if (tab === 'admin' && !isAdminMode()) {
+      showToast('Включи административный режим в профиле.', true);
+      tab = 'overview';
+    }
     $$('.workspace-tab').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
     $$('.tab-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== `tab-${tab}`));
     if (tab === 'systems') loadSystems();
@@ -2830,7 +2857,10 @@
       resetTerritoryGrid();
       refreshAvailableSystems().catch((error) => setMessage('#country-message', userErrorMessage(error)));
     }
-    if (tab === 'admin') loadPending();
+    if (tab === 'admin') {
+      renderAdminCampaignStatus();
+      void Promise.all([loadPending(), loadAdminDiscoveries()]);
+    }
   }
 
   async function loadSystems() {
@@ -3163,8 +3193,8 @@
     const season = state.mapView?.season || seasonNames[Math.floor(((turnNumber - 1) % 24) / 6)];
     const year = Number(state.mapView?.year || Math.floor((turnNumber - 1) / 24) + 1);
     const seasonTurn = Number(state.mapView?.seasonTurn || ((turnNumber - 1) % 6) + 1);
-    const population = cells.length
-      ? cells.filter((cell) => !cell.buildingType).length
+    const population = cells.length && cells.some((cell) => Number.isFinite(Number(cell.population)))
+      ? cells.reduce((sum, cell) => sum + Math.max(0, Number(cell.population || 0)), 0)
       : Number(country.residentCount || 0);
     const active = (cell) => cell.flooded !== true || cell.buildingType === 'rice_field';
     const factories = cells.filter((cell) =>
@@ -3270,8 +3300,6 @@
     const disabledBuildingsLabel = economy?.disabledBuildings?.map((building) =>
       (buildingMeta[building.type]?.label || building.type) + ' (' + building.x + ', ' + building.y + ')',
     ).join(', ') || '';
-    const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
-    const seasonLabel = seasonLabels[economy.season] || economy.season || '—';
     const populationForCard = economy.population ?? country.residentCount ?? 0;
     const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
     const scienceLevel = mapCountry?.cells.filter((cell) => cell.buildingType === 'science').length ??
@@ -3397,25 +3425,7 @@
           '</section>' +
           '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
         '</div>' +
-        '<h3 class="country-doc-section-title">СЕЗОН И ПОГОДА</h3>' +
-        '<div class="country-doc-economy">' +
-          '<div><b class="country-doc-income">☀</b><span>Текущий сезон</span><strong>' +
-            escapeHtml(seasonLabel) + '</strong><small>' +
-            'Год ' + String(economy.year || 1) + ' · ход ' + String(economy.seasonTurn || 1) + '/6' +
-          '</small></div>' +
-          '<div><b class="country-doc-income">❄</b><span>Тёплая одежда</span><strong>' +
-            (economy.season === 'winter' ? String(economy.clothing || 0) + ' / ' + String(economy.clothingDemand || economy.population) : 'Не требуется') +
-          '</strong><small>' +
-            (economy.season === 'winter'
-              ? (economy.clothingShortage ? 'Не хватает одежды для ' + String(economy.unclothedPopulation || 0) + ' жителей' : 'Все жители обеспечены')
-              : 'Одежда не накапливается') +
-          '</small></div>' +
-          '<div><b class="country-doc-income">≈</b><span>Затопленные клетки</span><strong>' +
-            String(economy.floodedCells || 0) + '</strong><small>' +
-            (economy.movementMultiplier === 0.5 ? 'Зимой скорость войск ×0,5' : 'Обычная скорость передвижения') +
-          '</small></div>' +
-        '</div>' +
-        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
+        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
         '<div class="country-doc-economy country-doc-finance">' +
           '<div><b class="country-doc-income">↗</b><span>Прибавка</span><strong>+' +
             escapeHtml(economyIncome) + '</strong><small>Золото за ход</small></div>' +
@@ -3786,8 +3796,6 @@
     $('#profile-back').addEventListener('click', closeProfile);
     $('#admin-code-form').addEventListener('submit', submitAdminCode);
     $('#admin-mode-toggle').addEventListener('click', toggleAdminMode);
-    $('#admin-campaign-select').addEventListener('change', () => { void loadAdminDiscoveries(); });
-    $('#admin-open-map').addEventListener('click', openAdminCampaignMap);
     $('#admin-force-end-turn').addEventListener('click', adminForceEndTurn);
     $('#admin-rollback-turn').addEventListener('click', adminRollbackTurn);
     $('#profile-form').addEventListener('submit', async (event) => {

@@ -1221,6 +1221,12 @@ export function createBaselineTurnResolver(): TurnResolver<
           );
           continue;
         }
+        if (cell.flooded === true) {
+          orderResults.push(
+            rejection(order.id, 'FLOODED_CELL_CANNOT_BE_BUILT', 'На затопленной клетке строить нельзя.'),
+          );
+          continue;
+        }
 
         const requiredScience = SCIENCE_REQUIRED_BY_BUILDING[buildingType] ?? 0;
         const currentScience = country.cells.filter(
