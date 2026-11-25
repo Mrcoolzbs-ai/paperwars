@@ -27,6 +27,7 @@ import type {
   PlayerSocialSystemTemplateView,
   CountryProfileView,
   CountryEconomyView,
+  CampaignMapUnitView,
   StartBuildingPlacement,
   StartBuildingType,
   AdditionalBuildingType,
@@ -903,7 +904,7 @@ export function createCountrySetupService(options: {
         { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean }
       >();
       const snapshotCountries = snapshotState?.['countries'];
-      const unitsByCountryId = new Map<string, readonly unknown[]>();
+      const unitsByCountryId = new Map<string, readonly CampaignMapUnitView[]>();
       if (Array.isArray(snapshotCountries)) {
         for (const countryValue of snapshotCountries) {
           if (
@@ -916,7 +917,7 @@ export function createCountrySetupService(options: {
           ) {
             continue;
           }
-          unitsByCountryId.set(countryValue.id, countryValue.units);
+          unitsByCountryId.set(countryValue.id, countryValue.units as CampaignMapUnitView[]);
         }
       }
       if (Array.isArray(snapshotCountries)) {
@@ -1009,7 +1010,7 @@ export function createCountrySetupService(options: {
             structureType?: 'greenhouse' | 'dam' | null;
             flooded?: boolean;
           }>;
-          units: readonly unknown[];
+          units: readonly CampaignMapUnitView[];
         }
       >();
       for (const row of data.rows) {
