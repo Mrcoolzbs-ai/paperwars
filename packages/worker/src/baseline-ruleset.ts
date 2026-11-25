@@ -8,6 +8,7 @@ import type {
 } from '@paper-wars/domain';
 import { toId } from '@paper-wars/shared';
 import {
+  getCombatUnitDefinition,
   getCombatUnitStats,
   getUnitUpkeep,
   isCombatUnitType,
@@ -407,11 +408,16 @@ export function createBaselineTurnResolver(): TurnResolver<
 
     const mapWidth = width as number;
     const mapHeight = height as number;
-    const countries: Array<Omit<BaselineCountryState, 'cells'> & { cells: BaselineCellState[] }> =
-      state.countries.map((country) => ({
-        ...country,
-        cells: country.cells.map((cell) => ({ ...cell })),
-      }));
+    const countries: Array<
+      Omit<BaselineCountryState, 'cells' | 'units'> & {
+        cells: BaselineCellState[];
+        units: RecruitedUnitState[];
+      }
+    > = state.countries.map((country) => ({
+      ...country,
+      units: [...(country.units ?? [])],
+      cells: country.cells.map((cell) => ({ ...cell })),
+    }));
     const countriesById = new Map(countries.map((country) => [country.id, country]));
     const adminCountryIds = new Set(snapshot.state.adminCountryIds ?? []);
     const discoveredByCoordinate = new Map(
@@ -788,6 +794,108 @@ export function createBaselineTurnResolver(): TurnResolver<
           resultCode: 'BUILDING_DEMOLISHED',
           message: 'Здание снесено. Освободившаяся клетка возвращает одного жителя.',
           data: { x, y, buildingType, population },
+        });
+        continue;
+      }
+
+      if (order.type === 'unit_recruitment') {
+        const unitType = order.payload['unitType'];
+        const barracks = country.cells.find((candidate) => candidate.x === x && candidate.y === y);
+        if (!isCombatUnitType(unitType)) {
+          orderResults.push(
+            rejection(order.id, 'INVALID_UNIT_TYPE', 'Неизвестный тип боевого юнита.'),
+          );
+          continue;
+        }
+        if (barracks === undefined || barracks.buildingType !== 'barracks') {
+          orderResults.push(
+            rejection(
+              order.id,
+              'BARRACKS_REQUIRED',
+              'Нанимать и размещать юнитов можно только в своей казарме.',
+            ),
+          );
+          continue;
+        }
+
+        const definition = getCombatUnitDefinition(unitType);
+        const currentScience = country.cells.filter(
+          (candidate) => candidate.buildingType === 'science',
+        ).length;
+        if (currentScience < definition.requiredScience) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'SCIENCE_REQUIRED',
+              `${definition.name} требует ${definition.requiredScience} науки. Сейчас у государства ${currentScience}.`,
+            ),
+          );
+          continue;
+        }
+        const stats = getCombatUnitStats(unitType, currentScience);
+        const population = country.cells.reduce(
+          (sum, cell) => sum + Math.max(0, cell.population),
+          0,
+        );
+        const goldMines = country.cells.filter(
+          (cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true,
+        ).length;
+        const buildingMaintenance = country.cells.reduce(
+          (sum, cell) =>
+            sum + componentUpkeep(cell, 'building') + componentUpkeep(cell, 'structure'),
+          0,
+        );
+        const armyBudget = Math.max(0, goldMines * population - buildingMaintenance);
+        const currentArmyMaintenance = getUnitUpkeep(country.units);
+        if (currentArmyMaintenance + stats.upkeep > armyBudget) {
+          orderResults.push(
+            rejection(
+              order.id,
+              'ARMY_BUDGET_EXCEEDED',
+              `Найм превышает бюджет армии. Доступно ${armyBudget} монет содержания, требуется ${currentArmyMaintenance + stats.upkeep}.`,
+            ),
+          );
+          continue;
+        }
+
+        const unitId = stableUuid(
+          ['paperwars:unit', snapshot.campaignId, snapshot.turnNumber, country.id, order.id].join(':'),
+        );
+        const unit: RecruitedUnitState = {
+          id: unitId,
+          type: unitType,
+          barracksCellId: barracks.id,
+          currentHealth: stats.health,
+          recruitedAtTurn: snapshot.turnNumber,
+        };
+        country.units.push(unit);
+        emit(order.id, country.id, 'unit.recruited', {
+          orderId: order.id,
+          countryId: country.id,
+          unitId,
+          unitType,
+          barracksCellId: barracks.id,
+          x,
+          y,
+          currentHealth: stats.health,
+          upkeep: stats.upkeep,
+          scienceLevel: currentScience,
+        });
+        orderResults.push({
+          orderId: order.id,
+          status: 'accepted',
+          resultCode: 'UNIT_RECRUITED',
+          message: `${definition.name} нанят и размещён в казарме. Содержание: ${stats.upkeep} монет за ход.`,
+          data: {
+            unitId,
+            unitType,
+            barracksCellId: barracks.id,
+            x,
+            y,
+            currentHealth: stats.health,
+            upkeep: stats.upkeep,
+            scienceLevel: currentScience,
+          },
         });
         continue;
       }
@@ -1272,8 +1380,8 @@ export function createBaselineTurnResolver(): TurnResolver<
         (cell) => cell.buildingType === 'gold_mine' && cell.flooded !== true,
       ).length;
       let income = gold * population;
-      const unitCount = country.units?.length ?? 0;
-      const unitUpkeep = unitCount;
+      const unitCount = country.units.length;
+      const unitUpkeep = getUnitUpkeep(country.units);
       const components = country.cells.flatMap((cell) => [
         ...(cell.buildingType
           ? [{ cell, component: 'building' as const, type: cell.buildingType }]
