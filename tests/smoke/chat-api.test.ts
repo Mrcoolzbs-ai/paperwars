@@ -243,14 +243,14 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: ownerHeaders,
         });
         expect(previews.statusCode).toBe(200);
-        expect(previews.json().previews.world.at(-1)).toMatchObject({
+        const previewRooms = previews.json().previews;
+        expect(previewRooms.world.at(-1)).toMatchObject({
           authorLabel: outsider.user.displayName,
           message: 'Сообщение 5',
         });
-        const campaignPreview = previews.json().previews.campaigns.find(
-          (room: { campaignId: string }) => room.campaignId === campaign.id,
-        );
-        expect(campaignPreview.messages.at(-1)).toMatchObject({
+        const campaignPreview = previewRooms.campaigns[0];
+        expect(campaignPreview?.campaignId).toBe(campaign.id);
+        expect(campaignPreview?.messages.at(-1)).toMatchObject({
           authorLabel: member.user.displayName,
           message: 'Принято. Выделю ресурсы.',
         });
