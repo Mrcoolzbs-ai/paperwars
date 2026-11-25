@@ -2274,7 +2274,13 @@
     if (state.campaign?.id !== campaignId) return;
     state.mapOrders = Array.isArray(data.orders) ? data.orders : [];
     renderMapOrderSummary();
-    if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
+    if (!$('#map-modal').classList.contains('hidden')) {
+      if (state.mapCommandMode) {
+        refreshMapCommandTargets();
+        renderMapCommandOptions();
+      }
+      drawMapCanvas($('#map-canvas'), false);
+    }
   }
 
   async function createMapOrder(type, payload) {
@@ -2290,7 +2296,7 @@
         : 'Приём приказов закрыт. ' + (state.turnRoomError || 'Проверь, завершили ли все участники основание государств.'), true);
       return;
     }
-    if (!isAdminMode() && mapActionCount() >= 3) {
+    if (!isAdminMode() && mapActionCount() >= 3 && !isFreeUpgradeOrder({ type, payload })) {
       showToast('На этот ход уже использованы все 3 очка действий.', true);
       return;
     }
@@ -2310,18 +2316,20 @@
       await loadMapOrders();
       await loadTurnRoom();
       closeMapContextMenu();
-      drawMapCanvas($('#map-canvas'), false);
+      clearMapCommandMode();
       showToast(type === 'colonization'
         ? 'Приказ колонизации добавлен в список.'
         : type === 'demolition'
           ? 'Приказ на снос добавлен в список.'
-          : type === 'unit_recruitment'
-          ? 'Приказ на найм юнита добавлен в список.'
-          : type === 'general_recruitment'
-            ? 'Приказ на найм генерала добавлен в список.'
-            : type === 'army_formation'
-              ? 'Приказ на формирование отряда добавлен в список.'
-              : 'Приказ строительства добавлен в список.');
+          : type === 'structure_removal'
+            ? 'Демонтаж добавлен в список.'
+            : type === 'unit_recruitment'
+              ? 'Приказ на найм юнита добавлен в список.'
+              : type === 'general_recruitment'
+                ? 'Приказ на найм генерала добавлен в список.'
+                : type === 'army_formation'
+                  ? 'Приказ на формирование отряда добавлен в список.'
+                  : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -2785,7 +2793,13 @@
     }
     buildWorldPreview();
     renderTerritoryGrid();
-    if (!$('#map-modal').classList.contains('hidden')) drawMapCanvas($('#map-canvas'), false);
+    if (!$('#map-modal').classList.contains('hidden')) {
+      if (state.mapCommandMode) {
+        refreshMapCommandTargets();
+        renderMapCommandOptions();
+      }
+      drawMapCanvas($('#map-canvas'), false);
+    }
   }
 
   function countryColor(id) {
@@ -3089,12 +3103,14 @@
     $('#map-selection-label').textContent = isAdminMode() && !state.campaign.countryId
       ? 'Административный просмотр: ПКМ по клетке — карточка государства или инструменты управления.'
       : state.campaign.countryId
-        ? 'Зажми ЛКМ для перемещения. ПКМ по клетке — строительство, колонизация или действия администратора.'
+        ? 'Зажми ЛКМ для перемещения. Выбери приказ выше, наведи на подсвеченную клетку и нажми ЛКМ.'
         : existingReservation
           ? 'Твоя точка старта зарезервирована: ' + existingReservation.centerX + ', ' + existingReservation.centerY + '. Можно выбрать другое место.'
           : 'Зажми ЛКМ для перемещения. Выбери сушу — будет показана территория 5×5.';
     $('#confirm-spawn').classList.toggle('hidden', Boolean(state.campaign.countryId) || isAdminMode());
     $('#confirm-map-orders').classList.toggle('hidden', !state.campaign.countryId);
+    $('#map-command-toolbar').classList.toggle('hidden', !state.campaign.countryId);
+    if (!state.campaign.countryId) clearMapCommandMode();
     closeMapContextMenu();
     $('#map-modal').classList.remove('hidden');
     Promise.all([
@@ -3107,6 +3123,10 @@
         $('#confirm-spawn').disabled = false;
       }
       renderMapOrderSummary();
+      if (state.campaign.countryId) {
+        refreshMapCommandTargets();
+        renderMapCommandOptions();
+      }
       requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
     }).catch((error) => showToast(userErrorMessage(error), true));
     requestAnimationFrame(() => drawMapCanvas($('#map-canvas'), false));
