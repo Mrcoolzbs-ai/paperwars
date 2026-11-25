@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getCombatUnitStats, getUnitUpkeep, listCombatUnitDefinitions } from '@paper-wars/worker';
+import {
+  getArmySizeProfile,
+  getCombatUnitStats,
+  getGeneralUpkeep,
+  getGeneralsUpkeep,
+  getUnitUpkeep,
+  listCombatUnitDefinitions,
+} from '@paper-wars/worker';
 
 describe('baseline combat unit catalogue', () => {
   it('contains the five publicly available starting combat units', () => {
@@ -83,6 +90,41 @@ describe('baseline combat unit catalogue', () => {
       health: 4,
       attack: 2,
     });
+  });
+
+  it('uses the Fibonacci maintenance table for server-generated general quality', () => {
+    expect(Array.from({ length: 7 }, (_, stars) => getGeneralUpkeep(stars))).toEqual([
+      2, 3, 5, 8, 13, 21, 34,
+    ]);
+    expect(() => getGeneralUpkeep(-1)).toThrow(RangeError);
+    expect(() => getGeneralUpkeep(7)).toThrow(RangeError);
+  });
+
+  it('calculates total general maintenance', () => {
+    expect(
+      getGeneralsUpkeep([
+        { upkeep: getGeneralUpkeep(0) },
+        { upkeep: getGeneralUpkeep(2) },
+        { upkeep: getGeneralUpkeep(4) },
+      ]),
+    ).toBe(20);
+  });
+
+  it('assigns the Q23 army size bands and movement ranges at every boundary', () => {
+    expect(getArmySizeProfile(1)).toEqual({
+      size: 'light',
+      romanNumeral: 'I',
+      movementRange: 7,
+    });
+    expect(getArmySizeProfile(10)).toMatchObject({ size: 'light', romanNumeral: 'I', movementRange: 7 });
+    expect(getArmySizeProfile(11)).toMatchObject({ size: 'medium', romanNumeral: 'II', movementRange: 5 });
+    expect(getArmySizeProfile(20)).toMatchObject({ size: 'medium', romanNumeral: 'II', movementRange: 5 });
+    expect(getArmySizeProfile(21)).toMatchObject({ size: 'heavy', romanNumeral: 'III', movementRange: 3 });
+    expect(getArmySizeProfile(30)).toMatchObject({ size: 'heavy', romanNumeral: 'III', movementRange: 3 });
+    expect(getArmySizeProfile(31)).toMatchObject({ size: 'huge', romanNumeral: 'IV', movementRange: 1 });
+    expect(getArmySizeProfile(40)).toMatchObject({ size: 'huge', romanNumeral: 'IV', movementRange: 1 });
+    expect(() => getArmySizeProfile(0)).toThrow(RangeError);
+    expect(() => getArmySizeProfile(41)).toThrow(RangeError);
   });
 
   it('calculates maintenance from each unit type rather than counting all units as one coin', () => {
