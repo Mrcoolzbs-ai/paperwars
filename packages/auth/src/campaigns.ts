@@ -386,32 +386,16 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 LIMIT 1',
           [normalizedCampaignId],
         );
-        const confirmedMember = await client.query(
-          `SELECT 1 FROM campaign_memberships
-           WHERE campaign_id = $1 AND status = 'active' AND orders_confirmed = TRUE
-           LIMIT 1`,
-          [normalizedCampaignId],
-        );
-        const finalizedOrder = await client.query(
-          `SELECT 1 FROM orders
-           WHERE campaign_id = $1 AND turn_number = 1
-             AND status IN ('confirmed', 'finalized')
-           LIMIT 1`,
-          [normalizedCampaignId],
-        );
-        if (
-          firstTurnJob.rows.length > 0 ||
-          confirmedMember.rows.length > 0 ||
-          finalizedOrder.rows.length > 0
-        ) {
+        if (firstTurnJob.rows.length > 0) {
           throw new AuthValidationError(
-            'Первый ход уже подтверждён хотя бы одним игроком и больше не принимает новых участников.',
+            'Первый ход уже обрабатывается и больше не принимает новых участников.',
           );
         }
 
         if (!target.orders_locked) {
-          // Draft orders remain attached to their countries. Pause the first-turn
-          // window until the new participant completes country setup.
+          // Confirmations are reversible until closeOrders atomically creates the
+          // TurnJob. Pause the first turn and return submitted orders to drafts so
+          // every participant can review the complete player roster.
           await client.query(
             `UPDATE campaigns
              SET orders_locked = TRUE, orders_locked_at = NULL, deadline_at = NULL
@@ -422,6 +406,12 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
             `UPDATE campaign_memberships
              SET orders_confirmed = FALSE
              WHERE campaign_id = $1 AND status = 'active'`,
+            [normalizedCampaignId],
+          );
+          await client.query(
+            `UPDATE orders
+             SET status = 'draft', updated_at = clock_timestamp()
+             WHERE campaign_id = $1 AND turn_number = 1 AND status = 'confirmed'`,
             [normalizedCampaignId],
           );
         }
