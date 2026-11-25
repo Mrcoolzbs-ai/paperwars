@@ -1930,8 +1930,12 @@
         : type === 'demolition'
           ? 'Приказ на снос добавлен в список.'
           : type === 'unit_recruitment'
-            ? 'Приказ на найм юнита добавлен в список.'
-            : 'Приказ строительства добавлен в список.');
+          ? 'Приказ на найм юнита добавлен в список.'
+          : type === 'general_recruitment'
+            ? 'Приказ на найм генерала добавлен в список.'
+            : type === 'army_formation'
+              ? 'Приказ на формирование отряда добавлен в список.'
+              : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -2333,6 +2337,30 @@
             x: cell.x,
             y: cell.y,
             unitType: button.dataset.unitType,
+          });
+        } else if (action === 'general-recruitment') {
+          const name = menu.querySelector('#general-name-input')?.value.trim();
+          await createMapOrder('general_recruitment', {
+            x: cell.x,
+            y: cell.y,
+            ...(name ? { name } : {}),
+          });
+        } else if (action === 'army-formation') {
+          const unitIds = Array.from(
+            menu.querySelectorAll('[data-army-unit-id]:checked'),
+          ).map((input) => input.dataset.armyUnitId).filter(Boolean);
+          const generalId = menu.querySelector('#army-general-select')?.value;
+          const name = menu.querySelector('#army-name-input')?.value.trim();
+          if (unitIds.length < 1 || unitIds.length > 40 || !generalId) {
+            showToast('Выбери от 1 до 40 юнитов и свободного генерала.', true);
+            return;
+          }
+          await createMapOrder('army_formation', {
+            x: cell.x,
+            y: cell.y,
+            unitIds,
+            generalId,
+            ...(name ? { name } : {}),
           });
         } else if (action === 'colonization') {
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
@@ -2932,6 +2960,8 @@
       diplomacy: 'Дипломатия',
       battle: 'Боевой приказ',
       unit_recruitment: 'Найм юнита',
+      general_recruitment: 'Найм генерала',
+      army_formation: 'Формирование отряда',
     };
     return labels[type] || type || 'Приказ';
   }
