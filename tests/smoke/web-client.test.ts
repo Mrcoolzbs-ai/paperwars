@@ -116,8 +116,7 @@ describe('browser client', () => {
     expect(script.body).toContain('data-map-action="army-formation"');
     expect(script.body).toContain('data-army-unit-id');
     expect(script.body).toContain('army.romanNumeral');
-    expect(script.body).toContain('Сервер определит качество');
-    expect(script.body).toContain('quality 0–6');
+    expect(script.body).toContain('качество 0–6 определит сервер');
     expect(script.body).toContain('COMBAT_UNIT_UI');
     expect(script.body).toContain('function combatUnitStatsForUi');
     expect(script.body).toContain('ГАРНИЗОН КАЗАРМЫ');
