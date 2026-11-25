@@ -19,7 +19,7 @@ export interface CombatUnitDefinition {
   readonly healthByScience: readonly number[];
   readonly attackByScience: readonly number[];
   /** Attackers receive this many additional evasion faces when targeting the unit. */
-  readonly attackerEvasionBonus: number;
+  readonly opponentEvasionBonusWhenAttacking: number;
 }
 
 export interface CombatUnitStats {
@@ -35,7 +35,7 @@ export interface CombatUnitStats {
   readonly attack: number;
   readonly line: number;
   readonly targetableLines: readonly number[];
-  readonly attackerEvasionBonus: number;
+  readonly opponentEvasionBonusWhenAttacking: number;
 }
 
 export interface RecruitedUnitState {
@@ -61,7 +61,7 @@ const DEFINITIONS: Readonly<Record<CombatUnitType, CombatUnitDefinition>> = {
     armorByScience: [0, 0, 0, 1, 1, 2],
     healthByScience: [2, 4, 4, 6, 6, 10],
     attackByScience: [1, 1, 2, 2, 3, 3],
-    attackerEvasionBonus: 0,
+    opponentEvasionBonusWhenAttacking: 0,
   },
   archer: {
     type: 'archer',
@@ -75,7 +75,7 @@ const DEFINITIONS: Readonly<Record<CombatUnitType, CombatUnitDefinition>> = {
     armorByScience: [0, 0, 0, 0, 1, 1],
     healthByScience: [2, 4, 4, 6, 6, 10],
     attackByScience: [2, 2, 3, 3, 4, 4],
-    attackerEvasionBonus: 0,
+    opponentEvasionBonusWhenAttacking: 0,
   },
   shieldbearer: {
     type: 'shieldbearer',
@@ -89,7 +89,7 @@ const DEFINITIONS: Readonly<Record<CombatUnitType, CombatUnitDefinition>> = {
     armorByScience: [2, 3, 3, 3, 3],
     healthByScience: [2, 3, 4, 4, 6],
     attackByScience: [1, 1, 1, 1, 2],
-    attackerEvasionBonus: 0,
+    opponentEvasionBonusWhenAttacking: 0,
   },
   cavalryman: {
     type: 'cavalryman',
@@ -103,7 +103,7 @@ const DEFINITIONS: Readonly<Record<CombatUnitType, CombatUnitDefinition>> = {
     armorByScience: [0, 0, 1, 2],
     healthByScience: [3, 5, 5, 8],
     attackByScience: [3, 4, 5, 6],
-    attackerEvasionBonus: 1,
+    opponentEvasionBonusWhenAttacking: 1,
   },
   blade_master: {
     type: 'blade_master',
@@ -117,7 +117,7 @@ const DEFINITIONS: Readonly<Record<CombatUnitType, CombatUnitDefinition>> = {
     armorByScience: [0, 0, 0, 0, 0, 1],
     healthByScience: [1, 2, 2, 3, 3, 4],
     attackByScience: [1, 1, 1, 2, 2, 2],
-    attackerEvasionBonus: 0,
+    opponentEvasionBonusWhenAttacking: 0,
   },
 };
 
@@ -156,7 +156,7 @@ export function getCombatUnitStats(
     attack: definition.attackByScience[index]!,
     line: definition.line,
     targetableLines: definition.targetableLines,
-    attackerEvasionBonus: definition.attackerEvasionBonus,
+    opponentEvasionBonusWhenAttacking: definition.opponentEvasionBonusWhenAttacking,
   };
 }
 
