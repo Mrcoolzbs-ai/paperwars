@@ -3071,6 +3071,58 @@
         ctx.restore();
       }
     }
+
+    if (!miniature && state.mapCommandMode) {
+      for (const target of state.mapCommandTargets || []) {
+        const px = left + target.x * cellSize, py = top + target.y * cellSize;
+        const hovered = state.mapHoveredCell === target.x + ',' + target.y;
+        ctx.save();
+        if (state.mapCommandMode === 'colonization') {
+          ctx.fillStyle = hovered ? 'rgba(72,174,104,.22)' : 'rgba(72,174,104,.13)';
+          ctx.strokeStyle = hovered ? '#4bc276' : 'rgba(72,174,104,.8)';
+          ctx.lineWidth = Math.max(1.5, cellSize * .08);
+          ctx.fillRect(px + cellSize * .12, py + cellSize * .12, cellSize * .76, cellSize * .76);
+          ctx.strokeRect(px + cellSize * .12, py + cellSize * .12, cellSize * .76, cellSize * .76);
+          if (hovered) {
+            const rx = left + (target.x - 1) * cellSize, ry = top + (target.y - 1) * cellSize;
+            ctx.fillStyle = 'rgba(72,174,104,.17)';
+            ctx.strokeStyle = '#4bc276';
+            ctx.lineWidth = Math.max(2, cellSize * .12);
+            ctx.fillRect(rx, ry, cellSize * 3, cellSize * 3);
+            ctx.strokeRect(rx + 1, ry + 1, cellSize * 3 - 2, cellSize * 3 - 2);
+          }
+        } else if (state.mapCommandMode === 'construction') {
+          const score = target.score || 0;
+          ctx.fillStyle = mapHeatRgba(score, hovered ? .42 : .22);
+          ctx.strokeStyle = mapHeatColor(score);
+          ctx.lineWidth = hovered ? Math.max(2, cellSize * .1) : Math.max(1, cellSize * .055);
+          ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+          ctx.strokeRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+          if (hovered && state.mapSelectedBuildingType) {
+            ctx.globalAlpha = .48;
+            if (state.mapSelectedBuildingType === 'demolition') {
+              ctx.strokeStyle = '#d33b31';
+              ctx.lineWidth = Math.max(2, cellSize * .13);
+              ctx.beginPath();
+              ctx.moveTo(px + cellSize * .2, py + cellSize * .2);
+              ctx.lineTo(px + cellSize * .8, py + cellSize * .8);
+              ctx.moveTo(px + cellSize * .8, py + cellSize * .2);
+              ctx.lineTo(px + cellSize * .2, py + cellSize * .8);
+              ctx.stroke();
+            } else {
+              drawBuildingMapIcon(ctx, state.mapSelectedBuildingType, px, py, cellSize);
+            }
+          }
+        } else if (state.mapCommandMode === 'recruitment') {
+          ctx.fillStyle = hovered ? 'rgba(50,119,178,.43)' : 'rgba(50,119,178,.23)';
+          ctx.strokeStyle = '#529bd0';
+          ctx.lineWidth = hovered ? 2.5 : 1.4;
+          ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+          ctx.strokeRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+        }
+        ctx.restore();
+      }
+    }
     for (const reservation of (state.mapView.reservations || [])) {
       ctx.save();
       ctx.setLineDash([5, 3]);
@@ -4462,6 +4514,18 @@
     });
     $('#confirm-spawn').addEventListener('click', confirmSpawn);
     $('#confirm-map-orders').addEventListener('click', confirmMapOrders);
+    $('#map-command-colonization').addEventListener('click', () => setMapCommandMode('colonization'));
+    $('#map-command-construction').addEventListener('click', () => setMapCommandMode('construction'));
+    $('#map-command-recruitment').addEventListener('click', () => setMapCommandMode('recruitment'));
+    $('#map-command-options').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-command-building]');
+      if (!button || button.disabled) return;
+      state.mapSelectedBuildingType = button.dataset.commandBuilding === '__demolition'
+        ? 'demolition' : button.dataset.commandBuilding;
+      refreshMapCommandTargets();
+      renderMapCommandOptions();
+      drawMapCanvas($('#map-canvas'), false);
+    });
     document.addEventListener('pointerdown', (event) => {
       const menu = $('#map-context-menu');
       if (menu && !menu.contains(event.target) && event.target !== $('#map-canvas')) closeMapContextMenu();
@@ -4469,6 +4533,7 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         closeMapContextMenu();
+        clearMapCommandMode();
         closeChatModal();
       }
     });
@@ -4482,15 +4547,26 @@
       $('#map-canvas').setPointerCapture(event.pointerId);
     });
     $('#map-canvas').addEventListener('pointermove', (event) => {
-      if (!state.mapDrag) return;
-      const dx = event.clientX - state.mapDrag.x;
-      const dy = event.clientY - state.mapDrag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) state.mapDrag.moved = true;
-      if (state.mapDrag.moved) {
-        state.mapTransform.x = state.mapDrag.originX + dx;
-        state.mapTransform.y = state.mapDrag.originY + dy;
-        drawMapCanvas($('#map-canvas'), false);
+      if (state.mapDrag) {
+        const dx = event.clientX - state.mapDrag.x, dy = event.clientY - state.mapDrag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 4) state.mapDrag.moved = true;
+        if (state.mapDrag.moved) {
+          state.mapTransform.x = state.mapDrag.originX + dx;
+          state.mapTransform.y = state.mapDrag.originY + dy;
+          drawMapCanvas($('#map-canvas'), false);
+          return;
+        }
       }
+      const cell = mapCellAt(event.clientX, event.clientY);
+      if (!cell) {
+        state.mapHoveredCell = null;
+        if (!state.mapTooltipPinned) hideMapCellTooltip();
+        if (state.mapCommandMode) drawMapCanvas($('#map-canvas'), false);
+        return;
+      }
+      const changed = state.mapHoveredCell !== cell.x + ',' + cell.y;
+      updateMapCellTooltip(cell, event, false);
+      if (changed && state.mapCommandMode) drawMapCanvas($('#map-canvas'), false);
     });
     $('#map-canvas').addEventListener('pointerup', (event) => {
       const drag = state.mapDrag;
@@ -4498,15 +4574,37 @@
       if (!drag || drag.moved) return;
       const cell = mapCellAt(event.clientX, event.clientY);
       if (!cell) return;
+      if (state.mapCommandMode && handleMapCommandClick(cell)) {
+        state.mapTooltipPinned = false;
+        hideMapCellTooltip();
+        drawMapCanvas($('#map-canvas'), false);
+        return;
+      }
       if (state.campaign?.countryId || isAdminMode()) {
-        if (event.pointerType === 'touch') openMapContextMenu(cell, event.clientX, event.clientY);
+        const content = tooltipForMapCell(cell);
+        if (content) {
+          state.mapHoveredCell = cell.x + ',' + cell.y;
+          updateMapCellTooltip(cell, event, true);
+        } else if (event.pointerType === 'touch') {
+          openMapContextMenu(cell, event.clientX, event.clientY);
+        } else {
+          state.mapTooltipPinned = false;
+          hideMapCellTooltip();
+        }
         return;
       }
       chooseSpawnCenter(cell.x, cell.y);
     });
+    $('#map-canvas').addEventListener('pointerleave', () => {
+      if (state.mapDrag || state.mapTooltipPinned) return;
+      state.mapHoveredCell = null;
+      hideMapCellTooltip();
+      if (state.mapCommandMode) drawMapCanvas($('#map-canvas'), false);
+    });
     $('#map-canvas').addEventListener('contextmenu', (event) => {
       if (!state.campaign?.countryId && !isAdminMode()) return;
       event.preventDefault();
+      if (state.mapCommandMode) return;
       const cell = mapCellAt(event.clientX, event.clientY);
       if (cell) openMapContextMenu(cell, event.clientX, event.clientY);
     });
