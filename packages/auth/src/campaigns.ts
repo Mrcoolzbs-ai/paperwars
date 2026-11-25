@@ -399,7 +399,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
            LIMIT 1`,
           [normalizedCampaignId],
         );
-        if (firstTurnJob.rows.length > 0 || confirmedMember.rows.length > 0 || finalizedOrder.rows.length > 0) {
+        if (
+          firstTurnJob.rows.length > 0 ||
+          confirmedMember.rows.length > 0 ||
+          finalizedOrder.rows.length > 0
+        ) {
           throw new AuthValidationError(
             'Первый ход уже подтверждён хотя бы одним игроком и больше не принимает новых участников.',
           );
