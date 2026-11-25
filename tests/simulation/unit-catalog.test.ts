@@ -66,7 +66,7 @@ describe('baseline combat unit catalogue', () => {
       attack: 3,
       line: 2,
       targetableLines: [1, 2, 3],
-      attackerEvasionBonus: 1,
+      opponentEvasionBonusWhenAttacking: 1,
       upkeep: 2,
     });
   });
