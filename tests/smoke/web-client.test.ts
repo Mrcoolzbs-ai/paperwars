@@ -109,7 +109,15 @@ describe('browser client', () => {
     expect(script.body).toContain("createMapOrder('construction'");
     expect(script.body).toContain("createMapOrder('colonization'");
     expect(script.body).toContain("createMapOrder('unit_recruitment'");
+    expect(script.body).toContain("createMapOrder('general_recruitment'");
+    expect(script.body).toContain("createMapOrder('army_formation'");
     expect(script.body).toContain('data-map-action="unit-recruitment"');
+    expect(script.body).toContain('data-map-action="general-recruitment"');
+    expect(script.body).toContain('data-map-action="army-formation"');
+    expect(script.body).toContain('data-army-unit-id');
+    expect(script.body).toContain('army.romanNumeral');
+    expect(script.body).toContain('Сервер определит качество');
+    expect(script.body).toContain('quality 0–6');
     expect(script.body).toContain('COMBAT_UNIT_UI');
     expect(script.body).toContain('function combatUnitStatsForUi');
     expect(script.body).toContain('ГАРНИЗОН КАЗАРМЫ');
@@ -180,6 +188,8 @@ describe('browser client', () => {
     expect(stylesheet.body).toContain('.map-order-summary');
     expect(stylesheet.body).toContain('.country-doc-unit-list');
     expect(stylesheet.body).toContain('.map-context-unit-row');
+    expect(stylesheet.body).toContain('.map-context-check-row');
+    expect(stylesheet.body).toContain('.map-context-text-input');
     expect(stylesheet.body).toContain('.chat-modal');
     expect(stylesheet.body).toContain('.chat-dock-launcher');
     expect(stylesheet.body).toContain('.chat-dock-window');
