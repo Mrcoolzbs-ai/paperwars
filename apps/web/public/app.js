@@ -2597,7 +2597,7 @@
       await loadMapOrders();
       await loadTurnRoom();
       closeMapContextMenu();
-      clearMapCommandMode();
+      if (state.mapCommandMode !== 'colonization') clearMapCommandMode();
       showToast(type === 'colonization'
         ? 'Приказ колонизации добавлен в список.'
         : type === 'demolition'
