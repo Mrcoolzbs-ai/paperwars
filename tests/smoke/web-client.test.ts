@@ -142,6 +142,15 @@ describe('browser client', () => {
     expect(script.body).toContain('setInterval');
     expect(script.body).toContain('function mapColonizationAvailability');
     expect(script.body).toContain('function mapColonizationRegion');
+    expect(script.body).toContain('function setMapCommandMode');
+    expect(script.body).toContain('function mapConstructionAvailability');
+    expect(script.body).toContain('function mapBuildingPreview');
+    expect(script.body).toContain('function refreshMapCommandTargets');
+    expect(script.body).toContain('function handleMapCommandClick');
+    expect(script.body).toContain('Кто отправил:');
+    expect(script.body).toContain('lastChatMessage');
+    expect(script.body).toContain('cell.population || 0');
+    expect(script.body).not.toContain('СЕЗОН И ПОГОДА');
     expect(script.body).toContain('rgba(241, 155, 104, 0.08)');
     expect(script.body).not.toContain("order.type === 'colonization' ? 'К' : 'С'");
     expect(script.body).toContain("request('/auth/profile')");
@@ -162,6 +171,13 @@ describe('browser client', () => {
 
     const home = await app.inject({ method: 'GET', url: '/' });
     expect(home.body).toContain('id="map-context-menu"');
+    expect(home.body).toContain('id="map-command-toolbar"');
+    expect(home.body).toContain('id="map-command-colonization"');
+    expect(home.body).toContain('id="map-command-construction"');
+    expect(home.body).toContain('id="map-command-recruitment"');
+    expect(home.body).toContain('id="admin-workspace-tab"');
+    expect(home.body).toContain('id="admin-force-end-turn"');
+    expect(home.body).toContain('id="admin-campaign-status"');
     expect(home.body).toContain('id="confirm-map-orders"');
     expect(home.body).toContain('id="chat-open-button"');
     expect(home.body).toContain('id="chat-modal"');
@@ -184,6 +200,9 @@ describe('browser client', () => {
     expect(stylesheet.statusCode).toBe(200);
     expect(stylesheet.headers['content-type']).toContain('text/css');
     expect(stylesheet.body).toContain('.map-context-menu');
+    expect(stylesheet.body).toContain('.map-command-toolbar');
+    expect(stylesheet.body).toContain('.map-cell-tooltip');
+    expect(stylesheet.body).toContain('.chat-room-title-row');
     expect(stylesheet.body).toContain('.map-order-summary');
     expect(stylesheet.body).toContain('.country-doc-unit-list');
     expect(stylesheet.body).toContain('.map-context-unit-row');
