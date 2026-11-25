@@ -457,8 +457,10 @@ describe('baseline turn resolver', () => {
       createRandom([0]).source,
     );
     const recruitedCountry = recruited.nextState.countries[0];
-    const unitId = recruitedCountry?.units[0]?.id;
-    const generalId = recruitedCountry?.generals[0]?.id;
+    const recruitedUnits = recruitedCountry?.units ?? [];
+    const recruitedGenerals = recruitedCountry?.generals ?? [];
+    const unitId = recruitedUnits[0]?.id;
+    const generalId = recruitedGenerals[0]?.id;
     expect(unitId).toBeDefined();
     expect(generalId).toBeDefined();
 
@@ -497,9 +499,12 @@ describe('baseline turn resolver', () => {
       },
     });
     const formedCountry = formed.nextState.countries[0];
-    const armyId = formedCountry?.armies[0]?.id;
-    expect(formedCountry?.armies).toHaveLength(1);
-    expect(formedCountry?.armies[0]).toMatchObject({
+    const formedArmies = formedCountry?.armies ?? [];
+    const formedUnits = formedCountry?.units ?? [];
+    const formedGenerals = formedCountry?.generals ?? [];
+    const armyId = formedArmies[0]?.id;
+    expect(formedArmies).toHaveLength(1);
+    expect(formedArmies[0]).toMatchObject({
       name: 'Первая дружина',
       generalId,
       unitIds: [unitId],
@@ -509,8 +514,8 @@ describe('baseline turn resolver', () => {
       movementRange: 7,
       formedAtTurn: 2,
     });
-    expect(formedCountry?.units[0]?.armyId).toBe(armyId);
-    expect(formedCountry?.generals[0]?.armyId).toBe(armyId);
+    expect(formedUnits[0]?.armyId).toBe(armyId);
+    expect(formedGenerals[0]?.armyId).toBe(armyId);
     expect(formed.events.find((event) => event.type === 'army.formed')?.payload).toMatchObject({
       armyId,
       generalId,
