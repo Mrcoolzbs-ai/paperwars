@@ -430,6 +430,85 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       expect(campaignsResponse.statusCode).toBe(200);
       expect(campaignsResponse.json<{ campaigns: unknown[] }>().campaigns).toBeInstanceOf(Array);
 
+      const campaignRow = await persistence!.pool.query<{ id: string }>(
+        `INSERT INTO campaigns (name, ruleset_version, rng_version)
+         VALUES ($1, 'baseline-v1', 'rng-v1')
+         RETURNING id`,
+        [`admin-delete-${randomUUID()}`],
+      );
+      const campaignId = campaignRow.rows[0]?.id;
+      if (!campaignId) throw new Error('Expected campaign to delete');
+      const adminUserId = login.json<{ user: { id: string } }>().user.id;
+      const socialSystem = await persistence!.pool.query<{ id: string }>(
+        `INSERT INTO social_systems (campaign_id, system_type, name, origin_x, origin_y)
+         VALUES ($1, 'religion', 'Delete Test Faith', 1, 1)
+         RETURNING id`,
+        [campaignId],
+      );
+      const country = await persistence!.pool.query<{ id: string }>(
+        `INSERT INTO countries (campaign_id, owner_user_id, name, official_system_type, official_system_id, setup_completed)
+         VALUES ($1, $2, 'Delete Test Country', 'religion', $3, TRUE)
+         RETURNING id`,
+        [campaignId, adminUserId, socialSystem.rows[0]!.id],
+      );
+      const countryId = country.rows[0]!.id;
+      await persistence!.pool.query(
+        `INSERT INTO campaign_memberships (campaign_id, user_id, country_id, status)
+         VALUES ($1, $2, $3, 'active')`,
+        [campaignId, adminUserId, countryId],
+      );
+      const cell = await persistence!.pool.query<{ id: string }>(
+        'INSERT INTO cells (campaign_id, x, y) VALUES ($1, 1, 1) RETURNING id',
+        [campaignId],
+      );
+      const discovery = await persistence!.pool.query<{ id: string }>(
+        `INSERT INTO discovery_records (
+           campaign_id, cell_id, discovered_by_country_id, discovered_at_turn, discovery_type
+         ) VALUES ($1, $2, $3, 1, 'ruins')
+         RETURNING id`,
+        [campaignId, cell.rows[0]!.id, countryId],
+      );
+      const history = await persistence!.pool.query<{ id: string }>(
+        `INSERT INTO discovery_history (discovery_id, event_type, actor_country_id, turn_number)
+         VALUES ($1, 'discovered', $2, 1)
+         RETURNING id`,
+        [discovery.rows[0]!.id, countryId],
+      );
+      await persistence!.pool.query(
+        `INSERT INTO discovery_access (
+           discovery_id, country_id, status, granted_at_turn, granted_by_event_id
+         ) VALUES ($1, $2, 'active', 1, $3)`,
+        [discovery.rows[0]!.id, countryId, history.rows[0]!.id],
+      );
+      await persistence!.pool.query(
+        `INSERT INTO game_events (
+           campaign_id, turn_number, event_type, payload, visibility, recipient_country_id
+         ) VALUES ($1, 1, 'test.private', '{}'::jsonb, 'private', $2)`,
+        [campaignId, countryId],
+      );
+      await persistence!.pool.query(
+        `INSERT INTO orders (campaign_id, country_id, turn_number, order_type, payload, status)
+         VALUES ($1, $2, 1, 'test.order', '{}'::jsonb, 'draft')`,
+        [campaignId, countryId],
+      );
+
+      const campaignDeleted = await app.inject({
+        method: 'DELETE',
+        url: '/admin/campaigns/' + campaignId,
+        headers,
+      });
+      expect(campaignDeleted.statusCode).toBe(204);
+      const remainingCampaign = await persistence!.pool.query(
+        'SELECT 1 FROM campaigns WHERE id = $1',
+        [campaignId],
+      );
+      expect(remainingCampaign.rows).toHaveLength(0);
+      const remainingDiscovery = await persistence!.pool.query(
+        'SELECT 1 FROM discovery_records WHERE campaign_id = $1',
+        [campaignId],
+      );
+      expect(remainingDiscovery.rows).toHaveLength(0);
+
       const usersResponse = await app.inject({
         method: 'GET',
         url: '/admin/users',

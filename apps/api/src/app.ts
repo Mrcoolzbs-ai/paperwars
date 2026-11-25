@@ -852,6 +852,19 @@ function registerAdminRoutes(
     }
   });
 
+  app.delete<{ Params: { campaignId: string } }>(
+    '/admin/campaigns/:campaignId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await adminService.deleteCampaign(user.id, request.params.campaignId);
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
+
   app.get('/admin/users', async (request, reply) => {
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));

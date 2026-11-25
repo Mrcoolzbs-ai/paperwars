@@ -219,6 +219,46 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       await persistence?.close();
     });
 
+    it('processes a queued turn even when an older expired campaign has no active members', async () => {
+      const pool = getPool();
+      const emptyCampaign = await pool.query<{ id: string }>(
+        `INSERT INTO campaigns (
+           name, status, current_turn, orders_locked, deadline_at, ruleset_version, rng_version
+         ) VALUES ($1, 'active', 1, FALSE, clock_timestamp() - INTERVAL '1 minute',
+                   'baseline-v1', 'rng-v1')
+         RETURNING id`,
+        [`worker-empty-expired-${randomUUID()}`],
+      );
+      const emptyCampaignId = emptyCampaign.rows[0]?.id;
+      if (!emptyCampaignId) throw new Error('Expected expired empty campaign');
+
+      const fixture = await createFixture(false);
+      const eventId = randomUUID();
+      try {
+        const worker = createTurnWorker({
+          pool,
+          workerId: 'worker-test-queue-after-empty-campaign',
+          keyProvider,
+          ruleset,
+          resolver: createResolver(eventId),
+        });
+        await expect(worker.processNext()).resolves.toMatchObject({
+          status: 'completed',
+          campaignId: fixture.campaignId,
+          turnNumber: 1,
+        });
+
+        const job = await pool.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+          [fixture.campaignId],
+        );
+        expect(job.rows).toEqual([{ status: 'completed' }]);
+      } finally {
+        await removeFixture(fixture);
+        await pool.query('DELETE FROM campaigns WHERE id = $1', [emptyCampaignId]);
+      }
+    });
+
     it('runs the injected resolver and atomically stores the next snapshot, events, order results, reports and next seed', async () => {
       const pool = getPool();
       const fixture = await createFixture(true);

@@ -1305,6 +1305,78 @@
     }
   }
 
+  function renderAdminCampaigns(campaigns) {
+    const host = $('#admin-campaigns-list');
+    if (!host) return;
+    host.replaceChildren();
+    if (campaigns.length === 0) {
+      host.textContent = 'Кампаний пока нет.';
+      return;
+    }
+    for (const campaign of campaigns) {
+      const row = document.createElement('div');
+      row.className = 'admin-campaign-row';
+
+      const identity = document.createElement('div');
+      identity.className = 'admin-campaign-copy';
+      const name = document.createElement('strong');
+      name.textContent = campaign.name;
+      const details = document.createElement('small');
+      const mapSize = campaign.mapWidth && campaign.mapHeight
+        ? ` · карта ${campaign.mapWidth}×${campaign.mapHeight}`
+        : '';
+      details.textContent = `Ход ${campaign.currentTurn} · игроков: ${campaign.playerCount} · ${campaign.status}${mapSize}`;
+      identity.append(name, details);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'button button-outline button-small button-danger';
+      remove.textContent = 'Удалить полностью';
+      remove.title = 'Безвозвратно удалить кампанию, государства, ходы и сообщения';
+      remove.addEventListener('click', async () => {
+        if (!window.confirm(
+          `Удалить кампанию «${campaign.name}» полностью? Все государства, ходы, результаты, открытия и сообщения будут удалены без возможности восстановления.`,
+        )) return;
+        remove.disabled = true;
+        try {
+          await request('/admin/campaigns/' + encodeURIComponent(campaign.id), {
+            method: 'DELETE',
+          });
+          const wasOpen = state.campaign?.id === campaign.id;
+          if (wasOpen) {
+            state.campaign = null;
+            state.mapView = null;
+            state.mapOrders = [];
+            state.turnStatus = null;
+            showScreen('game');
+          }
+          await Promise.all([loadAdminCampaigns(), loadCampaigns()]);
+          showToast('Кампания «' + campaign.name + '» полностью удалена.');
+        } catch (error) {
+          showToast(userErrorMessage(error) || 'Не удалось удалить кампанию.', true);
+        } finally {
+          remove.disabled = false;
+        }
+      });
+
+      row.append(identity, remove);
+      host.append(row);
+    }
+  }
+
+  async function loadAdminCampaigns() {
+    const host = $('#admin-campaigns-list');
+    if (!host) return;
+    host.textContent = 'Загрузка списка кампаний…';
+    try {
+      const data = await request('/admin/campaigns');
+      state.adminCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+      renderAdminCampaigns(state.adminCampaigns);
+    } catch (error) {
+      host.textContent = userErrorMessage(error);
+    }
+  }
+
   async function loadAdminUsers() {
     const host = $('#admin-users-list');
     if (!host) return;
@@ -1321,7 +1393,7 @@
   async function refreshAdminTools() {
     if (!isAdminMode()) return;
     renderAdminCampaignStatus();
-    const tasks = [loadAdminUsers()];
+    const tasks = [loadAdminUsers(), loadAdminCampaigns()];
     if (state.campaign) tasks.push(loadAdminDiscoveries());
     await Promise.all(tasks);
   }
@@ -2165,8 +2237,16 @@
     tooltip.classList.remove('hidden');
     state.mapTooltipPinned = pinned;
     const rect = modal.getBoundingClientRect();
-    tooltip.style.left = Math.max(8, Math.min(rect.width - 310, clientX - rect.left + 14)) + 'px';
-    tooltip.style.top = Math.max(92, Math.min(rect.height - 100, clientY - rect.top + 14)) + 'px';
+    const preferredLeft = clientX - rect.left + 14;
+    const preferredTop = clientY - rect.top + 14;
+    tooltip.style.left = Math.max(8, Math.min(
+      rect.width - tooltip.offsetWidth - 8,
+      preferredLeft,
+    )) + 'px';
+    tooltip.style.top = Math.max(92, Math.min(
+      rect.height - tooltip.offsetHeight - 8,
+      preferredTop,
+    )) + 'px';
   }
 
   const BUILDINGS_WITH_OUTPUT = new Set([

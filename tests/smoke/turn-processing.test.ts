@@ -6,6 +6,7 @@ import {
   CampaignTurnProcessingError,
   getCampaignTurnStatus,
   closeOrders,
+  closeExpiredOrderWindows,
   confirmCampaignOrders,
   createCampaignOrder,
   updateCampaignOrder,
@@ -413,22 +414,42 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
-    it('closes a turn when its only active participant confirms', async () => {
+    it('closes a turn when its only active participant confirms actual orders', async () => {
       const pool = getPool();
       const fixture = await createFixture(1);
       try {
+        await createCampaignOrder(pool, fixture.campaignId, fixture.userIds[0]!, {
+          type: 'test.solo_order',
+          payload: {},
+        });
         await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
         const closed = await closeOrders(pool, fixture.campaignId);
         expect(closed).toMatchObject({
           campaignId: fixture.campaignId,
           turnNumber: 1,
-          finalizedOrderCount: 0,
+          finalizedOrderCount: 1,
         });
         const job = await pool.query<{ status: string }>(
           'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
           [fixture.campaignId],
         );
         expect(job.rows).toEqual([{ status: 'pending' }]);
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
+    it('skips expired campaigns with no active participants instead of aborting the worker queue', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(0, true);
+      try {
+        const closed = await closeExpiredOrderWindows(pool);
+        expect(closed.some((job) => job.campaignId === fixture.campaignId)).toBe(false);
+        const jobs = await pool.query(
+          'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+          [fixture.campaignId],
+        );
+        expect(jobs.rows).toHaveLength(0);
       } finally {
         await removeFixture(fixture);
       }
