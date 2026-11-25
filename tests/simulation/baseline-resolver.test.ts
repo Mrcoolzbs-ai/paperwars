@@ -757,10 +757,18 @@ describe('baseline turn resolver', () => {
     const country = state.countries[0]!;
     const diagonalOnlyState: BaselineWorldState = {
       ...state,
-      countries: [{
-        ...country,
-        cells: [{ ...country.cells[0]!, x: 0, y: 0 }],
-      }],
+      countries: [
+        {
+          ...country,
+          cells: [
+            {
+              ...country.cells[0]!,
+              x: 0,
+              y: 0,
+            },
+          ],
+        },
+      ],
     };
     const random = createRandom();
     const result = resolve(
