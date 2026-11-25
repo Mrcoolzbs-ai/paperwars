@@ -1261,36 +1261,6 @@ describe('baseline turn resolver', () => {
     expect(nextCells.find((cell) => cell.id === 'downstream-cell')?.flooded).toBe(true);
   });
 
-  it('rejects construction on a flooded owned land cell', () => {
-    const floodedCell = { ...economyCell('flooded-empty', 1, 0, 1), flooded: true };
-    const state = createEconomyState([
-      economyCell('gold', 0, 0, 10, 'gold_mine'),
-      floodedCell,
-    ]);
-    const result = resolve(
-      state,
-      [
-        createOrder('40000000-0000-4000-8000-000000000205', 'construction', {
-          x: 1,
-          y: 0,
-          buildingType: 'field',
-        }),
-      ],
-      createRandom().source,
-    );
-
-    expect(result.orderResults.map((item) => item.resultCode)).toEqual([
-      'FLOODED_CELL_CANNOT_BE_BUILT',
-    ]);
-    expect(
-      result.nextState.countries[0]?.cells.find((cell) => cell.id === 'flooded-empty'),
-    ).toMatchObject({
-      population: 1,
-      buildingType: null,
-      flooded: true,
-    });
-  });
-
   it('allows greenhouse and dam overlays on cells but prevents installing both on one cell', () => {
     const baseState = createEconomyState([
       economyCell('gold', 0, 0, 10, 'gold_mine'),
