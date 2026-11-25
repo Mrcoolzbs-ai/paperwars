@@ -209,9 +209,8 @@ describe('baseline turn resolver', () => {
       upkeep: 1,
       scienceLevel: 1,
     });
-    expect(result.economicReport.countries[0]).toMatchObject({
-      unitCount: 1,
-      unitUpkeep: 1,
+    expect(result.economicReport).toMatchObject({
+      countries: [{ unitCount: 1, unitUpkeep: 1 }],
     });
   });
 
