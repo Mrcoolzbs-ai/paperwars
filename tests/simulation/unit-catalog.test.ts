@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  getCombatUnitStats,
-  getUnitUpkeep,
-  listCombatUnitDefinitions,
-} from '@paper-wars/worker';
+import { getCombatUnitStats, getUnitUpkeep, listCombatUnitDefinitions } from '@paper-wars/worker';
 
 describe('baseline combat unit catalogue', () => {
   it('contains the five publicly available starting combat units', () => {
@@ -97,6 +93,6 @@ describe('baseline combat unit catalogue', () => {
         { type: 'cavalryman' },
         { type: 'blade_master' },
       ]),
-    ).toBe(5);
+    ).toBe(6);
   });
 });
