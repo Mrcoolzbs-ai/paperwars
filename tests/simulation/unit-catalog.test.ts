@@ -116,13 +116,41 @@ describe('baseline combat unit catalogue', () => {
       romanNumeral: 'I',
       movementRange: 7,
     });
-    expect(getArmySizeProfile(10)).toMatchObject({ size: 'light', romanNumeral: 'I', movementRange: 7 });
-    expect(getArmySizeProfile(11)).toMatchObject({ size: 'medium', romanNumeral: 'II', movementRange: 5 });
-    expect(getArmySizeProfile(20)).toMatchObject({ size: 'medium', romanNumeral: 'II', movementRange: 5 });
-    expect(getArmySizeProfile(21)).toMatchObject({ size: 'heavy', romanNumeral: 'III', movementRange: 3 });
-    expect(getArmySizeProfile(30)).toMatchObject({ size: 'heavy', romanNumeral: 'III', movementRange: 3 });
-    expect(getArmySizeProfile(31)).toMatchObject({ size: 'huge', romanNumeral: 'IV', movementRange: 1 });
-    expect(getArmySizeProfile(40)).toMatchObject({ size: 'huge', romanNumeral: 'IV', movementRange: 1 });
+    expect(getArmySizeProfile(10)).toMatchObject({
+      size: 'light',
+      romanNumeral: 'I',
+      movementRange: 7,
+    });
+    expect(getArmySizeProfile(11)).toMatchObject({
+      size: 'medium',
+      romanNumeral: 'II',
+      movementRange: 5,
+    });
+    expect(getArmySizeProfile(20)).toMatchObject({
+      size: 'medium',
+      romanNumeral: 'II',
+      movementRange: 5,
+    });
+    expect(getArmySizeProfile(21)).toMatchObject({
+      size: 'heavy',
+      romanNumeral: 'III',
+      movementRange: 3,
+    });
+    expect(getArmySizeProfile(30)).toMatchObject({
+      size: 'heavy',
+      romanNumeral: 'III',
+      movementRange: 3,
+    });
+    expect(getArmySizeProfile(31)).toMatchObject({
+      size: 'huge',
+      romanNumeral: 'IV',
+      movementRange: 1,
+    });
+    expect(getArmySizeProfile(40)).toMatchObject({
+      size: 'huge',
+      romanNumeral: 'IV',
+      movementRange: 1,
+    });
     expect(() => getArmySizeProfile(0)).toThrow(RangeError);
     expect(() => getArmySizeProfile(41)).toThrow(RangeError);
   });
