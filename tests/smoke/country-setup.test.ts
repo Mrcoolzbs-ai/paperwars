@@ -507,9 +507,11 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       );
       const builtCoordinates = builtCellCoordinates.rows[0];
       expect(builtCoordinates).toBeDefined();
-      expect(snapshotBackedCountry?.cells.find(
-        (cell) => cell.x === builtCoordinates!.x && cell.y === builtCoordinates!.y,
-      )?.population).toBe(0);
+      expect(
+        snapshotBackedCountry?.cells.find(
+          (cell) => cell.x === builtCoordinates!.x && cell.y === builtCoordinates!.y,
+        )?.population,
+      ).toBe(0);
 
       await expect(recalculateCountryPopulations(current.pool)).resolves.toBeGreaterThan(0);
       const repairedProjection = await current.pool.query<{ population: number }>(
