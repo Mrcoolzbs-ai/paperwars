@@ -243,12 +243,13 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
           headers: ownerHeaders,
         });
         expect(previews.statusCode).toBe(200);
-        const worldPreview = previews.json().previews.world;
-        expect(worldPreview[worldPreview.length - 1]).toMatchObject({
+        const previewRooms = previews.json().previews;
+        const latestWorldMessage = previewRooms.world.at(-1);
+        expect(latestWorldMessage).toMatchObject({
           authorLabel: outsider.user.displayName,
           message: 'Сообщение 5',
         });
-        const campaignPreview = previews.json().previews.campaigns.find(
+        const campaignPreview = previewRooms.campaigns.find(
           (room: { campaignId: string }) => room.campaignId === campaign.id,
         );
         const latestCampaignMessage = campaignPreview.messages.at(-1);
