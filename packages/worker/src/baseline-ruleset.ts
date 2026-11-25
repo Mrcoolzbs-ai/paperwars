@@ -1479,12 +1479,22 @@ export function createBaselineTurnResolver(): TurnResolver<
           continue;
         }
 
-        const adjacentOffsets = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
-        const touchesOwnTerritory = candidates.some((cell) =>
-          adjacentOffsets.some(
-            ([dx, dy]) => ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id,
-          ),
-        );
+        const adjacentOffsets = [
+          [0, -1],
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+        ] as const;
+        let touchesOwnTerritory = false;
+        for (const cell of candidates) {
+          for (const [dx, dy] of adjacentOffsets) {
+            if (ownership.get(coordinateKey(cell.x + dx, cell.y + dy)) === country.id) {
+              touchesOwnTerritory = true;
+              break;
+            }
+          }
+          if (touchesOwnTerritory) break;
+        }
 
         if (!touchesOwnTerritory) {
           orderResults.push(
