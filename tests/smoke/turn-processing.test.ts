@@ -413,6 +413,27 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
       }
     });
 
+    it('closes a turn when its only active participant confirms', async () => {
+      const pool = getPool();
+      const fixture = await createFixture(1);
+      try {
+        await confirmCampaignOrders(pool, fixture.campaignId, fixture.userIds[0]!);
+        const closed = await closeOrders(pool, fixture.campaignId);
+        expect(closed).toMatchObject({
+          campaignId: fixture.campaignId,
+          turnNumber: 1,
+          finalizedOrderCount: 0,
+        });
+        const job = await pool.query<{ status: string }>(
+          'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1',
+          [fixture.campaignId],
+        );
+        expect(job.rows).toEqual([{ status: 'pending' }]);
+      } finally {
+        await removeFixture(fixture);
+      }
+    });
+
     it('does not mutate orders or campaign when the current snapshot is missing', async () => {
       const pool = getPool();
       const fixture = await createFixture(1, true, false);
