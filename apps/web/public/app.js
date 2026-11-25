@@ -2520,6 +2520,28 @@
             ctx.fillText(String(garrisonCount), badgeX, badgeY);
             ctx.restore();
           }
+          const stationedArmies = (country.armies || []).filter(
+            (army) => army.x === cell.x && army.y === cell.y,
+          );
+          stationedArmies.forEach((army, index) => {
+            const badgeRadius = Math.max(5, Math.min(10, cellSize * 0.28));
+            const badgeX = px + cellSize * (0.38 + (index % 2) * 0.28);
+            const badgeY = py + cellSize * (0.48 + Math.floor(index / 2) * 0.22);
+            ctx.save();
+            ctx.fillStyle = '#d6bd7a';
+            ctx.strokeStyle = '#17212a';
+            ctx.lineWidth = Math.max(0.8, cellSize * 0.04);
+            ctx.beginPath();
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#17212a';
+            ctx.font = 'bold ' + Math.max(7, badgeRadius * 1.2) + 'px Georgia, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(army.romanNumeral, badgeX, badgeY);
+            ctx.restore();
+          });
 
         if (!miniature && cell.flooded) {
           const dropSize = Math.max(2.5, cellSize * 0.22);
