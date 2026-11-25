@@ -286,8 +286,9 @@ describe('baseline turn resolver', () => {
       'BUILDING_DEMOLISHED',
       'SCIENCE_REQUIRED',
     ]);
-    expect(second.nextState.countries[0]?.cells.filter((cell) => cell.buildingType === 'science'))
-      .toHaveLength(2);
+    expect(
+      second.nextState.countries[0]?.cells.filter((cell) => cell.buildingType === 'science'),
+    ).toHaveLength(2);
     expect(second.nextState.countries[0]?.units).toHaveLength(1);
     expect(second.nextState.countries[0]?.units?.[0]?.type).toBe('cavalryman');
   });
