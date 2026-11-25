@@ -65,6 +65,11 @@ export interface CountryEconomyView {
   readonly buildingUpkeep: number;
   readonly unitCount: number;
   readonly unitUpkeep: number;
+  readonly generalCount?: number;
+  readonly generalUpkeep?: number;
+  readonly armyMaintenance?: number;
+  readonly armyBudget?: number;
+  readonly armyBudgetRemaining?: number;
   readonly budgetDeficit: boolean;
   readonly unitMovementAllowed: boolean;
   readonly expenses: number;
@@ -194,6 +199,43 @@ export interface AvailableSocialSystem {
   readonly emblemDataUrl?: string | null;
 }
 
+export interface CampaignMapUnitView {
+  readonly id: string;
+  readonly type: string;
+  readonly barracksCellId: string;
+  readonly barracksX: number;
+  readonly barracksY: number;
+  readonly currentHealth: number;
+  readonly recruitedAtTurn: number;
+  readonly armyId?: string | null;
+}
+
+export interface CampaignMapGeneralView {
+  readonly id: string;
+  readonly name: string;
+  readonly stars: number;
+  readonly upkeep: number;
+  readonly barracksCellId: string;
+  readonly barracksX: number;
+  readonly barracksY: number;
+  readonly recruitedAtTurn: number;
+  readonly armyId?: string | null;
+}
+
+export interface CampaignMapArmyView {
+  readonly id: string;
+  readonly name: string;
+  readonly generalId: string;
+  readonly unitIds: readonly string[];
+  readonly barracksCellId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly size: 'light' | 'medium' | 'heavy' | 'huge';
+  readonly romanNumeral: 'I' | 'II' | 'III' | 'IV';
+  readonly movementRange: 7 | 5 | 3 | 1;
+  readonly formedAtTurn: number;
+}
+
 export interface CampaignMapCountry {
   readonly id: string;
   readonly name: string;
@@ -209,6 +251,9 @@ export interface CampaignMapCountry {
     readonly width: number;
     readonly height: number;
   }>;
+  readonly units: readonly CampaignMapUnitView[];
+  readonly generals: readonly CampaignMapGeneralView[];
+  readonly armies: readonly CampaignMapArmyView[];
   readonly cells: ReadonlyArray<{
     readonly x: number;
     readonly y: number;

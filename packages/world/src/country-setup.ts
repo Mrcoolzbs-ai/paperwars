@@ -27,6 +27,9 @@ import type {
   PlayerSocialSystemTemplateView,
   CountryProfileView,
   CountryEconomyView,
+  CampaignMapUnitView,
+  CampaignMapGeneralView,
+  CampaignMapArmyView,
   StartBuildingPlacement,
   StartBuildingType,
   AdditionalBuildingType,
@@ -131,6 +134,9 @@ interface SnapshotCountry {
     readonly name: string;
     readonly principles: readonly SocialSystemPrinciple[];
   };
+  readonly units: CampaignMapUnitView[];
+  readonly generals: CampaignMapGeneralView[];
+  readonly armies: CampaignMapArmyView[];
   readonly cells: Array<{
     readonly id: string;
     readonly x: number;
@@ -626,6 +632,9 @@ async function buildSnapshot(
           name: row.system_name,
           principles: row.system_principles,
         },
+        units: [],
+        generals: [],
+        armies: [],
         cells: [],
       };
       countries.set(row.country_id, country);
@@ -902,6 +911,39 @@ export function createCountrySetupService(options: {
         { structureType?: 'greenhouse' | 'dam' | null; flooded?: boolean }
       >();
       const snapshotCountries = snapshotState?.['countries'];
+      const militaryByCountryId = new Map<
+        string,
+        {
+          units: readonly CampaignMapUnitView[];
+          generals: readonly CampaignMapGeneralView[];
+          armies: readonly CampaignMapArmyView[];
+        }
+      >();
+      if (Array.isArray(snapshotCountries)) {
+        for (const countryValue of snapshotCountries) {
+          if (
+            typeof countryValue !== 'object' ||
+            countryValue === null ||
+            !('id' in countryValue) ||
+            typeof countryValue.id !== 'string'
+          ) {
+            continue;
+          }
+          const units =
+            'units' in countryValue && Array.isArray(countryValue.units)
+              ? (countryValue.units as CampaignMapUnitView[])
+              : [];
+          const generals =
+            'generals' in countryValue && Array.isArray(countryValue.generals)
+              ? (countryValue.generals as CampaignMapGeneralView[])
+              : [];
+          const armies =
+            'armies' in countryValue && Array.isArray(countryValue.armies)
+              ? (countryValue.armies as CampaignMapArmyView[])
+              : [];
+          militaryByCountryId.set(countryValue.id, { units, generals, armies });
+        }
+      }
       if (Array.isArray(snapshotCountries)) {
         for (const countryValue of snapshotCountries) {
           if (
@@ -992,6 +1034,9 @@ export function createCountrySetupService(options: {
             structureType?: 'greenhouse' | 'dam' | null;
             flooded?: boolean;
           }>;
+          units: readonly CampaignMapUnitView[];
+          generals: readonly CampaignMapGeneralView[];
+          armies: readonly CampaignMapArmyView[];
         }
       >();
       for (const row of data.rows) {
@@ -1004,6 +1049,9 @@ export function createCountrySetupService(options: {
             flagDataUrl: row.flag_data_url,
             territories: [],
             cells: [],
+            units: militaryByCountryId.get(row.country_id)?.units ?? [],
+            generals: militaryByCountryId.get(row.country_id)?.generals ?? [],
+            armies: militaryByCountryId.get(row.country_id)?.armies ?? [],
           };
           groups.set(row.country_id, country);
         }

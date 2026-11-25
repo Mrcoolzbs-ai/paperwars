@@ -1722,6 +1722,34 @@
     return Number(SCIENCE_REQUIRED_BY_BUILDING[type] || 0);
   }
 
+  const COMBAT_UNIT_UI = {
+    swordsman: { name: 'Солдат-мечник', requiredScience: 1, upkeep: 1, line: 1, dodge: [1, 2, 2, 3, 3, 4], initiative: [1, 2, 2, 3, 3, 4], armor: [0, 0, 0, 1, 1, 2], health: [2, 4, 4, 6, 6, 10], attack: [1, 1, 2, 2, 3, 3] },
+    archer: { name: 'Солдат-лучник', requiredScience: 1, upkeep: 1, line: 2, dodge: [1, 2, 3, 4, 4, 4], initiative: [2, 3, 3, 4, 4, 5], armor: [0, 0, 0, 0, 1, 1], health: [2, 4, 4, 6, 6, 10], attack: [2, 2, 3, 3, 4, 4] },
+    shieldbearer: { name: 'Солдат-щитоносец', requiredScience: 2, upkeep: 1, line: 1, dodge: [0, 0, 0, 0, 1], initiative: [0, 1, 1, 2, 2], armor: [2, 3, 3, 3, 3], health: [2, 3, 4, 4, 6], attack: [1, 1, 1, 1, 2] },
+    cavalryman: { name: 'Солдат-всадник', requiredScience: 3, upkeep: 2, line: 2, dodge: [0, 0, 0, 0], initiative: [2, 3, 3, 4], armor: [0, 0, 1, 2], health: [3, 5, 5, 8], attack: [3, 4, 5, 6] },
+    blade_master: { name: 'Мастер клинка', requiredScience: 1, upkeep: 2, line: 1, dodge: [4, 4, 4, 4, 4, 4], initiative: [0, 0, 0, 0, 0, 0], armor: [0, 0, 0, 0, 0, 1], health: [1, 2, 2, 3, 3, 4], attack: [1, 1, 1, 2, 2, 2] },
+  };
+
+  const COMBAT_UNIT_OPTIONS = Object.entries(COMBAT_UNIT_UI);
+
+  function combatUnitStatsForUi(type, scienceLevel) {
+    const unit = COMBAT_UNIT_UI[type];
+    if (!unit) return null;
+    const level = Math.max(unit.requiredScience, Math.min(6, scienceLevel));
+    const offset = type === 'shieldbearer' ? 2 : type === 'cavalryman' ? 3 : 1;
+    const index = level - offset;
+    return {
+      name: unit.name,
+      upkeep: unit.upkeep,
+      line: unit.line,
+      dodge: unit.dodge[index],
+      initiative: unit.initiative[index],
+      armor: unit.armor[index],
+      health: unit.health[index],
+      attack: unit.attack[index],
+    };
+  }
+
   const mapBuildingOptions = [
     ['factory', 'Фабрика'],
     ['field', 'Поле'],
@@ -1901,7 +1929,13 @@
         ? 'Приказ колонизации добавлен в список.'
         : type === 'demolition'
           ? 'Приказ на снос добавлен в список.'
-          : 'Приказ строительства добавлен в список.');
+          : type === 'unit_recruitment'
+          ? 'Приказ на найм юнита добавлен в список.'
+          : type === 'general_recruitment'
+            ? 'Приказ на найм генерала добавлен в список.'
+            : type === 'army_formation'
+              ? 'Приказ на формирование отряда добавлен в список.'
+              : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -2071,6 +2105,130 @@
           (ownedCell.buildingType ? 'На клетке уже стоит здание.' : isLand ? 'На клетке нет свободного жителя.' : 'На воде и реках строить нельзя.') +
           '</p>';
       }
+      if (ownedCell.buildingType === 'barracks') {
+        const roster = (ownCountry?.units || []).filter(
+          (unit) => unit.barracksX === cell.x && unit.barracksY === cell.y,
+        );
+        const generals = (ownCountry?.generals || []).filter(
+          (general) => general.barracksX === cell.x && general.barracksY === cell.y,
+        );
+        const armies = (ownCountry?.armies || []).filter(
+          (army) => army.x === cell.x && army.y === cell.y,
+        );
+        const unassignedUnits = roster.filter((unit) => !unit.armyId);
+        const unassignedGenerals = generals.filter((general) => !general.armyId);
+        const scienceLevel = currentScienceLevel();
+        const militaryEconomy = state.countryProfile
+          ? estimateCountryEconomy(state.countryProfile)
+          : null;
+        const armyBudget = Math.max(
+          0,
+          Number(militaryEconomy?.armyBudget ??
+            (Number(militaryEconomy?.income || 0) - Number(militaryEconomy?.buildingUpkeep || 0))),
+        );
+        const currentArmyUpkeep = Number(militaryEconomy?.armyMaintenance ??
+          (Number(militaryEconomy?.unitUpkeep || 0) + Number(militaryEconomy?.generalUpkeep || 0)));
+        const generalMinimumUnaffordable = currentArmyUpkeep + 2 > armyBudget;
+        content += '<div class="map-context-group"><span>ГАРНИЗОН КАЗАРМЫ · ' +
+          roster.length + ' ЮНИТ.</span>';
+        if (roster.length) {
+          content += roster.map((unit) => {
+            const stats = combatUnitStatsForUi(unit.type, scienceLevel);
+            const assignedArmy = unit.armyId
+              ? armies.find((army) => army.id === unit.armyId)
+              : null;
+            return '<div class="map-context-unit-row"><strong>' +
+              escapeHtml(stats?.name || unit.type) +
+              (assignedArmy ? ' · ' + assignedArmy.romanNumeral + ' ' + escapeHtml(assignedArmy.name) : '') +
+              '</strong><small>HP ' + String(unit.currentHealth) + ' · Атака ' +
+              String(stats?.attack ?? '—') + ' · Броня ' + String(stats?.armor ?? '—') +
+              ' · Инициатива ' + String(stats?.initiative ?? '—') +
+              (assignedArmy ? ' · В отряде' : ' · В резерве') + '</small></div>';
+          }).join('');
+        } else {
+          content += '<small>Казарма пока пуста.</small>';
+        }
+        content += '</div>';
+
+        if (generals.length) {
+          content += '<div class="map-context-group"><span>ГЕНЕРАЛЫ · ' +
+            generals.length + '</span>';
+          content += generals.map((general) => {
+            const assignedArmy = general.armyId
+              ? armies.find((army) => army.id === general.armyId)
+              : null;
+            return '<div class="map-context-unit-row"><strong>' +
+              escapeHtml(general.name) + ' · ' + String(general.stars) + '/6 звёзд' +
+              '</strong><small>Содержание ' + String(general.upkeep) + ' мон./ход' +
+              (assignedArmy ? ' · Командует ' + assignedArmy.romanNumeral + ' ' + escapeHtml(assignedArmy.name) : ' · Свободен') +
+              '</small></div>';
+          }).join('');
+          content += '</div>';
+        }
+
+        if (armies.length) {
+          content += '<div class="map-context-group"><span>СФОРМИРОВАННЫЕ ОТРЯДЫ</span>';
+          content += armies.map((army) => {
+            const commander = generals.find((general) => general.id === army.generalId);
+            return '<div class="map-context-unit-row"><strong>' +
+              army.romanNumeral + ' · ' + escapeHtml(army.name) + ' · ' +
+              String(army.unitIds.length) + ' бойцов</strong><small>' +
+              escapeHtml(commander?.name || 'Генерал') + ' · ' +
+              String(commander?.stars ?? '—') + '/6 звёзд · Скорость ' +
+              String(army.movementRange) + '</small></div>';
+          }).join('');
+          content += '</div>';
+        }
+
+        content += '<div class="map-context-group"><span>НАЙМ · 1 ОД ЗА ЮНИТА</span>';
+        content += COMBAT_UNIT_OPTIONS.map(([type, unit]) => {
+          const required = unit.requiredScience;
+          const lockedScience = scienceLevel < required;
+          const lockedBudget = currentArmyUpkeep + unit.upkeep > armyBudget;
+          const reason = lockedScience
+            ? 'Требуется ' + required + ' науки'
+            : lockedBudget
+              ? 'Недостаточно бюджета армии'
+              : '';
+          return '<button class="map-context-action" type="button" data-map-action="unit-recruitment" data-unit-type="' +
+            type + '"' + (lockedScience || lockedBudget || actionsRemaining <= 0
+              ? ' disabled title="' + reason + '"' : '') + '>' +
+            unit.name + ' · Наука ' + required + ' · ' + unit.upkeep + ' мон. за ход' +
+            (reason ? ' · ' + reason : '') + '</button>';
+        }).join('');
+        content += '<small>Доступно для армии: ' + armyBudget +
+          ' мон./ход · текущее содержание: ' + currentArmyUpkeep + ' мон./ход.</small></div>';
+
+        content += '<div class="map-context-group"><span>ГЕНЕРАЛ · 1 ОД</span>' +
+          '<input class="map-context-text-input" id="general-name-input" type="text" maxlength="60" placeholder="Имя (необязательно)" aria-label="Имя генерала">' +
+          '<button class="map-context-action" type="button" data-map-action="general-recruitment"' +
+          (actionsRemaining <= 0 || generalMinimumUnaffordable ? ' disabled title="Недостаточно очков действий или минимального бюджета"' : '') +
+          '>Нанять генерала · качество 0–6 определит сервер</button>' +
+          '<small>Содержание зависит от качества: от 2 до 34 монет за ход. Выбрать качество и перебросить результат нельзя.</small></div>';
+
+        if (unassignedUnits.length && unassignedGenerals.length) {
+          content += '<div class="map-context-group"><span>ФОРМИРОВАНИЕ ОТРЯДА · 1 ОД</span>';
+          content += '<label class="map-context-field">Командир<select id="army-general-select">' +
+            unassignedGenerals.map((general) =>
+              '<option value="' + escapeHtml(general.id) + '">' +
+              escapeHtml(general.name) + ' · ' + String(general.stars) + '/6 ★</option>',
+            ).join('') + '</select></label>';
+          content += '<small>Выбери от 1 до 40 свободных бойцов этой казармы. Каждый боец может входить только в один отряд.</small>';
+          content += unassignedUnits.map((unit) => {
+            const stats = combatUnitStatsForUi(unit.type, scienceLevel);
+            return '<label class="map-context-check-row"><input type="checkbox" data-army-unit-id="' +
+              escapeHtml(unit.id) + '"><span>' + escapeHtml(stats?.name || unit.type) +
+              ' · HP ' + String(unit.currentHealth) + '</span></label>';
+          }).join('');
+          content += '<label class="map-context-field">Название отряда<input class="map-context-text-input" id="army-name-input" type="text" maxlength="60" placeholder="Отряд ' +
+            String((ownCountry?.armies || []).length + 1) + '"></label>';
+          content += '<button class="map-context-action" type="button" data-map-action="army-formation"' +
+            (actionsRemaining <= 0 ? ' disabled title="Недостаточно очков действий"' : '') +
+            '>Сформировать отряд</button>';
+        } else {
+          content += '<div class="map-context-group"><span>ФОРМИРОВАНИЕ ОТРЯДА</span><small>Нужны свободные бойцы и свободный генерал в этой казарме.</small></div>';
+        }
+      }
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
@@ -2173,6 +2331,36 @@
             x: cell.x,
             y: cell.y,
             buildingType: button.dataset.buildingType,
+          });
+        } else if (action === 'unit-recruitment') {
+          await createMapOrder('unit_recruitment', {
+            x: cell.x,
+            y: cell.y,
+            unitType: button.dataset.unitType,
+          });
+        } else if (action === 'general-recruitment') {
+          const name = menu.querySelector('#general-name-input')?.value.trim();
+          await createMapOrder('general_recruitment', {
+            x: cell.x,
+            y: cell.y,
+            ...(name ? { name } : {}),
+          });
+        } else if (action === 'army-formation') {
+          const unitIds = Array.from(
+            menu.querySelectorAll('[data-army-unit-id]:checked'),
+          ).map((input) => input.dataset.armyUnitId).filter(Boolean);
+          const generalId = menu.querySelector('#army-general-select')?.value;
+          const name = menu.querySelector('#army-name-input')?.value.trim();
+          if (unitIds.length < 1 || unitIds.length > 40 || !generalId) {
+            showToast('Выбери от 1 до 40 юнитов и свободного генерала.', true);
+            return;
+          }
+          await createMapOrder('army_formation', {
+            x: cell.x,
+            y: cell.y,
+            unitIds,
+            generalId,
+            ...(name ? { name } : {}),
           });
         } else if (action === 'colonization') {
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
@@ -2310,6 +2498,50 @@
           if (cell.buildingType) {
             drawBuildingMapIcon(ctx, cell.buildingType, px, py, cellSize);
           }
+          const garrisonCount = (country.units || []).filter(
+            (unit) => unit.barracksX === cell.x && unit.barracksY === cell.y,
+          ).length;
+          if (garrisonCount > 0 && cellSize >= 9) {
+            const badgeRadius = Math.max(4, Math.min(8, cellSize * 0.22));
+            const badgeX = px + cellSize - badgeRadius - 1;
+            const badgeY = py + cellSize - badgeRadius - 1;
+            ctx.save();
+            ctx.fillStyle = '#16324a';
+            ctx.strokeStyle = '#d8eaff';
+            ctx.lineWidth = Math.max(0.6, cellSize * 0.025);
+            ctx.beginPath();
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold ' + Math.max(7, badgeRadius * 1.35) + 'px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(garrisonCount), badgeX, badgeY);
+            ctx.restore();
+          }
+          const stationedArmies = (country.armies || []).filter(
+            (army) => army.x === cell.x && army.y === cell.y,
+          );
+          stationedArmies.forEach((army, index) => {
+            const badgeRadius = Math.max(5, Math.min(10, cellSize * 0.28));
+            const badgeX = px + cellSize * (0.38 + (index % 2) * 0.28);
+            const badgeY = py + cellSize * (0.48 + Math.floor(index / 2) * 0.22);
+            ctx.save();
+            ctx.fillStyle = '#d6bd7a';
+            ctx.strokeStyle = '#17212a';
+            ctx.lineWidth = Math.max(0.8, cellSize * 0.04);
+            ctx.beginPath();
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#17212a';
+            ctx.font = 'bold ' + Math.max(7, badgeRadius * 1.2) + 'px Georgia, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(army.romanNumeral, badgeX, badgeY);
+            ctx.restore();
+          });
 
         if (!miniature && cell.flooded) {
           const dropSize = Math.max(2.5, cellSize * 0.22);
@@ -2389,6 +2621,26 @@
           ctx.setLineDash(confirmed ? [] : [Math.max(2, cellSize * 0.35), Math.max(1, cellSize * 0.16)]);
           ctx.fillRect(regionLeft, regionTop, regionSize, regionSize);
           ctx.strokeRect(regionLeft + 1, regionTop + 1, regionSize - 2, regionSize - 2);
+          ctx.restore();
+          continue;
+        }
+        if (order.type === 'unit_recruitment') {
+          const px = left + point.x * cellSize;
+          const py = top + point.y * cellSize;
+          ctx.save();
+          ctx.globalAlpha = order.status === 'confirmed' ? 0.85 : 0.55;
+          ctx.fillStyle = '#16324a';
+          ctx.strokeStyle = '#d8eaff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(px + cellSize * 0.5, py + cellSize * 0.5, Math.max(3, cellSize * 0.22), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold ' + Math.max(7, cellSize * 0.28) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⚔', px + cellSize * 0.5, py + cellSize * 0.51);
           ctx.restore();
           continue;
         }
@@ -2729,6 +2981,9 @@
       research: 'Исследование',
       diplomacy: 'Дипломатия',
       battle: 'Боевой приказ',
+      unit_recruitment: 'Найм юнита',
+      general_recruitment: 'Найм генерала',
+      army_formation: 'Формирование отряда',
     };
     return labels[type] || type || 'Приказ';
   }
@@ -2893,6 +3148,16 @@
   function estimateCountryEconomy(country) {
     const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
     const cells = mapCountry?.cells || [];
+    const units = mapCountry?.units || [];
+    const unitCount = units.length;
+    const unitUpkeep = units.reduce(
+      (sum, unit) => sum + (COMBAT_UNIT_UI[unit.type]?.upkeep || 1),
+      0,
+    );
+    const generals = mapCountry?.generals || [];
+    const generalCount = generals.length;
+    const generalUpkeep = generals.reduce((sum, general) => sum + Number(general.upkeep || 0), 0);
+    const armyMaintenance = unitUpkeep + generalUpkeep;
     const turnNumber = Math.max(1, Number(state.mapView?.turnNumber || state.turnStatus?.currentTurn || 1));
     const seasonNames = ['spring', 'summer', 'autumn', 'winter'];
     const season = state.mapView?.season || seasonNames[Math.floor(((turnNumber - 1) % 24) / 6)];
@@ -2914,8 +3179,10 @@
     }, 0);
     const structureUpkeep = cells.filter((cell) => cell.structureType).length;
     const floodSurcharge = cells.filter((cell) => cell.flooded && cell.buildingType !== 'rice_field').length;
-    const expenses = buildingUpkeep + structureUpkeep + floodSurcharge;
+    const buildingExpenses = buildingUpkeep + structureUpkeep + floodSurcharge;
+    const expenses = buildingExpenses + armyMaintenance;
     const income = gold * population;
+    const armyBudget = Math.max(0, income - buildingExpenses);
     let food = 0;
     for (const cell of cells) {
       if (!cell.buildingType || !active(cell)) continue;
@@ -2958,8 +3225,10 @@
     return {
       turnNumber, season, year, seasonTurn,
       movementMultiplier: season === 'winter' ? 0.5 : 1,
-      population, gold, income, initialBuildingUpkeep: expenses, buildingUpkeep: expenses,
-      unitCount: 0, unitUpkeep: 0, budgetDeficit: income < expenses,
+      population, gold, income, initialBuildingUpkeep: buildingExpenses, buildingUpkeep: buildingExpenses,
+      unitCount, unitUpkeep, generalCount, generalUpkeep, armyMaintenance,
+      armyBudget, armyBudgetRemaining: Math.max(0, armyBudget - armyMaintenance),
+      budgetDeficit: income < expenses,
       unitMovementAllowed: income >= expenses, expenses,
       unpaidExpenses: Math.max(0, expenses - income), disabledBuildings: [],
       food, foodDemand: population, foodShortage: food < population,
@@ -3004,9 +3273,45 @@
     const seasonLabels = { spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
     const seasonLabel = seasonLabels[economy.season] || economy.season || '—';
     const populationForCard = economy.population ?? country.residentCount ?? 0;
-    const scienceLevel = state.mapView?.countries?.find((item) => item.id === country.id)
-      ?.cells.filter((cell) => cell.buildingType === 'science').length ??
+    const mapCountry = state.mapView?.countries?.find((item) => item.id === country.id);
+    const scienceLevel = mapCountry?.cells.filter((cell) => cell.buildingType === 'science').length ??
       Number(counts.get('science') || 0);
+    const armyUnits = mapCountry?.units || [];
+    const generals = mapCountry?.generals || [];
+    const armies = mapCountry?.armies || [];
+    const armyRows = Array.from(armyUnits.reduce((groups, unit) => {
+      const key = unit.type + ':' + unit.barracksX + ':' + unit.barracksY;
+      const current = groups.get(key) || { type: unit.type, x: unit.barracksX, y: unit.barracksY, count: 0 };
+      current.count += 1;
+      groups.set(key, current);
+      return groups;
+    }, new Map()).values()).map((group) => {
+      const meta = COMBAT_UNIT_UI[group.type];
+      const stats = combatUnitStatsForUi(group.type, scienceLevel);
+      return '<div class="country-doc-unit-item"><strong>' +
+        escapeHtml(meta?.name || group.type) + ' × ' + String(group.count) + '</strong>' +
+        '<small>Казарма (' + group.x + ', ' + group.y + ') · Линия ' +
+        String(stats?.line ?? '—') + ' · И ' + String(stats?.initiative ?? '—') +
+        ' · Ув ' + String(stats?.dodge ?? '—') + '/6 · Бр ' + String(stats?.armor ?? '—') +
+        ' · Атк ' + String(stats?.attack ?? '—') + ' · HP ' + String(stats?.health ?? '—') +
+        '</small></div>';
+    }).join('');
+    const generalRows = generals.map((general) =>
+      '<div class="country-doc-unit-item"><strong>' + escapeHtml(general.name) +
+      ' · ' + String(general.stars) + '/6 звёзд</strong><small>Содержание ' +
+      String(general.upkeep) + ' мон./ход · ' +
+      (general.armyId ? 'Командует сформированным отрядом' : 'Свободен, ожидает назначения') +
+      '</small></div>'
+    ).join('');
+    const armyCards = armies.map((army) => {
+      const commander = generals.find((general) => general.id === army.generalId);
+      return '<div class="country-doc-unit-item"><strong>' + army.romanNumeral +
+        ' · ' + escapeHtml(army.name) + ' · ' + String(army.unitIds.length) +
+        ' бойцов</strong><small>Генерал: ' + escapeHtml(commander?.name || '—') +
+        ' · ' + String(commander?.stars ?? '—') + '/6 ★ · ' +
+        army.size + ' · скорость ' + String(army.movementRange) +
+        ' клеток/ход · пока стоит у казармы</small></div>';
+    }).join('');
     const principleRows = (system.principles || []).map((principle) =>
       '<li><strong>' + escapeHtml(principle.name) + '</strong>' +
       '<span class="principle-description">' + escapeHtml(principle.description) + '</span>' +
@@ -3060,7 +3365,7 @@
       ['♟', 'Люди', String(populationForCard)],
       ['⚛', 'Наука', String(scienceLevel)],
       ['♜', 'Замки и башни', String((counts.get('tower') || 0) + (counts.get('barracks') || 0))],
-      ['♛', 'Правитель', 'Не назначен'],
+      ['⚔', 'Юниты', String(armyUnits.length)],
     ];
     $('#country-card-host').innerHTML =
       '<article class="archive-card country-doc-card">' +
@@ -3078,9 +3383,17 @@
           ).join('') +
         '</div>' +
         '<div class="country-doc-middle">' +
-          '<section class="country-doc-military"><h3>Военные ресурсы</h3>' +
-            '<div><b>⚔</b><span>—</span><span>—</span></div>' +
-            '<small>Ресурсы армии пока не рассчитываются симуляцией.</small>' +
+          '<section class="country-doc-military"><h3>Армия и гарнизоны</h3>' +
+            '<div><b>⚔</b><span>' + String(armyUnits.length) + ' юнитов</span><strong>' +
+              String(economy.armyMaintenance || 0) + ' мон. / ход</strong></div>' +
+            '<small>Бюджет армии: ' + String(economy.armyBudget || 0) +
+              ' · Свободно: ' + String(economy.armyBudgetRemaining || 0) +
+              ' · Генералов: ' + String(generals.length) +
+              ' (содержание ' + String(economy.generalUpkeep || 0) + ')</small>' +
+            (armies.length ? '<h4>Отряды</h4><div class="country-doc-unit-list">' + armyCards + '</div>' : '') +
+            (generals.length ? '<h4>Генералы</h4><div class="country-doc-unit-list">' + generalRows + '</div>' : '') +
+            (armyRows ? '<h4>Гарнизон</h4><div class="country-doc-unit-list">' + armyRows + '</div>' :
+              '<small>Пока нет нанятых юнитов. Найм доступен через контекстное меню казармы на большой карте.</small>') +
           '</section>' +
           '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
         '</div>' +
