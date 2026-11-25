@@ -3025,6 +3025,10 @@
       (sum, unit) => sum + (COMBAT_UNIT_UI[unit.type]?.upkeep || 1),
       0,
     );
+    const generals = mapCountry?.generals || [];
+    const generalCount = generals.length;
+    const generalUpkeep = generals.reduce((sum, general) => sum + Number(general.upkeep || 0), 0);
+    const armyMaintenance = unitUpkeep + generalUpkeep;
     const turnNumber = Math.max(1, Number(state.mapView?.turnNumber || state.turnStatus?.currentTurn || 1));
     const seasonNames = ['spring', 'summer', 'autumn', 'winter'];
     const season = state.mapView?.season || seasonNames[Math.floor(((turnNumber - 1) % 24) / 6)];
@@ -3047,7 +3051,7 @@
     const structureUpkeep = cells.filter((cell) => cell.structureType).length;
     const floodSurcharge = cells.filter((cell) => cell.flooded && cell.buildingType !== 'rice_field').length;
     const buildingExpenses = buildingUpkeep + structureUpkeep + floodSurcharge;
-    const expenses = buildingExpenses + unitUpkeep;
+    const expenses = buildingExpenses + armyMaintenance;
     const income = gold * population;
     const armyBudget = Math.max(0, income - buildingExpenses);
     let food = 0;
@@ -3093,7 +3097,8 @@
       turnNumber, season, year, seasonTurn,
       movementMultiplier: season === 'winter' ? 0.5 : 1,
       population, gold, income, initialBuildingUpkeep: buildingExpenses, buildingUpkeep: buildingExpenses,
-      unitCount, unitUpkeep, armyBudget, armyBudgetRemaining: Math.max(0, armyBudget - unitUpkeep),
+      unitCount, unitUpkeep, generalCount, generalUpkeep, armyMaintenance,
+      armyBudget, armyBudgetRemaining: Math.max(0, armyBudget - armyMaintenance),
       budgetDeficit: income < expenses,
       unitMovementAllowed: income >= expenses, expenses,
       unpaidExpenses: Math.max(0, expenses - income), disabledBuildings: [],
