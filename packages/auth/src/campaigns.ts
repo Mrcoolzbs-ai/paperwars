@@ -545,6 +545,11 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
            AND c.current_turn = 1
            AND c.map_width IS NOT NULL
            AND c.map_height IS NOT NULL
+           AND (
+             c.orders_locked = TRUE
+             OR c.deadline_at IS NULL
+             OR c.deadline_at > clock_timestamp()
+           )
            AND NOT EXISTS (
              SELECT 1 FROM turn_jobs AS first_turn_job
              WHERE first_turn_job.campaign_id = c.id AND first_turn_job.turn_number = 1
