@@ -483,7 +483,9 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           throw new AuthValidationError('You are not an active member of this campaign');
         }
 
-        if (!target.orders_locked && member.country_id !== null) {
+        if (member.country_id !== null) {
+          // A queued turn already finalized its orders, so this only discards
+          // mutable drafts when leaving before a TurnJob has been created.
           await client.query(
             `UPDATE orders
              SET status = 'discarded', updated_at = clock_timestamp()
