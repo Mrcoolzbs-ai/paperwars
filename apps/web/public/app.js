@@ -1722,6 +1722,34 @@
     return Number(SCIENCE_REQUIRED_BY_BUILDING[type] || 0);
   }
 
+  const COMBAT_UNIT_UI = {
+    swordsman: { name: 'Солдат-мечник', requiredScience: 1, upkeep: 1, line: 1, dodge: [1, 2, 2, 3, 3, 4], initiative: [1, 2, 2, 3, 3, 4], armor: [0, 0, 0, 1, 1, 2], health: [2, 4, 4, 6, 6, 10], attack: [1, 1, 2, 2, 3, 3] },
+    archer: { name: 'Солдат-лучник', requiredScience: 1, upkeep: 1, line: 2, dodge: [1, 2, 3, 4, 4, 4], initiative: [2, 3, 3, 4, 4, 5], armor: [0, 0, 0, 0, 1, 1], health: [2, 4, 4, 6, 6, 10], attack: [2, 2, 3, 3, 4, 4] },
+    shieldbearer: { name: 'Солдат-щитоносец', requiredScience: 2, upkeep: 1, line: 1, dodge: [0, 0, 0, 0, 1], initiative: [0, 1, 1, 2, 2], armor: [2, 3, 3, 3, 3], health: [2, 3, 4, 4, 6], attack: [1, 1, 1, 1, 2] },
+    cavalryman: { name: 'Солдат-всадник', requiredScience: 3, upkeep: 2, line: 2, dodge: [0, 0, 0, 0], initiative: [2, 3, 3, 4], armor: [0, 0, 1, 2], health: [3, 5, 5, 8], attack: [3, 4, 5, 6] },
+    blade_master: { name: 'Мастер клинка', requiredScience: 1, upkeep: 2, line: 1, dodge: [4, 4, 4, 4, 4, 4], initiative: [0, 0, 0, 0, 0, 0], armor: [0, 0, 0, 0, 0, 1], health: [1, 2, 2, 3, 3, 4], attack: [1, 1, 1, 2, 2, 2] },
+  };
+
+  const COMBAT_UNIT_OPTIONS = Object.entries(COMBAT_UNIT_UI);
+
+  function combatUnitStatsForUi(type, scienceLevel) {
+    const unit = COMBAT_UNIT_UI[type];
+    if (!unit) return null;
+    const level = Math.max(unit.requiredScience, Math.min(6, scienceLevel));
+    const offset = type === 'shieldbearer' ? 2 : type === 'cavalryman' ? 3 : 1;
+    const index = level - offset;
+    return {
+      name: unit.name,
+      upkeep: unit.upkeep,
+      line: unit.line,
+      dodge: unit.dodge[index],
+      initiative: unit.initiative[index],
+      armor: unit.armor[index],
+      health: unit.health[index],
+      attack: unit.attack[index],
+    };
+  }
+
   const mapBuildingOptions = [
     ['factory', 'Фабрика'],
     ['field', 'Поле'],
@@ -1901,7 +1929,9 @@
         ? 'Приказ колонизации добавлен в список.'
         : type === 'demolition'
           ? 'Приказ на снос добавлен в список.'
-          : 'Приказ строительства добавлен в список.');
+          : type === 'unit_recruitment'
+            ? 'Приказ на найм юнита добавлен в список.'
+            : 'Приказ строительства добавлен в список.');
     } catch (error) {
       showToast(userErrorMessage(error) || 'Не удалось сохранить приказ.', true);
     }
@@ -2071,6 +2101,53 @@
           (ownedCell.buildingType ? 'На клетке уже стоит здание.' : isLand ? 'На клетке нет свободного жителя.' : 'На воде и реках строить нельзя.') +
           '</p>';
       }
+      if (ownedCell.buildingType === 'barracks') {
+        const roster = (ownCountry?.units || []).filter(
+          (unit) => unit.barracksX === cell.x && unit.barracksY === cell.y,
+        );
+        const scienceLevel = currentScienceLevel();
+        const militaryEconomy = state.countryProfile
+          ? estimateCountryEconomy(state.countryProfile)
+          : null;
+        const armyBudget = Math.max(
+          0,
+          Number(militaryEconomy?.income || 0) -
+            Number(militaryEconomy?.buildingUpkeep || 0),
+        );
+        const currentArmyUpkeep = Number(militaryEconomy?.unitUpkeep || 0);
+        content += '<div class="map-context-group"><span>ГАРНИЗОН КАЗАРМЫ · ' +
+          roster.length + ' ЮНИТ.</span>';
+        if (roster.length) {
+          content += roster.map((unit) => {
+            const stats = combatUnitStatsForUi(unit.type, scienceLevel);
+            return '<div class="map-context-unit-row"><strong>' +
+              escapeHtml(stats?.name || unit.type) + '</strong><small>HP ' +
+              String(unit.currentHealth) + ' · Атака ' + String(stats?.attack ?? '—') +
+              ' · Броня ' + String(stats?.armor ?? '—') + ' · Инициатива ' +
+              String(stats?.initiative ?? '—') + '</small></div>';
+          }).join('');
+        } else {
+          content += '<small>Казарма пока пуста.</small>';
+        }
+        content += '</div><div class="map-context-group"><span>НАЙМ · 1 ОД ЗА ЮНИТА</span>';
+        content += COMBAT_UNIT_OPTIONS.map(([type, unit]) => {
+          const required = unit.requiredScience;
+          const lockedScience = scienceLevel < required;
+          const lockedBudget = currentArmyUpkeep + unit.upkeep > armyBudget;
+          const reason = lockedScience
+            ? 'Требуется ' + required + ' науки'
+            : lockedBudget
+              ? 'Недостаточно бюджета армии'
+              : '';
+          return '<button class="map-context-action" type="button" data-map-action="unit-recruitment" data-unit-type="' +
+            type + '"' + (lockedScience || lockedBudget || actionsRemaining <= 0
+              ? ' disabled title="' + reason + '"' : '') + '>' +
+            unit.name + ' · Наука ' + required + ' · ' + unit.upkeep + ' мон. за ход' +
+            (reason ? ' · ' + reason : '') + '</button>';
+        }).join('');
+        content += '<small>Доступный бюджет армии: ' + armyBudget +
+          ' монет за ход. Текущее содержание: ' + currentArmyUpkeep + '.</small></div>';
+      }
       if (actionsRemaining > 0 && isLand && !ownedCell.structureType) {
         content += '<div class="map-context-group"><span>ЗАЩИТА КЛЕТКИ</span>';
         if (['field', 'cotton_field'].includes(ownedCell.buildingType)) {
@@ -2173,6 +2250,12 @@
             x: cell.x,
             y: cell.y,
             buildingType: button.dataset.buildingType,
+          });
+        } else if (action === 'unit-recruitment') {
+          await createMapOrder('unit_recruitment', {
+            x: cell.x,
+            y: cell.y,
+            unitType: button.dataset.unitType,
           });
         } else if (action === 'colonization') {
           await createMapOrder('colonization', { x: cell.x, y: cell.y });
@@ -2729,6 +2812,7 @@
       research: 'Исследование',
       diplomacy: 'Дипломатия',
       battle: 'Боевой приказ',
+      unit_recruitment: 'Найм юнита',
     };
     return labels[type] || type || 'Приказ';
   }
