@@ -108,6 +108,11 @@ describe('browser client', () => {
     expect(script.body).toContain("addEventListener('contextmenu'");
     expect(script.body).toContain("createMapOrder('construction'");
     expect(script.body).toContain("createMapOrder('colonization'");
+    expect(script.body).toContain("createMapOrder('unit_recruitment'");
+    expect(script.body).toContain('data-map-action="unit-recruitment"');
+    expect(script.body).toContain('COMBAT_UNIT_UI');
+    expect(script.body).toContain('function combatUnitStatsForUi');
+    expect(script.body).toContain('ГАРНИЗОН КАЗАРМЫ');
     expect(script.body).toContain('data-map-action="return-order-to-draft"');
     expect(script.body).toContain('function returnMapOrderToDraft');
     expect(script.body).toContain("method: 'PATCH'");
@@ -173,6 +178,8 @@ describe('browser client', () => {
     expect(stylesheet.headers['content-type']).toContain('text/css');
     expect(stylesheet.body).toContain('.map-context-menu');
     expect(stylesheet.body).toContain('.map-order-summary');
+    expect(stylesheet.body).toContain('.country-doc-unit-list');
+    expect(stylesheet.body).toContain('.map-context-unit-row');
     expect(stylesheet.body).toContain('.chat-modal');
     expect(stylesheet.body).toContain('.chat-dock-launcher');
     expect(stylesheet.body).toContain('.chat-dock-window');
