@@ -1223,7 +1223,11 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
         if (cell.flooded === true) {
           orderResults.push(
-            rejection(order.id, 'FLOODED_CELL_CANNOT_BE_BUILT', 'На затопленной клетке строить нельзя.'),
+            rejection(
+              order.id,
+              'FLOODED_CELL_CANNOT_BE_BUILT',
+              'На затопленной клетке строить нельзя.',
+            ),
           );
           continue;
         }
