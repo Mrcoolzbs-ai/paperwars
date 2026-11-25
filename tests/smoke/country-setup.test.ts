@@ -483,13 +483,19 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
          WHERE campaign_id = $1 AND turn_number = 1`,
         [campaign.id],
       );
-      await current.pool.query('UPDATE campaigns SET current_turn = 2 WHERE id = $1', [campaign.id]);
+      await current.pool.query(
+        'UPDATE campaigns SET current_turn = 2 WHERE id = $1',
+        [campaign.id],
+      );
       await current.pool.query(
         'UPDATE country_cells SET population = 1 WHERE campaign_id = $1 AND country_id = $2 AND cell_id = $3',
         [campaign.id, firstCountry.id, builtCellId],
       );
 
-      const snapshotBackedProfile = await countrySetup.getMyCountry(firstUser.user.id, campaign.id);
+      const snapshotBackedProfile = await countrySetup.getMyCountry(
+        firstUser.user.id,
+        campaign.id,
+      );
       expect(snapshotBackedProfile?.residentCount).toBe(expectedFirstResidents);
       const snapshotBackedMap = await countrySetup.getCampaignMap(firstUser.user.id, campaign.id);
       const snapshotBackedCountry = snapshotBackedMap.countries.find(
@@ -511,7 +517,10 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaign.id, firstCountry.id, builtCellId],
       );
       expect(repairedProjection.rows[0]?.population).toBe(0);
-      const repairedLaterTurnProfile = await countrySetup.getMyCountry(firstUser.user.id, campaign.id);
+      const repairedLaterTurnProfile = await countrySetup.getMyCountry(
+        firstUser.user.id,
+        campaign.id,
+      );
       expect(repairedLaterTurnProfile?.residentCount).toBe(expectedFirstResidents);
     });
 

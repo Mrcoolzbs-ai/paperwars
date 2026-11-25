@@ -1139,7 +1139,7 @@ export function createCountrySetupService(options: {
           x: row.x,
           y: row.y,
           population:
-          snapshotPopulations?.byCell.get(row.country_id + ':' + row.cell_id) ?? row.population,
+            snapshotPopulations?.byCell.get(row.country_id + ':' + row.cell_id) ?? row.population,
           buildingType: row.building_type,
           ...(cellOverlayByCoordinate.get(`${row.x},${row.y}`) ?? {}),
         });
