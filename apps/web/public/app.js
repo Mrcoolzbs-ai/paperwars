@@ -36,6 +36,7 @@
     chatScope: 'world',
     chatCampaignId: null,
     chatCampaigns: [],
+    chatWorldLastMessage: null,
     chatRequestId: 0,
     chatPollingTimer: null,
     chatNotificationPollingTimer: null,
@@ -570,7 +571,9 @@
     appendChatRoom(generalSection, {
       scope: 'world',
       title: 'Мировой чат',
-      subtitle: 'Все игроки Paper Wars',
+      subtitle: state.chatWorldLastMessage
+        ? 'Кто отправил: ' + state.chatWorldLastMessage.authorLabel + ' — ' + state.chatWorldLastMessage.message
+        : 'Кто отправил: сообщений пока нет',
       icon: '◎',
       active: state.chatScope === 'world',
       onSelect: () => {
@@ -674,9 +677,39 @@
     }
   }
 
+  function compactChatPreview(message) {
+    return {
+      authorLabel: String(message.authorLabel || 'Игрок'),
+      message: String(message.message || '').replace(/\\s+/g, ' ').trim().slice(0, 180),
+    };
+  }
+
+  function applyChatRoomPreviews(campaigns, previews) {
+    const worldMessages = Array.isArray(previews?.world) ? previews.world : [];
+    const latestWorld = worldMessages[worldMessages.length - 1];
+    state.chatWorldLastMessage = latestWorld ? compactChatPreview(latestWorld) : null;
+
+    const latestByCampaign = new Map();
+    for (const room of Array.isArray(previews?.campaigns) ? previews.campaigns : []) {
+      const messages = Array.isArray(room.messages) ? room.messages : [];
+      const latest = messages[messages.length - 1];
+      if (latest && room.campaignId) {
+        latestByCampaign.set(room.campaignId, compactChatPreview(latest));
+      }
+    }
+    state.chatCampaigns = campaigns.map((campaign) => ({
+      ...campaign,
+      lastChatMessage: latestByCampaign.get(campaign.id) || null,
+    }));
+  }
+
   async function refreshChatCampaigns() {
-    const data = await request('/campaigns');
-    state.chatCampaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+    const [campaignData, previewData] = await Promise.all([
+      request('/campaigns'),
+      request('/chat/previews').catch(() => ({ previews: { world: [], campaigns: [] } })),
+    ]);
+    const campaigns = Array.isArray(campaignData.campaigns) ? campaignData.campaigns : [];
+    applyChatRoomPreviews(campaigns, previewData.previews);
     if (
       state.chatScope === 'campaign' &&
       !state.chatCampaigns.some((campaign) => campaign.id === state.chatCampaignId)
@@ -703,56 +736,41 @@
     if (!state.user?.id || !state.token || state.chatNotificationPollingBusy || document.hidden) return;
     state.chatNotificationPollingBusy = true;
     try {
-      const campaignData = await request('/campaigns');
+      const [campaignData, previewData] = await Promise.all([
+        request('/campaigns'),
+        request('/chat/previews'),
+      ]);
       const campaigns = Array.isArray(campaignData.campaigns) ? campaignData.campaigns : [];
-      state.chatCampaigns = campaigns;
+      const previews = previewData.previews || { world: [], campaigns: [] };
+      applyChatRoomPreviews(campaigns, previews);
       const rooms = [
-        { key: 'world', path: '/chat/world' },
-        ...campaigns.map((campaign) => ({
-          key: chatRoomKey('campaign', campaign.id),
-          path: '/campaigns/' + encodeURIComponent(campaign.id) + '/chat',
+        { key: 'world', messages: Array.isArray(previews.world) ? previews.world : [] },
+        ...(Array.isArray(previews.campaigns) ? previews.campaigns : []).map((room) => ({
+          key: chatRoomKey('campaign', room.campaignId),
+          messages: Array.isArray(room.messages) ? room.messages : [],
         })),
       ];
-      const results = await Promise.all(rooms.map(async (room) => {
-        try {
-          const response = await request(room.path);
-          return { room, messages: Array.isArray(response.messages) ? response.messages : [] };
-        } catch (error) {
-          if (error.status === 403 || error.status === 404) return { room, messages: [] };
-          throw error;
-        }
-      }));
-      // Campaign chat responses are ordered oldest-to-newest.
-      const latestByCampaign = new Map();
-      for (const { room, messages } of results) {
-        if (!room.key.startsWith('campaign:') || messages.length === 0) continue;
-        const latest = messages[messages.length - 1];
-        latestByCampaign.set(room.key.slice('campaign:'.length), {
-          authorLabel: String(latest.authorLabel || 'Игрок'),
-          message: String(latest.message || '').replace(/\s+/g, ' ').trim().slice(0, 180),
-        });
-      }
-      state.chatCampaigns = campaigns.map((campaign) => ({
-        ...campaign,
-        lastChatMessage: latestByCampaign.get(campaign.id) || null,
-      }));
-      for (const { room, messages } of results) {
-        const previous = new Set(state.chatSeenMessageIds[room.key] || []);
+
+      for (const { key, messages } of rooms) {
+        const previous = new Set(state.chatSeenMessageIds[key] || []);
         const currentRoom = state.chatModalOpen &&
           state.chatDockView === 'conversation' &&
-          chatRoomKey(state.chatScope, state.chatCampaignId) === room.key;
+          chatRoomKey(state.chatScope, state.chatCampaignId) === key;
         if (
           state.chatNotificationsPrimed &&
           !currentRoom &&
-          !state.chatMutedRooms.has(room.key) &&
+          !state.chatMutedRooms.has(key) &&
           messages.some((message) => message.id && !previous.has(message.id) && !message.isMine)
         ) {
-          state.chatAlerts.add(room.key);
+          state.chatAlerts.add(key);
         }
-        state.chatSeenMessageIds[room.key] = messages.map((message) => message.id).filter(Boolean);
+        state.chatSeenMessageIds[key] = messages.map((message) => message.id).filter(Boolean);
       }
       state.chatNotificationsPrimed = true;
-      if (state.chatScope === 'campaign' && !campaigns.some((campaign) => campaign.id === state.chatCampaignId)) {
+      if (
+        state.chatScope === 'campaign' &&
+        !campaigns.some((campaign) => campaign.id === state.chatCampaignId)
+      ) {
         state.chatScope = 'world';
         state.chatCampaignId = null;
       }
@@ -1845,16 +1863,12 @@
       return { allowed: false, reason: 'no-land' };
     }
 
-    const adjacentSides = [
-      [[centerX - 1, centerY - 2], [centerX, centerY - 2], [centerX + 1, centerY - 2]],
-      [[centerX - 1, centerY + 2], [centerX, centerY + 2], [centerX + 1, centerY + 2]],
-      [[centerX - 2, centerY - 1], [centerX - 2, centerY], [centerX - 2, centerY + 1]],
-      [[centerX + 2, centerY - 1], [centerX + 2, centerY], [centerX + 2, centerY + 1]],
-    ];
-    const touchesOwnTerritory = adjacentSides.some((side) =>
-      side.every(([x, y]) =>
-        ownCoordinates.has(x + ',' + y) || plannedCoordinates.has(x + ',' + y),
-      ),
+    const adjacentOffsets = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    const touchesOwnTerritory = region.some((cell) =>
+      adjacentOffsets.some(([dx, dy]) => {
+        const key = (cell.x + dx) + ',' + (cell.y + dy);
+        return ownCoordinates.has(key) || plannedCoordinates.has(key);
+      }),
     );
     if (!touchesOwnTerritory) return { allowed: false, reason: 'not-adjacent' };
     return { allowed: true, reason: 'available' };
@@ -1864,7 +1878,7 @@
     if (reason === 'bounds') return 'Квадрат 3×3 должен полностью находиться в пределах карты.';
     if (reason === 'overlap') return 'Новая колония не должна пересекать существующие или уже запланированные территории.';
     if (reason === 'no-land') return 'В квадрате 3×3 должна быть хотя бы одна свободная клетка суши.';
-    if (reason === 'not-adjacent') return 'Колония 3×3 должна полностью примыкать одной стороной из трёх клеток к твоей территории или предыдущей колонии.';
+    if (reason === 'not-adjacent') return 'Хотя бы одна клетка колонии 3×3 должна соприкасаться стороной с твоей территорией или черновой колонией.';
     return 'Эту область нельзя колонизировать.';
   }
 
@@ -1998,7 +2012,8 @@
     const factories = cells.filter((item) =>
       ['factory', 'factory_level_2'].includes(item.buildingType),
     );
-    const factoryNearby = factories.some((factory) =>
+    const isFoodField = ['field', 'field_level_2', 'rice_field'].includes(type);
+    const factoryNearby = isFoodField && factories.some((factory) =>
       Math.abs(factory.x - cell.x) <= 1 && Math.abs(factory.y - cell.y) <= 1,
     );
     const water = mapAdjacentWaterCount(cell.x, cell.y);
@@ -2010,7 +2025,7 @@
       output = type === 'factory_level_2' ? 15 : 10;
       unit = 'товаров/ход';
       description = 'Производит товары.';
-    } else if (['field', 'field_level_2', 'rice_field'].includes(type)) {
+    } else if (isFoodField) {
       if (season === 'winter') {
         output = type === 'field' && cell.structureType === 'greenhouse' ? 10 : 0;
       } else if (type === 'rice_field') {
@@ -2021,7 +2036,7 @@
       if (factoryNearby) output /= 2;
       unit = 'еды/ход';
       description = factoryNearby
-        ? 'Рядом фабрика: производство поля уменьшается вдвое.'
+        ? 'Рядом фабрика: производство еды уменьшается вдвое.'
         : 'Производство зависит от сезона и соседства с водой.';
     } else if (type === 'hunter') {
       output = season === 'spring' ? 15 : 5;
@@ -2054,10 +2069,6 @@
       output = 1;
       unit = 'науки';
       description = 'Научный центр повышает текущий уровень науки.';
-    } else if (type === 'demolition') {
-      output = 1;
-      unit = 'житель';
-      description = 'Снос возвращает жителя и освобождает клетку.';
     } else if (type === 'religious_building') {
       description = 'Религиозное сооружение.';
     } else if (type === 'barracks') {
@@ -2156,14 +2167,23 @@
     tooltip.style.top = Math.max(92, Math.min(rect.height - 100, clientY - rect.top + 14)) + 'px';
   }
 
+  const BUILDINGS_WITH_OUTPUT = new Set([
+    'factory', 'factory_level_2', 'field', 'field_level_2', 'rice_field',
+    'hunter', 'fisher', 'cotton_field', 'textile_workshop',
+    'textile_workshop_level_2', 'science',
+  ]);
+
   function buildingTooltipContent(type, cell) {
     const info = mapBuildingPreview(type, cell);
     const label = type === 'demolition' ? 'Снос' : (buildingMeta[type]?.label || type);
+    const output = BUILDINGS_WITH_OUTPUT.has(type)
+      ? '<small>Выработка: ' + escapeHtml(String(info.output)) + ' ' + escapeHtml(info.unit) + '</small>'
+      : '';
     return '<strong>' + escapeHtml(label) + '</strong>' +
       '<span>' + escapeHtml(info.description) + '</span>' +
-      '<small>Выработка: ' + escapeHtml(String(info.output)) + ' ' + escapeHtml(info.unit) +
-      (info.factoryNearby ? ' · рядом фабрика, еда −50%' : '') +
-      (type === 'fisher' ? ' · воды вокруг: ' + info.water : '') + '</small>';
+      output +
+      (info.factoryNearby ? '<small>Рядом фабрика: производство еды −50%</small>' : '') +
+      (type === 'fisher' ? '<small>Воды вокруг: ' + info.water + '</small>' : '');
   }
 
   function tooltipForMapCell(cell) {
@@ -2171,10 +2191,54 @@
       (item.cells || []).some((owned) => owned.x === cell.x && owned.y === cell.y),
     );
     const owned = country?.cells?.find((item) => item.x === cell.x && item.y === cell.y);
-    if (!owned) return null;
-    if (owned.structureType === 'dam') return buildingTooltipContent('dam', owned);
-    if (owned.structureType === 'greenhouse') return buildingTooltipContent('greenhouse', owned);
-    return owned.buildingType ? buildingTooltipContent(owned.buildingType, owned) : null;
+    if (!owned || !country) return null;
+
+    const parts = [];
+    if (country.name) parts.push('<strong>' + escapeHtml(country.name) + '</strong>');
+    if (owned.buildingType) {
+      parts.push(buildingTooltipContent(owned.buildingType, owned));
+    }
+    if (owned.structureType) {
+      parts.push(buildingTooltipContent(owned.structureType, owned));
+    }
+    if (owned.flooded === true) {
+      parts.push('<strong>Затопление</strong><span>Клетка затоплена.</span>');
+    }
+
+    const garrison = (country.units || []).filter(
+      (unit) => unit.barracksX === cell.x && unit.barracksY === cell.y,
+    );
+    if (garrison.length > 0) {
+      const grouped = new Map();
+      for (const unit of garrison) grouped.set(unit.type, (grouped.get(unit.type) || 0) + 1);
+      const names = [...grouped.entries()].map(([type, count]) => {
+        const option = COMBAT_UNIT_OPTIONS.find(([key]) => key === type);
+        return escapeHtml(option?.[1]?.name || type) + ' × ' + count;
+      });
+      parts.push('<strong>Гарнизон</strong><span>' + names.join(', ') + '</span>');
+    }
+
+    const generals = (country.generals || []).filter(
+      (general) => general.barracksX === cell.x && general.barracksY === cell.y,
+    );
+    if (generals.length > 0) {
+      parts.push('<strong>Генералы</strong><span>' +
+        generals.map((general) => escapeHtml(general.name || 'Генерал')).join(', ') +
+        '</span>');
+    }
+
+    const armies = (country.armies || []).filter(
+      (army) => army.x === cell.x && army.y === cell.y,
+    );
+    if (armies.length > 0) {
+      parts.push('<strong>Отряды</strong><span>' +
+        armies.map((army) =>
+          escapeHtml(army.romanNumeral || 'Отряд') +
+          (Array.isArray(army.unitIds) ? ' · ' + army.unitIds.length + ' юн.' : ''),
+        ).join(', ') +
+        '</span>');
+    }
+    return parts.length ? parts.join('<hr>') : null;
   }
 
   function renderMapCommandOptions() {
@@ -3279,10 +3343,21 @@
               const neighborX = cell.x + edge.dx;
               const neighborY = cell.y + edge.dy;
               const neighborKey = neighborX + ',' + neighborY;
-              const insideTerritory = countryCellCoordinates.has(neighborKey);
-              if (insideTerritory && mapIsLand(neighborX, neighborY)) {
-                ctx.moveTo(edge.x1, edge.y1);
-                ctx.lineTo(edge.x2, edge.y2);
+              const outsideTerritory = !countryCellCoordinates.has(neighborKey);
+              const insideMap = neighborX >= 0 && neighborY >= 0 &&
+                neighborX < width && neighborY < height;
+              if (outsideTerritory && insideMap && !mapIsLand(neighborX, neighborY)) {
+                const inset = Math.max(1.5, cellSize * 0.06);
+                let x1 = edge.x1;
+                let y1 = edge.y1;
+                let x2 = edge.x2;
+                let y2 = edge.y2;
+                if (edge.dy === -1) { y1 += inset; y2 += inset; }
+                else if (edge.dx === 1) { x1 -= inset; x2 -= inset; }
+                else if (edge.dy === 1) { y1 -= inset; y2 -= inset; }
+                else if (edge.dx === -1) { x1 += inset; x2 += inset; }
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
               }
             }
             ctx.stroke();
@@ -4160,7 +4235,7 @@
           '</section>' +
           '<section class="country-doc-notes"><h3>Заметки государства</h3><p>Заметки пока не добавлены.</p></section>' +
         '</div>' +
-        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
+        '<h3 class="country-doc-section-title">ЭКОНОМИКА</h3>' +
         '<div class="country-doc-economy country-doc-finance">' +
           '<div><b class="country-doc-income">↗</b><span>Прибавка</span><strong>+' +
             escapeHtml(economyIncome) + '</strong><small>Золото за ход</small></div>' +

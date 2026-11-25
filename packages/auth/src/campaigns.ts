@@ -374,13 +374,51 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
         if (
           target.status !== 'active' ||
           target.current_turn !== 1 ||
-          !target.orders_locked ||
           target.map_width === null ||
           target.map_height === null
         ) {
           throw new AuthValidationError(
-            'Кампания уже начала первый ход и больше не принимает новых игроков. ' +
-              'Подключиться можно до завершения основания государств.',
+            'Кампания уже завершила первый ход подготовки и больше не принимает новых игроков.',
+          );
+        }
+
+        const firstTurnJob = await client.query(
+          'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 LIMIT 1',
+          [normalizedCampaignId],
+        );
+        const confirmedMember = await client.query(
+          `SELECT 1 FROM campaign_memberships
+           WHERE campaign_id = $1 AND status = 'active' AND orders_confirmed = TRUE
+           LIMIT 1`,
+          [normalizedCampaignId],
+        );
+        const finalizedOrder = await client.query(
+          `SELECT 1 FROM orders
+           WHERE campaign_id = $1 AND turn_number = 1
+             AND status IN ('confirmed', 'finalized')
+           LIMIT 1`,
+          [normalizedCampaignId],
+        );
+        if (firstTurnJob.rows.length > 0 || confirmedMember.rows.length > 0 || finalizedOrder.rows.length > 0) {
+          throw new AuthValidationError(
+            'Первый ход уже подтверждён хотя бы одним игроком и больше не принимает новых участников.',
+          );
+        }
+
+        if (!target.orders_locked) {
+          // Draft orders remain attached to their countries. Pause the first-turn
+          // window until the new participant completes country setup.
+          await client.query(
+            `UPDATE campaigns
+             SET orders_locked = TRUE, orders_locked_at = NULL, deadline_at = NULL
+             WHERE id = $1 AND current_turn = 1 AND orders_locked = FALSE`,
+            [normalizedCampaignId],
+          );
+          await client.query(
+            `UPDATE campaign_memberships
+             SET orders_confirmed = FALSE
+             WHERE campaign_id = $1 AND status = 'active'`,
+            [normalizedCampaignId],
           );
         }
         if (existing.rows[0]?.status !== 'active') {
@@ -440,13 +478,8 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
           'SELECT status FROM turn_jobs WHERE campaign_id = $1 AND turn_number = $2 FOR UPDATE',
           [campaignId, target.current_turn],
         );
-        if (job.rows.some((row) => row.status === 'pending' || row.status === 'processing')) {
-          throw new CampaignTurnProcessingError(
-            'ORDERS_ALREADY_LOCKED',
-            'A campaign member cannot leave while the current turn is being processed',
-          );
-        }
-
+        // Once the job exists, all orders are already finalized/discarded. Leaving
+        // changes only membership; it does not mutate the immutable worker input.
         const membership = await client.query<{ campaign_id: string; country_id: string | null }>(
           'SELECT campaign_id, country_id FROM campaign_memberships WHERE campaign_id = $1 AND user_id = $2 AND status = $3 FOR UPDATE',
           [campaignId, userId, 'active'],
@@ -506,9 +539,30 @@ export function createCampaignService(options: CampaignServiceOptions): Campaign
          FROM campaigns AS c
          WHERE c.status = 'active'
            AND c.current_turn = 1
-           AND c.orders_locked = TRUE
            AND c.map_width IS NOT NULL
            AND c.map_height IS NOT NULL
+           AND (
+             c.orders_locked = TRUE
+             OR (
+               c.orders_locked = FALSE
+               AND NOT EXISTS (
+                 SELECT 1 FROM turn_jobs AS first_turn_job
+                 WHERE first_turn_job.campaign_id = c.id AND first_turn_job.turn_number = 1
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM campaign_memberships AS confirmed_members
+                 WHERE confirmed_members.campaign_id = c.id
+                   AND confirmed_members.status = 'active'
+                   AND confirmed_members.orders_confirmed = TRUE
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM orders AS confirmed_orders
+                 WHERE confirmed_orders.campaign_id = c.id
+                   AND confirmed_orders.turn_number = 1
+                   AND confirmed_orders.status IN ('confirmed', 'finalized')
+               )
+             )
+           )
            AND NOT EXISTS (
              SELECT 1 FROM campaign_memberships AS own_membership
              WHERE own_membership.campaign_id = c.id
