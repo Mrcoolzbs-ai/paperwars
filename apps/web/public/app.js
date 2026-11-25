@@ -3279,8 +3279,8 @@
               const neighborX = cell.x + edge.dx;
               const neighborY = cell.y + edge.dy;
               const neighborKey = neighborX + ',' + neighborY;
-              const outsideTerritory = !countryCellCoordinates.has(neighborKey);
-              if (outsideTerritory && !mapIsLand(neighborX, neighborY)) {
+              const insideTerritory = countryCellCoordinates.has(neighborKey);
+              if (insideTerritory && mapIsLand(neighborX, neighborY)) {
                 ctx.moveTo(edge.x1, edge.y1);
                 ctx.lineTo(edge.x2, edge.y2);
               }
