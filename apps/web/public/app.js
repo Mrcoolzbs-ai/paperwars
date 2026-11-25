@@ -680,7 +680,7 @@
   function compactChatPreview(message) {
     return {
       authorLabel: String(message.authorLabel || 'Игрок'),
-      message: String(message.message || '').replace(/\\s+/g, ' ').trim().slice(0, 180),
+      message: String(message.message || '').replace(/\s+/g, ' ').trim().slice(0, 180),
     };
   }
 
