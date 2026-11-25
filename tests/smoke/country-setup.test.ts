@@ -491,15 +491,9 @@ describe.skipIf(databaseUrl === undefined || databaseUrl.trim().length === 0)(
         [campaign.id, firstCountry.id, builtCellId],
       );
 
-      const snapshotBackedProfile = await countrySetup.getMyCountry(
-        firstUser.user.id,
-        campaign.id,
-      );
+      const snapshotBackedProfile = await countrySetup.getMyCountry(firstUser.user.id, campaign.id);
       expect(snapshotBackedProfile?.residentCount).toBe(expectedFirstResidents);
-      const snapshotBackedMap = await countrySetup.getCampaignMap(
-        firstUser.user.id,
-        campaign.id,
-      );
+      const snapshotBackedMap = await countrySetup.getCampaignMap(firstUser.user.id, campaign.id);
       const snapshotBackedCountry = snapshotBackedMap.countries.find(
         (country) => country.id === firstCountry.id,
       );
