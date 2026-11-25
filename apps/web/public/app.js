@@ -2069,6 +2069,8 @@
       output = 1;
       unit = 'науки';
       description = 'Научный центр повышает текущий уровень науки.';
+    } else if (type === 'demolition') {
+      description = 'Снос возвращает жителя и освобождает клетку.';
     } else if (type === 'religious_building') {
       description = 'Религиозное сооружение.';
     } else if (type === 'barracks') {
@@ -2182,7 +2184,6 @@
     return '<strong>' + escapeHtml(label) + '</strong>' +
       '<span>' + escapeHtml(info.description) + '</span>' +
       output +
-      (info.factoryNearby ? '<small>Рядом фабрика: производство еды −50%</small>' : '') +
       (type === 'fisher' ? '<small>Воды вокруг: ' + info.water + '</small>' : '');
   }
 
