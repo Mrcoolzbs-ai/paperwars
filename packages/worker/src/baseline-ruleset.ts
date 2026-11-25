@@ -859,7 +859,9 @@ export function createBaselineTurnResolver(): TurnResolver<
         }
 
         const unitId = stableUuid(
-          ['paperwars:unit', snapshot.campaignId, snapshot.turnNumber, country.id, order.id].join(':'),
+          ['paperwars:unit', snapshot.campaignId, snapshot.turnNumber, country.id, order.id].join(
+            ':',
+          ),
         );
         const unit: RecruitedUnitState = {
           id: unitId,
