@@ -240,6 +240,58 @@ describe('baseline turn resolver', () => {
     expect(result.nextState.countries[0]?.units).toHaveLength(0);
   });
 
+  it('keeps recruited units when science falls but blocks further units above the new level', () => {
+    const state = createEconomyState([
+      economyCell('gold', 0, 0, 0, 'gold_mine'),
+      economyCell('barracks', 1, 1, 0, 'barracks'),
+      economyCell('science-1', 2, 1, 0, 'science'),
+      economyCell('science-2', 3, 1, 0, 'science'),
+      economyCell('science-3', 4, 1, 0, 'science'),
+      economyCell('residents', 5, 3, 10),
+    ]);
+    const first = resolve(
+      state,
+      [
+        createOrder('40000000-0000-4000-8000-000000000405', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'cavalryman',
+        }),
+      ],
+      createRandom().source,
+    );
+    expect(first.orderResults[0]?.resultCode).toBe('UNIT_RECRUITED');
+
+    const afterScienceLoss = {
+      ...first.nextState,
+      turnNumber: 2,
+    };
+    const second = resolve(
+      afterScienceLoss,
+      [
+        createOrder('40000000-0000-4000-8000-000000000406', 'demolition', {
+          x: 4,
+          y: 1,
+        }),
+        createOrder('40000000-0000-4000-8000-000000000407', 'unit_recruitment', {
+          x: 1,
+          y: 1,
+          unitType: 'cavalryman',
+        }),
+      ],
+      createRandom([], 2).source,
+    );
+
+    expect(second.orderResults.map((item) => item.resultCode)).toEqual([
+      'BUILDING_DEMOLISHED',
+      'SCIENCE_REQUIRED',
+    ]);
+    expect(second.nextState.countries[0]?.cells.filter((cell) => cell.buildingType === 'science'))
+      .toHaveLength(2);
+    expect(second.nextState.countries[0]?.units).toHaveLength(1);
+    expect(second.nextState.countries[0]?.units?.[0]?.type).toBe('cavalryman');
+  });
+
   it('requires the selected cell to contain one of the country barracks', () => {
     const state = createEconomyState([
       economyCell('gold', 0, 0, 0, 'gold_mine'),
