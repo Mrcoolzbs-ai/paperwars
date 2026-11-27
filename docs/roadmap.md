@@ -165,11 +165,11 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] Покрыть детерминизм orchestration unit-тестом и автоматически журналировать каждый uniform/weighted RNG draw; weighted сохраняется как integer target в формате random_draws.
 - [ ] Реализовать конкретный ruleset resolver и механики только по нормативно подтверждённым правилам; неподтверждённые параметры не добавлять.
 
-**Текущий статус:** контрактная часть реализована в PR #7; реальная функция resolveTurn и игровой цикл ещё не реализованы.
+**Текущий статус:** pure orchestration API `resolveTurn` реализован и используется Worker; полный набор нормативных игровых фаз и механик Baseline ещё не реализован.
 
 ### 1.8. Закрытие приказов, очередь и Worker
 
-**Статус на 23 ноября 2026 года: закрытие приказов, атомарный Worker и polling lifecycle реализованы; реальные игровые правила внутри resolver и production host остаются следующими задачами.**
+**Статус на 27 ноября 2026 года: транзакционное закрытие приказов, PostgreSQL queue/leases/fencing, атомарная финализация, polling lifecycle и отдельный production host реализованы.** Конкретный baseline resolver покрывает текущую часть подтверждённых действий; остальные фазы и механики остаются незавершёнными.
 
 - [x] `closeOrders`: первой блокировкой берёт кампанию `FOR UPDATE`; проверяет статус, `orders_locked`, snapshot и актуальный список активных участников.
 - [x] Проверяет подтверждения либо deadline по времени БД `clock_timestamp()`.
@@ -191,7 +191,7 @@ Paper Wars: Rebirth — многопользовательская пошаго�
 - [x] При завершении кампании следующий seed не создаётся, `current_turn` остаётся на завершённом ходе, приём приказов остаётся закрытым, существующие seeds переводятся в `revealed`.
 - [x] `createTurnWorker().run(signal, options)` последовательно опрашивает очередь, сообщает об ошибках через `onError` и завершает polling по `AbortSignal`; текущая обработка хода не прерывается abort-сигналом.
 - [ ] Реализовать конкретный versioned game resolver с подтверждёнными игровыми фазами и механиками; Worker пока исполняет переданный resolver и не придумывает правила самостоятельно.
-- [ ] Добавить production host/entrypoint, который связывает Worker с выбранной версией ruleset и управляет жизненным циклом процесса.
+- [x] Добавить production host/entrypoint `packages/worker/src/host.ts`: он использует текущие `createBaselineRuleset` и `createBaselineTurnResolver`, проверяет подключение к PostgreSQL, запускает polling и корректно завершает процесс по SIGINT/SIGTERM. API сохраняет встроенный Worker включённым по умолчанию; `TURN_WORKER_ENABLED=false` переключает API на отдельный Worker process.
 
 Реализация: `packages/persistence/src/postgres/turn-processing.ts`; API: GET/POST `/campaigns/:campaignId/orders/mine|orders`, PATCH/DELETE `/campaigns/:campaignId/orders/:orderId` и POST `/campaigns/:campaignId/orders/confirm`. Хранение order envelope универсально (type/schemaVersion/JSON payload) и пока не валидирует конкретные игровые команды или их эффекты. PostgreSQL integration tests покрывают CRUD/ownership, withdrawal confirmation, deadline, атомарное закрытие, конкурентные закрытия, leave semantics, lease, retry limit и fencing.
 
@@ -592,39 +592,25 @@ Q18–Q20 — причина катастрофы, природа золота �
 
 ### Реализация — выполненные инкременты
 
-- **Stage 1.1 — Monorepo bootstrap:** merged в `main` через PR #3.
-- **Stage 1.2 — PostgreSQL foundation:** Drizzle schema, initial migration, advisory-lock migrator, checksum и PostgreSQL integration tests; merged через PR #4.
-- **Stage 1.3 — RNG/seed lifecycle:** `commit-v1`, `enc-v1`, AAD, HMAC-SHA-256, rejection sampling, AES-256-GCM, versioned key provider, seed reveal gating и audit log random draws; merged через PR #5.
-- **Stage 1.4 — Auth/campaign core:** scrypt passwords, HS256 access JWT, hashed/rotating refresh tokens с replay revocation, HTTP auth/campaign routes и атомарное создание campaign + membership + first seed; merged через PR #6.
-- **Stage 1.5 — Domain/ruleset contracts:** branded entities, order/event/snapshot/turn-resolution contracts, pure RandomSource/TurnResolver interface, RulesetManifest и compatibility checks; merged через PR #7.
-- Persistence migration `0003_versioned_domain_payloads.sql` добавляет версии схемы для world snapshots, orders и game events.
-- Последний чистый PR CI Stage 1.5 на PostgreSQL 18.7: build, typecheck, lint, format-check и **55/55 тестов** зелёные в 10 файлах.
+- **Stage 1.1–1.5:** monorepo, PostgreSQL, RNG/commit-reveal, auth/campaign core и domain/ruleset contracts влиты в `main` через PR #3–#7.
+- **Stage 1.7:** pure Simulation Engine проверяет совместимость manifest/ruleset/snapshot, принимает только finalized orders, связывает детерминированный RNG с committed turn seed и формирует авторитетный random-draw журнал.
+- **Stage 1.8:** в `main` работают order CRUD/confirmation, атомарный `closeOrders`, PostgreSQL TurnJob, `SKIP LOCKED`, lease/fencing, reaper, Worker polling и атомарная финализация следующего snapshot/events/reports/seed.
+- **Production Worker host:** `packages/worker/src/host.ts` запускает тот же текущий baseline resolver отдельным процессом. API сохраняет встроенный Worker по умолчанию; отдельный процесс включается с `TURN_WORKER_ENABLED=false` на API.
+- **Baseline actions:** текущий resolver обрабатывает поддержанные типы `construction`, `colonization`, `demolition`, `structure_removal`, `general_recruitment`, `unit_recruitment` и `army_formation`; неподдержанные типы отклоняются явно.
+- **World/UI increments:** PR #44 (карта и строительство/колонизация), PR #55 (командный центр и уточнения карты) и PR #62 (источник населения из snapshot) влиты в `main`.
 
 ### Stage 2 — предварительная приёмка клиентского вертикального среза
 
-- PR #15 — клиентский и country-setup срез предварительно завершён; это не закрывает Stage 2 DoD. Подробный перечень поставленного и незавершённого — в разделе Этапа 2 выше.
-- PR #15 остаётся draft/open на ветке `stage-3-browser-client`, base `stage-2-country-setup`; слияние в `main` не выполнено.
-
-### Stage 1.7 — исполняемый pure Simulation Engine (в работе)
-
-- В `@paper-wars/simulation` добавлен I/O-free orchestration API `resolveTurn`: проверка engine/ruleset/snapshot совместимости, проверка finalized orders, вызов подключённого ruleset resolver, инварианты результата.
-- RNG обёрнут журналирующим адаптером; `createDeterministicRandomSource` связывает committed turn seed с HMAC-SHA-256 функциями `drawUniform`/`drawWeighted`, а uniform и weighted выборы фиксируются в формате `random_draws`; повторное использование draw ID и недопустимые диапазоны блокируются.
-- Resolver возвращает результат без журнала; авторитетный `randomDraws` формируется самим engine. RNG source обязан совпадать по campaignId, turnNumber и rngVersion с контекстом симуляции.
-- CI на коммите `6896bb320fef5a2a3383774cb8c6b000ba86865b` прошёл Build, Typecheck, Lint, Format check и **79/79 тестов в 15 файлах**: [run 45077993105](https://github.com/Mrcoolzbs-ai/paperwars/actions/runs/45077993105).
-- Осталось реализовать конкретные игровые фазы/механики и подтверждённый ruleset resolver; численные параметры PROPOSAL не вводить.
+- Клиентский/country-setup срез из PR #15 остаётся в draft/open и не влит в `main`; его предварительная приёмка не закрывает полный Stage 2 DoD.
+- Полный Stage 2 требует приглашений и полноценного lifecycle второго участника, обязательной модерации официальных социальных систем по Baseline, сквозного сценария двух игроков, корректного результата хода и защиты закрытых данных.
 
 ### Реализация — ещё не завершена
 
 - Проверка восстановления состояния PostgreSQL после перезапуска с постоянным volume.
-- Приглашения участников, полноценное управление membership/roles, аудит критичных действий и меры против brute force.
-- Полный исполняемый Simulation Engine и обработка игровых приказов.
-- `closeOrders`, блокировки приказов, PostgreSQL Worker, lease/fencing, reaper и атомарная финализация хода.
-- Генерация мира по сохранённому seed: воспроизводимые материки, береговые линии и реки; один визуальный цвет моря/рек.
-- Стартовая территория 5×5 может включать воду, но обязана содержать минимум 7 клеток суши.
-- Вместимость кампании: один слот игрока на каждые 100 клеток карты; покидание кампании освобождает слот.
-- Регистрация государств, выбор учения, культуры/правительства и начальная конфигурация 7 зданий / 18 жителей — Stage 2.
-- Web-клиент MVP: полноэкранная карта с pan/zoom, seed кампании, каталог принципов, культура/правительство, загрузка флага/эмблемы, выбор точки старта с минимум семью клетками суши; лимит игроков по размеру карты и выход из кампании.
-- Полные DTO-проекции игрового мира, Web-клиент для приказов и публичный post-campaign reveal endpoint.
-- Definition of Done Этапа 1 в целом ещё не достигнут: отсутствует рабочий end-to-end цикл «пользователь → приказ → worker → симуляция → сохранение → API».
+- Полноценные membership/roles, аудит критичных действий, rate limiting публичных auth endpoints и дополнительные auth lifecycle задачи.
+- Полный набор подтверждённых фаз: исследование руин/золота, дипломатия, передвижение, полноценные бои, экономические и сезонные правила, которые ещё не покрыты текущим resolver.
+- Полные DTO-проекции мира по видимости и аудит всех endpoint/report/export на отсутствие закрытых данных.
+- Этапы 3–9: разведка и награды, полная экономика/сезоны, социальные эффекты, дипломатия, бой/территориальный контроль, события/климат/лор, балансировка и релиз.
+- Definition of Done Stage 2 и полного end-to-end сценария ещё не достигнут; наличие рабочего Worker означает корректную обработку поддержанных типов приказов, а не завершение всей игры.
 
-**Текущий инкремент:** Stage 1.7 — pure Simulation Engine: общий orchestration и RNG-журнал реализованы; следующий шаг внутри инкремента — concrete resolver по подтверждённым фазам/механикам. После этого — Stage 1.8: closeOrders, PostgreSQL TurnJob, lease/fencing и Worker.
+**Текущий инкремент Stage 1:** отдельный production entrypoint Worker поставлен без изменения baseline resolver и игровых правил. Дальнейшая работа продолжается по оставшимся незавершённым пунктам Stage 2 и последующим этапам roadmap; новые механики не должны добавляться без нормативного основания.
