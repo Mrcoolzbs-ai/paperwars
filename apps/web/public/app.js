@@ -5,6 +5,10 @@
     token: sessionStorage.getItem('pw_access_token') || '',
     user: null,
     profile: null,
+    socialDashboard: null,
+    selectedPlayerProfile: null,
+    campaignPlayers: [],
+    socialInviteCampaignId: null,
     activeScreen: 'auth',
     profileReturnScreen: 'game',
     campaigns: [],
@@ -572,8 +576,8 @@
       scope: 'world',
       title: 'Мировой чат',
       subtitle: state.chatWorldLastMessage
-        ? 'Кто отправил: ' + state.chatWorldLastMessage.authorLabel + ' — ' + state.chatWorldLastMessage.message
-        : 'Кто отправил: сообщений пока нет',
+        ? state.chatWorldLastMessage.authorLabel + ' — ' + state.chatWorldLastMessage.message
+        : 'Сообщений пока нет',
       icon: '◎',
       active: state.chatScope === 'world',
       onSelect: () => {
@@ -609,8 +613,8 @@
         title: campaign.name,
         turnNumber: campaign.currentTurn,
         subtitle: campaign.lastChatMessage
-          ? 'Кто отправил: ' + campaign.lastChatMessage.authorLabel + ' — ' + campaign.lastChatMessage.message
-          : 'Кто отправил: сообщений пока нет',
+          ? campaign.lastChatMessage.authorLabel + ' — ' + campaign.lastChatMessage.message
+          : 'Сообщений пока нет',
         icon: '⌂',
         active: state.chatScope === 'campaign' && state.chatCampaignId === campaign.id,
         onSelect: () => {
@@ -1007,6 +1011,7 @@
     $('#workspace-screen').classList.toggle('hidden', name !== 'workspace');
     $('#profile-screen').classList.toggle('hidden', name !== 'profile');
     $('#profile-button').classList.toggle('hidden', !state.user);
+    $('#players-button').classList.toggle('hidden', !state.user);
     $('#logout-button').classList.toggle('hidden', !state.user);
     $('#chat-open-button').classList.toggle('hidden', !state.user);
     $('#user-label').classList.toggle('hidden', !state.user);
@@ -1027,6 +1032,16 @@
       .join('')
       .toLocaleUpperCase();
     $('#profile-avatar').textContent = initials || 'PW';
+    $('#profile-avatar').classList.toggle('hidden', Boolean(profile.avatarUrl));
+    const avatarImage = $('#profile-avatar-image');
+    avatarImage.classList.toggle('hidden', !profile.avatarUrl);
+    if (profile.avatarUrl) {
+      avatarImage.src = profile.avatarUrl;
+      avatarImage.alt = 'Аватар ' + (profile.displayName || 'игрока');
+    } else {
+      avatarImage.removeAttribute('src');
+    }
+    $('#profile-avatar-remove').classList.toggle('hidden', !profile.hasCustomAvatar);
     const emailInput = $('#profile-email');
     emailInput.required = Boolean(profile.email) || !profile.hasVk;
     $('#profile-email-hint').textContent = profile.email
@@ -1541,6 +1556,303 @@
     }
   }
 
+  function playerAvatarMarkup(player) {
+    if (player.avatarUrl && ((player.avatarUrl.startsWith('/') && !player.avatarUrl.startsWith('//')) || player.avatarUrl.startsWith('https://'))) {
+      return '<img class="player-avatar" src="' + escapeHtml(player.avatarUrl) + '" alt="" loading="lazy">';
+    }
+    const initials = String(player.displayName || 'PW').trim().split(/\s+/u).slice(0, 2)
+      .map((part) => Array.from(part)[0] || '').join('').toLocaleUpperCase();
+    return '<span class="player-avatar player-avatar-fallback">' + escapeHtml(initials || 'PW') + '</span>';
+  }
+
+  function renderPlayerList(host, players, emptyLabel) {
+    if (!host) return;
+    if (!players.length) {
+      host.innerHTML = '<p class="muted">' + escapeHtml(emptyLabel) + '</p>';
+      return;
+    }
+    host.innerHTML = players.map((player) =>
+      '<button class="player-list-item" type="button" data-player-id="' + escapeHtml(player.id) + '">' +
+      playerAvatarMarkup(player) +
+      '<span><strong>' + escapeHtml(player.displayName) + '</strong><small>Открыть профиль</small></span>' +
+      '<span class="player-list-arrow">↗</span></button>'
+    ).join('');
+  }
+
+  async function loadFriendsDashboard() {
+    const data = await request('/friends');
+    state.socialDashboard = data;
+    renderPlayerList($('#friends-list'), data.friends || [], 'Пока нет друзей. Найди игрока выше.');
+    const incoming = data.incomingRequests || [];
+    const outgoing = data.outgoingRequests || [];
+    const requestHost = $('#friend-requests');
+    if (!incoming.length && !outgoing.length) {
+      requestHost.innerHTML = '<p class="muted">Новых заявок нет.</p>';
+    } else {
+      requestHost.innerHTML = incoming.map((item) =>
+        '<div class="player-request-item">' + playerAvatarMarkup(item.player) +
+        '<span class="player-request-name">' + escapeHtml(item.player.displayName) + '</span>' +
+        '<button type="button" class="button button-primary button-small" data-friend-action="accept" data-request-id="' + escapeHtml(item.id) + '">Принять</button>' +
+        '<button type="button" class="button button-quiet button-small" data-friend-action="decline" data-request-id="' + escapeHtml(item.id) + '">Отклонить</button></div>'
+      ).join('') + outgoing.map((item) =>
+        '<div class="player-request-item">' + playerAvatarMarkup(item.player) +
+        '<span class="player-request-name">' + escapeHtml(item.player.displayName) + '<small>Ожидает ответа</small></span>' +
+        '<button type="button" class="button button-quiet button-small" data-friend-action="cancel" data-request-id="' + escapeHtml(item.id) + '">Отменить</button></div>'
+      ).join('');
+    }
+    return data;
+  }
+
+  async function loadCampaignInvitations() {
+    const data = await request('/invitations/campaigns');
+    const host = $('#campaign-invitations');
+    const invitations = data.invitations || [];
+    if (!invitations.length) {
+      host.innerHTML = '<p class="muted">Приглашений пока нет.</p>';
+      return;
+    }
+    host.innerHTML = invitations.map((item) =>
+      '<article class="campaign-invitation-card"><div class="campaign-invitation-from">' +
+      playerAvatarMarkup(item.inviter) +
+      '<span><strong>' + escapeHtml(item.campaignName) + '</strong><small>От ' +
+      escapeHtml(item.inviter.displayName) + ' · ' + item.playerCount + '/' + item.maxPlayers + ' игроков</small></span></div>' +
+      '<div class="campaign-invitation-actions">' +
+      '<button type="button" class="button button-primary button-small" data-campaign-invitation="accept" data-invitation-id="' + escapeHtml(item.id) + '">Принять</button>' +
+      '<button type="button" class="button button-quiet button-small" data-campaign-invitation="decline" data-invitation-id="' + escapeHtml(item.id) + '">Отклонить</button></div></article>'
+    ).join('');
+  }
+
+  async function searchPlayers(queryInput) {
+    const query = String(queryInput || '').trim();
+    if (query.length < 2) {
+      renderPlayerList($('#player-search-results'), [], 'Введи не менее двух символов.');
+      return;
+    }
+    const data = await request('/players/search?q=' + encodeURIComponent(query));
+    renderPlayerList($('#player-search-results'), data.players || [], 'Игроки не найдены.');
+  }
+
+  async function openPlayerProfile(playerId) {
+    const host = $('#selected-player-profile');
+    host.innerHTML = '<p class="muted">Загружаем профиль игрока…</p>';
+    try {
+      const data = await request('/players/' + encodeURIComponent(playerId));
+      state.selectedPlayerProfile = data.profile;
+      renderSelectedPlayerProfile();
+    } catch (error) {
+      host.innerHTML = '<p class="form-message">' + escapeHtml(userErrorMessage(error)) + '</p>';
+    }
+  }
+
+  function renderSelectedPlayerProfile() {
+    const profile = state.selectedPlayerProfile;
+    const host = $('#selected-player-profile');
+    if (!profile) {
+      host.innerHTML = '<div class="player-profile-empty"><span>♙</span><strong>Выбери игрока</strong><p>Здесь появится его публичный профиль.</p></div>';
+      return;
+    }
+    let friendshipAction = '';
+    if (profile.friendshipStatus === 'none') {
+      friendshipAction = '<button type="button" class="button button-primary" data-player-action="add-friend">Добавить в друзья</button>';
+    } else if (profile.friendshipStatus === 'request_sent') {
+      friendshipAction = '<span class="player-status-pill">Заявка отправлена</span>';
+    } else if (profile.friendshipStatus === 'request_received') {
+      friendshipAction = '<span class="player-status-pill">Этот игрок отправил тебе заявку</span>';
+    } else if (profile.friendshipStatus === 'friends') {
+      friendshipAction = '<button type="button" class="button button-outline" data-player-action="remove-friend">Удалить из друзей</button>';
+    } else {
+      friendshipAction = '<span class="player-status-pill">Это твой профиль</span>';
+    }
+    const isCampaignMember = state.campaignPlayers.some((player) => player.id === profile.id);
+    const inviteAction = state.socialInviteCampaignId && profile.id !== state.user?.id && !isCampaignMember
+      ? '<button type="button" class="button button-primary" data-player-action="invite-campaign">Пригласить в кампанию</button>'
+      : '';
+    const vkLink = profile.vkProfileUrl
+      ? '<a class="button button-outline" href="' + escapeHtml(profile.vkProfileUrl) + '" target="_blank" rel="noopener noreferrer">Открыть профиль ВК ↗</a>'
+      : '<span class="player-status-pill">Профиль ВК не привязан</span>';
+    host.innerHTML =
+      '<div class="player-public-profile"><div class="player-public-avatar">' + playerAvatarMarkup(profile) + '</div>' +
+      '<h3>' + escapeHtml(profile.displayName) + '</h3>' +
+      '<p class="muted">В друзьях: ' + (Number(profile.friendsCount) || 0) + '</p>' +
+      '<div class="player-profile-actions">' + friendshipAction + vkLink + inviteAction + '</div>' +
+      '<small class="player-profile-date">В Paper Wars с ' + new Date(profile.createdAt).toLocaleDateString('ru-RU') + '</small></div>';
+  }
+
+  async function loadCampaignPlayers(campaignId) {
+    try {
+      const data = await request('/campaigns/' + encodeURIComponent(campaignId) + '/players');
+      state.campaignPlayers = data.players || [];
+      renderCampaignRoster();
+    } catch (error) {
+      state.campaignPlayers = [];
+      renderCampaignRoster(userErrorMessage(error));
+    }
+  }
+
+  function renderCampaignRoster(errorMessage = '') {
+    const host = $('#campaign-roster');
+    if (!host) return;
+    if (errorMessage) {
+      host.classList.remove('hidden');
+      host.innerHTML = '<span class="muted">' + escapeHtml(errorMessage) + '</span>';
+      return;
+    }
+    if (!state.campaign || !state.campaignPlayers.length) {
+      host.classList.add('hidden');
+      host.replaceChildren();
+      return;
+    }
+    host.classList.remove('hidden');
+    host.innerHTML = '<span class="campaign-roster-label">ИГРОКИ МИРА</span>' +
+      state.campaignPlayers.map((player) =>
+        '<button class="campaign-roster-player" type="button" data-player-id="' + escapeHtml(player.id) + '">' +
+        playerAvatarMarkup(player) + '<span>' + escapeHtml(player.displayName) +
+        (player.isFriend ? '<small>Друг</small>' : '') + '</span></button>'
+      ).join('');
+  }
+
+  async function openPlayersModal(inviteCampaignId = null) {
+    state.socialInviteCampaignId = inviteCampaignId;
+    state.selectedPlayerProfile = null;
+    $('#player-search-query').value = '';
+    renderPlayerList($('#player-search-results'), [], 'Введи не менее двух символов.');
+    renderSelectedPlayerProfile();
+    $('#players-modal').classList.remove('hidden');
+    $('#players-modal').setAttribute('aria-hidden', 'false');
+    setMessage('#players-modal-message', inviteCampaignId
+      ? 'Найди игрока, открой его профиль и нажми «Пригласить в кампанию».'
+      : '');
+    if (inviteCampaignId) await loadCampaignPlayers(inviteCampaignId);
+    try {
+      await Promise.all([loadFriendsDashboard(), loadCampaignInvitations()]);
+    } catch (error) {
+      setMessage('#players-modal-message', userErrorMessage(error));
+    }
+    $('#player-search-query').focus();
+  }
+
+  function closePlayersModal() {
+    $('#players-modal').classList.add('hidden');
+    $('#players-modal').setAttribute('aria-hidden', 'true');
+    state.socialInviteCampaignId = null;
+  }
+
+  async function sendFriendRequest() {
+    const profile = state.selectedPlayerProfile;
+    if (!profile) return;
+    await request('/friends/requests', {
+      method: 'POST',
+      body: JSON.stringify({ recipientUserId: profile.id }),
+    });
+    await Promise.all([loadFriendsDashboard(), openPlayerProfile(profile.id)]);
+    showToast('Заявка в друзья отправлена.');
+  }
+
+  async function sendCampaignInvitation() {
+    const profile = state.selectedPlayerProfile;
+    const campaignId = state.socialInviteCampaignId;
+    if (!profile || !campaignId) return;
+    await request('/campaigns/' + encodeURIComponent(campaignId) + '/invitations', {
+      method: 'POST',
+      body: JSON.stringify({ inviteeUserId: profile.id }),
+    });
+    await loadCampaignPlayers(campaignId);
+    showToast('Приглашение в кампанию отправлено.');
+  }
+
+  async function respondFriendRequest(requestId, accept) {
+    await request('/friends/requests/' + encodeURIComponent(requestId) + '/respond', {
+      method: 'POST',
+      body: JSON.stringify({ accept }),
+    });
+    await loadFriendsDashboard();
+    if (state.selectedPlayerProfile) await openPlayerProfile(state.selectedPlayerProfile.id);
+    showToast(accept ? 'Игрок добавлен в друзья.' : 'Заявка отклонена.');
+  }
+
+  async function cancelFriendRequest(requestId) {
+    await request('/friends/requests/' + encodeURIComponent(requestId), { method: 'DELETE' });
+    await loadFriendsDashboard();
+    if (state.selectedPlayerProfile) await openPlayerProfile(state.selectedPlayerProfile.id);
+  }
+
+  async function removeFriend() {
+    const profile = state.selectedPlayerProfile;
+    if (!profile) return;
+    await request('/friends/' + encodeURIComponent(profile.id), { method: 'DELETE' });
+    await Promise.all([loadFriendsDashboard(), openPlayerProfile(profile.id)]);
+    showToast('Игрок удалён из друзей.');
+  }
+
+  async function respondCampaignInvitation(invitationId, accept) {
+    await request('/invitations/campaigns/' + encodeURIComponent(invitationId) + '/respond', {
+      method: 'POST',
+      body: JSON.stringify({ accept }),
+    });
+    await Promise.all([loadCampaignInvitations(), loadCampaigns()]);
+    showToast(accept ? 'Ты вступил в кампанию.' : 'Приглашение отклонено.');
+  }
+
+  function bindPlayerModalEvents() {
+    const modal = $('#players-modal');
+    modal.addEventListener('click', async (event) => {
+      const playerButton = event.target.closest('[data-player-id]');
+      if (playerButton && modal.contains(playerButton)) {
+        await openPlayerProfile(playerButton.dataset.playerId);
+        return;
+      }
+      const playerAction = event.target.closest('[data-player-action]');
+      if (playerAction) {
+        try {
+          if (playerAction.dataset.playerAction === 'add-friend') await sendFriendRequest();
+          if (playerAction.dataset.playerAction === 'remove-friend') await removeFriend();
+          if (playerAction.dataset.playerAction === 'invite-campaign') await sendCampaignInvitation();
+        } catch (error) {
+          setMessage('#players-modal-message', userErrorMessage(error));
+        }
+        return;
+      }
+      const friendAction = event.target.closest('[data-friend-action]');
+      if (friendAction) {
+        try {
+          if (friendAction.dataset.friendAction === 'accept') await respondFriendRequest(friendAction.dataset.requestId, true);
+          if (friendAction.dataset.friendAction === 'decline') await respondFriendRequest(friendAction.dataset.requestId, false);
+          if (friendAction.dataset.friendAction === 'cancel') await cancelFriendRequest(friendAction.dataset.requestId);
+        } catch (error) {
+          setMessage('#players-modal-message', userErrorMessage(error));
+        }
+        return;
+      }
+      const inviteAction = event.target.closest('[data-campaign-invitation]');
+      if (inviteAction) {
+        try {
+          await respondCampaignInvitation(
+            inviteAction.dataset.invitationId,
+            inviteAction.dataset.campaignInvitation === 'accept',
+          );
+        } catch (error) {
+          setMessage('#players-modal-message', userErrorMessage(error));
+        }
+      }
+    });
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) closePlayersModal();
+    });
+    $('#player-search-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await searchPlayers($('#player-search-query').value);
+      } catch (error) {
+        setMessage('#players-modal-message', userErrorMessage(error));
+      }
+    });
+    $('#players-close').addEventListener('click', closePlayersModal);
+    $('#players-button').addEventListener('click', () => void openPlayersModal());
+    $('#campaign-people-button').addEventListener('click', () => {
+      if (state.campaign) void openPlayersModal(state.campaign.id);
+    });
+  }
+
   async function openProfile() {
     if (!state.user) return false;
     if (state.activeScreen !== 'profile') {
@@ -1760,6 +2072,8 @@
     state.placements = {};
     resetFoundedPanels();
     $('#workspace-title').textContent = campaign.name;
+    state.campaignPlayers = [];
+    void loadCampaignPlayers(campaign.id);
     $('#workspace-meta').textContent = `ID ${campaign.id} · ${campaign.mapWidth} × ${campaign.mapHeight} · ${campaign.rulesetVersion || 'baseline-v1'} · SEED ${campaign.mapSeed}`;
     $('#map-size-label').textContent = campaign.mapWidth + ' × ' + campaign.mapHeight;
     $('#map-size-detail').textContent = `${campaign.mapWidth} × ${campaign.mapHeight}`;
@@ -4685,6 +4999,43 @@
     });
 
     $('#profile-button').addEventListener('click', () => { void openProfile(); });
+    bindPlayerModalEvents();
+    $('#profile-avatar-file').addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.size > 512 * 1024) {
+        setMessage('#profile-avatar-message', 'Файл аватарки не должен превышать 512 КиБ.');
+        event.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const data = await request('/auth/profile/avatar', {
+            method: 'PUT', body: JSON.stringify({ dataUrl: reader.result }),
+          });
+          state.profile = { ...state.profile, ...data.profile };
+          renderProfile();
+          setMessage('#profile-avatar-message', 'Аватарка обновлена.', true);
+        } catch (error) {
+          setMessage('#profile-avatar-message', userErrorMessage(error));
+        } finally {
+          event.target.value = '';
+        }
+      };
+      reader.onerror = () => setMessage('#profile-avatar-message', 'Не удалось прочитать файл.');
+      reader.readAsDataURL(file);
+    });
+    $('#profile-avatar-remove').addEventListener('click', async () => {
+      try {
+        const data = await request('/auth/profile/avatar', { method: 'DELETE' });
+        state.profile = { ...state.profile, ...data.profile };
+        renderProfile();
+        setMessage('#profile-avatar-message', 'Используется аватарка из ВК или инициалы.', true);
+      } catch (error) {
+        setMessage('#profile-avatar-message', userErrorMessage(error));
+      }
+    });
     $('#profile-back').addEventListener('click', closeProfile);
     $('#admin-code-form').addEventListener('submit', submitAdminCode);
     $('#admin-mode-toggle').addEventListener('click', toggleAdminMode);
@@ -4856,6 +5207,7 @@
 
     $('#logout-button').addEventListener('click', async () => {
       closeChatModal();
+      closePlayersModal();
       stopChatNotificationPolling();
       try { await request('/auth/logout', { method: 'POST' }); } catch { /* Session is cleared locally regardless. */ }
       state.token = '';
@@ -4982,6 +5334,7 @@
         closeMapContextMenu();
         clearMapCommandMode();
         closeChatModal();
+        closePlayersModal();
       }
     });
     window.addEventListener('resize', () => {

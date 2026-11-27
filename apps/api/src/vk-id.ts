@@ -42,7 +42,14 @@ interface VkTokenResponse {
 interface VkUserInfoResponse {
   readonly user?: {
     readonly user_id?: unknown;
+    readonly first_name?: unknown;
+    readonly last_name?: unknown;
+    readonly avatar?: unknown;
+    readonly screen_name?: unknown;
   };
+  readonly first_name?: unknown;
+  readonly last_name?: unknown;
+  readonly picture?: unknown;
 }
 
 function signPayload(encodedPayload: string, secret: Buffer): Buffer {
@@ -172,6 +179,11 @@ export async function completeVkAuthorization(
   now = Date.now(),
 ): Promise<{
   readonly providerUserId: string;
+  readonly profile?: {
+    readonly firstName?: string;
+    readonly lastName?: string;
+    readonly avatarUrl?: string;
+  };
   readonly email?: string;
   readonly linkUserId?: string;
 }> {
@@ -224,8 +236,31 @@ export async function completeVkAuthorization(
   if (infoUserId !== undefined && String(infoUserId) !== providerUserId) {
     throw new Error('VK ID user identity did not match the token');
   }
+  const firstNameValue = userInfo.user?.first_name ?? userInfo.first_name;
+  const lastNameValue = userInfo.user?.last_name ?? userInfo.last_name;
+  const avatarValue = userInfo.user?.avatar ?? userInfo.picture;
+  const firstName =
+    typeof firstNameValue === 'string' && firstNameValue.trim().length > 0
+      ? firstNameValue.trim()
+      : undefined;
+  const lastName =
+    typeof lastNameValue === 'string' && lastNameValue.trim().length > 0
+      ? lastNameValue.trim()
+      : undefined;
+  const avatarUrl =
+    typeof avatarValue === 'string' &&
+    avatarValue.startsWith('https://') &&
+    avatarValue.length <= 2048
+      ? avatarValue
+      : undefined;
+  const profile = {
+    ...(firstName === undefined ? {} : { firstName }),
+    ...(lastName === undefined ? {} : { lastName }),
+    ...(avatarUrl === undefined ? {} : { avatarUrl }),
+  };
   return {
     providerUserId,
+    ...(Object.keys(profile).length === 0 ? {} : { profile }),
     ...(stateValue.userId === undefined ? {} : { linkUserId: stateValue.userId }),
   };
 }
