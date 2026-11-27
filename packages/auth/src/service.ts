@@ -108,10 +108,10 @@ function normalizeVkProfile(profile: VkIdentityProfile | undefined): {
   const normalizePart = (value: string | undefined): string | null => {
     if (typeof value !== 'string') return null;
     const normalized = value
-          .normalize('NFC')
-              .replace(/[^\p{L}\p{N} ._-]/gu, ' ')
-          .trim()
-          .replace(/\s+/gu, ' ');
+      .normalize('NFC')
+      .replace(/[^\p{L}\p{N} ._-]/gu, ' ')
+      .trim()
+      .replace(/\s+/gu, ' ');
     return normalized.length === 0 ? null : Array.from(normalized).slice(0, 64).join('');
   };
   const firstName = normalizePart(profile?.firstName);
@@ -429,8 +429,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         } else {
           const userId = randomUUID();
           const displayName =
-            vkProfile.displayName ??
-            'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
+            vkProfile.displayName ?? 'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
           const created = await client.query<{
             id: string;
             email: string | null;

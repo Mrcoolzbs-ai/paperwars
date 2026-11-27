@@ -152,7 +152,8 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
       FRIEND_REQUEST_NOT_PENDING: 'Эта заявка уже обработана.',
       FRIEND_REQUEST_NOT_YOURS: 'У тебя нет прав на эту заявку.',
       CAMPAIGN_NOT_FOUND: 'Кампания не найдена.',
-      NOT_ACTIVE_CAMPAIGN_MEMBER: 'Только участники кампании могут приглашать игроков и смотреть её состав.',
+      NOT_ACTIVE_CAMPAIGN_MEMBER:
+        'Только участники кампании могут приглашать игроков и смотреть её состав.',
       PLAYER_ALREADY_MEMBER: 'Этот игрок уже состоит в кампании.',
       CAMPAIGN_NOT_AVAILABLE: 'Кампания больше не принимает новых игроков.',
       CAMPAIGN_FULL: 'В кампании закончились свободные места.',
@@ -160,7 +161,12 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
       CAMPAIGN_INVITATION_NOT_PENDING: 'Это приглашение уже обработано.',
       CAMPAIGN_INVITATION_NOT_YOURS: 'Приглашение адресовано другому игроку.',
     };
-    return reply.code(status).send({ error: error.code, message: messages[error.code] ?? 'Не удалось выполнить социальное действие.' });
+    return reply
+      .code(status)
+      .send({
+        error: error.code,
+        message: messages[error.code] ?? 'Не удалось выполнить социальное действие.',
+      });
   }
 
   if (error instanceof AdminServiceError) {
@@ -1180,27 +1186,34 @@ function registerPlayerRoutes(
     }
   });
 
-  app.post<{ Params: { requestId: string } }>('/friends/requests/:requestId/respond', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const body = asRecord(request.body);
-      if (typeof body['accept'] !== 'boolean') throw new AuthValidationError('accept must be a boolean');
-      await socialService.respondFriendRequest(user.id, request.params.requestId, body['accept']);
-      return reply.code(204).send();
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
+  app.post<{ Params: { requestId: string } }>(
+    '/friends/requests/:requestId/respond',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        if (typeof body['accept'] !== 'boolean')
+          throw new AuthValidationError('accept must be a boolean');
+        await socialService.respondFriendRequest(user.id, request.params.requestId, body['accept']);
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
 
-  app.delete<{ Params: { requestId: string } }>('/friends/requests/:requestId', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      await socialService.cancelFriendRequest(user.id, request.params.requestId);
-      return reply.code(204).send();
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
+  app.delete<{ Params: { requestId: string } }>(
+    '/friends/requests/:requestId',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        await socialService.cancelFriendRequest(user.id, request.params.requestId);
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
 
   app.delete<{ Params: { friendId: string } }>('/friends/:friendId', async (request, reply) => {
     try {
@@ -1222,42 +1235,56 @@ function registerPlayerRoutes(
     }
   });
 
-  app.get<{ Params: { campaignId: string } }>('/campaigns/:campaignId/players', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const players = await socialService.listCampaignPlayers(user.id, request.params.campaignId);
-      return reply.send({ players });
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
+  app.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/players',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const players = await socialService.listCampaignPlayers(user.id, request.params.campaignId);
+        return reply.send({ players });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
 
-  app.post<{ Params: { campaignId: string } }>('/campaigns/:campaignId/invitations', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const body = asRecord(request.body);
-      const invitation = await socialService.createCampaignInvitation(
-        user.id,
-        request.params.campaignId,
-        body['inviteeUserId'],
-      );
-      return reply.code(201).send({ invitation });
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
+  app.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/invitations',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        const invitation = await socialService.createCampaignInvitation(
+          user.id,
+          request.params.campaignId,
+          body['inviteeUserId'],
+        );
+        return reply.code(201).send({ invitation });
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
 
-  app.post<{ Params: { invitationId: string } }>('/invitations/campaigns/:invitationId/respond', async (request, reply) => {
-    try {
-      const user = await authService.authenticateAccessToken(getBearerToken(request));
-      const body = asRecord(request.body);
-      if (typeof body['accept'] !== 'boolean') throw new AuthValidationError('accept must be a boolean');
-      await socialService.respondCampaignInvitation(user.id, request.params.invitationId, body['accept']);
-      return reply.code(204).send();
-    } catch (error) {
-      return sendAuthError(error, reply);
-    }
-  });
+  app.post<{ Params: { invitationId: string } }>(
+    '/invitations/campaigns/:invitationId/respond',
+    async (request, reply) => {
+      try {
+        const user = await authService.authenticateAccessToken(getBearerToken(request));
+        const body = asRecord(request.body);
+        if (typeof body['accept'] !== 'boolean')
+          throw new AuthValidationError('accept must be a boolean');
+        await socialService.respondCampaignInvitation(
+          user.id,
+          request.params.invitationId,
+          body['accept'],
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return sendAuthError(error, reply);
+      }
+    },
+  );
 }
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {

@@ -2,12 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { AuthValidationError } from './errors.js';
 
-export type FriendshipStatus =
-  | 'self'
-  | 'friends'
-  | 'request_sent'
-  | 'request_received'
-  | 'none';
+export type FriendshipStatus = 'self' | 'friends' | 'request_sent' | 'request_received' | 'none';
 
 export interface PlayerSummary {
   readonly id: string;
@@ -90,12 +85,11 @@ export interface SocialService {
   getPublicProfile(viewerId: string, playerId: string): Promise<PublicPlayerProfile>;
   searchPlayers(viewerId: string, query: unknown): Promise<readonly PlayerSummary[]>;
   getFriendsDashboard(userId: string): Promise<FriendsDashboard>;
-  sendFriendRequest(senderId: string, recipientId: unknown): Promise<{ readonly id: string; readonly status: 'pending' | 'accepted' }>;
-  respondFriendRequest(
-    userId: string,
-    requestId: string,
-    accept: boolean,
-  ): Promise<void>;
+  sendFriendRequest(
+    senderId: string,
+    recipientId: unknown,
+  ): Promise<{ readonly id: string; readonly status: 'pending' | 'accepted' }>;
+  respondFriendRequest(userId: string, requestId: string, accept: boolean): Promise<void>;
   cancelFriendRequest(userId: string, requestId: string): Promise<void>;
   removeFriend(userId: string, friendId: string): Promise<void>;
   uploadAvatar(userId: string, dataUrl: unknown): Promise<void>;
@@ -203,7 +197,8 @@ async function lockUsersInOrder(
      FOR UPDATE`,
     [[firstUserId, secondUserId]],
   );
-  if (result.rows.length !== 2) throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
+  if (result.rows.length !== 2)
+    throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
 }
 
 async function friendshipExists(
@@ -238,7 +233,8 @@ function parseAvatarDataUrl(value: unknown): {
     throw new AuthValidationError('Avatar must be a PNG, JPEG or WebP image up to 512 KiB');
   }
 
-  const png = data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const png =
+    data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   const jpeg = data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
   const webp =
     data.length >= 12 &&
@@ -423,7 +419,8 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         throw new AuthValidationError('Recipient player ID is invalid');
       }
       const recipientId = recipientInput;
-      if (senderId === recipientId) throw new AuthValidationError('You cannot add yourself as a friend');
+      if (senderId === recipientId)
+        throw new AuthValidationError('You cannot add yourself as a friend');
 
       return transaction(pool, async (client) => {
         await lockUsersInOrder(client, senderId, recipientId);
@@ -482,23 +479,33 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         const identity = await client.query<{
           readonly sender_user_id: string;
           readonly recipient_user_id: string;
-        }>('SELECT sender_user_id, recipient_user_id FROM friend_requests WHERE id = $1', [requestId]);
+        }>('SELECT sender_user_id, recipient_user_id FROM friend_requests WHERE id = $1', [
+          requestId,
+        ]);
         const found = identity.rows[0];
-        if (!found) throw new SocialServiceError('FRIEND_REQUEST_NOT_FOUND', 'Friend request not found');
+        if (!found)
+          throw new SocialServiceError('FRIEND_REQUEST_NOT_FOUND', 'Friend request not found');
         await lockUsersInOrder(client, found.sender_user_id, found.recipient_user_id);
         const request = await client.query<{
           readonly sender_user_id: string;
           readonly recipient_user_id: string;
           readonly status: string;
-        }>('SELECT sender_user_id, recipient_user_id, status FROM friend_requests WHERE id = $1 FOR UPDATE', [
-          requestId,
-        ]);
+        }>(
+          'SELECT sender_user_id, recipient_user_id, status FROM friend_requests WHERE id = $1 FOR UPDATE',
+          [requestId],
+        );
         const row = request.rows[0];
         if (!row || row.recipient_user_id !== userId) {
-          throw new SocialServiceError('FRIEND_REQUEST_NOT_YOURS', 'Friend request does not belong to this player');
+          throw new SocialServiceError(
+            'FRIEND_REQUEST_NOT_YOURS',
+            'Friend request does not belong to this player',
+          );
         }
         if (row.status !== 'pending') {
-          throw new SocialServiceError('FRIEND_REQUEST_NOT_PENDING', 'Friend request is no longer pending');
+          throw new SocialServiceError(
+            'FRIEND_REQUEST_NOT_PENDING',
+            'Friend request is no longer pending',
+          );
         }
         if (accept) {
           await client.query(
@@ -523,20 +530,30 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         const identity = await client.query<{
           readonly sender_user_id: string;
           readonly recipient_user_id: string;
-        }>('SELECT sender_user_id, recipient_user_id FROM friend_requests WHERE id = $1', [requestId]);
+        }>('SELECT sender_user_id, recipient_user_id FROM friend_requests WHERE id = $1', [
+          requestId,
+        ]);
         const found = identity.rows[0];
         if (!found) throw new SocialServiceError('FRIEND_REQUEST_NOT_FOUND', 'Friend request not found');
         await lockUsersInOrder(client, found.sender_user_id, found.recipient_user_id);
-        const request = await client.query<{ readonly sender_user_id: string; readonly status: string }>(
-          'SELECT sender_user_id, status FROM friend_requests WHERE id = $1 FOR UPDATE',
-          [requestId],
-        );
+        const request = await client.query<{
+          readonly sender_user_id: string;
+          readonly status: string;
+        }>('SELECT sender_user_id, status FROM friend_requests WHERE id = $1 FOR UPDATE', [
+          requestId,
+        ]);
         const row = request.rows[0];
         if (!row || row.sender_user_id !== userId) {
-          throw new SocialServiceError('FRIEND_REQUEST_NOT_YOURS', 'Friend request does not belong to this player');
+          throw new SocialServiceError(
+            'FRIEND_REQUEST_NOT_YOURS',
+            'Friend request does not belong to this player',
+          );
         }
         if (row.status !== 'pending') {
-          throw new SocialServiceError('FRIEND_REQUEST_NOT_PENDING', 'Friend request is no longer pending');
+          throw new SocialServiceError(
+            'FRIEND_REQUEST_NOT_PENDING',
+            'Friend request is no longer pending',
+          );
         }
         await client.query(
           `UPDATE friend_requests SET status = 'cancelled', updated_at = clock_timestamp()
@@ -571,7 +588,8 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
          WHERE id = $1 AND status = 'active'`,
         [userId, avatar.data, avatar.contentType],
       );
-      if ((updated.rowCount ?? 0) !== 1) throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
+      if ((updated.rowCount ?? 0) !== 1)
+        throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
     },
 
     async removeAvatar(userId) {
@@ -583,7 +601,8 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
          WHERE id = $1 AND status = 'active'`,
         [userId],
       );
-      if ((updated.rowCount ?? 0) !== 1) throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
+      if ((updated.rowCount ?? 0) !== 1)
+        throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
     },
 
     async getAvatar(playerId) {
@@ -598,7 +617,12 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         [playerId],
       );
       const row = result.rows[0];
-      if (!row || row.avatar_data === null || row.avatar_mime_type === null || row.avatar_updated_at === null) {
+      if (
+        !row ||
+        row.avatar_data === null ||
+        row.avatar_mime_type === null ||
+        row.avatar_updated_at === null
+      ) {
         return null;
       }
       return {
@@ -617,7 +641,10 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         [campaignId, userId],
       );
       if (member.rows.length === 0) {
-        throw new SocialServiceError('NOT_ACTIVE_CAMPAIGN_MEMBER', 'Only active campaign players can view the roster');
+        throw new SocialServiceError(
+          'NOT_ACTIVE_CAMPAIGN_MEMBER',
+          'Only active campaign players can view the roster',
+        );
       }
       const result = await pool.query<PlayerRow & { readonly is_friend: boolean }>(
         `SELECT u.id, u.display_name, ${avatarUrlSql()} AS avatar_url,
@@ -649,7 +676,8 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         throw new AuthValidationError('Invitee player ID is invalid');
       }
       const inviteeId = inviteeInput.toLowerCase();
-      if (inviterId.toLowerCase() === inviteeId) throw new AuthValidationError('You cannot invite yourself');
+      if (inviterId.toLowerCase() === inviteeId)
+        throw new AuthValidationError('You cannot invite yourself');
 
       return transaction(pool, async (client) => {
         const campaignResult = await client.query<{
@@ -675,7 +703,10 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
           campaign.map_height === null ||
           (!campaign.orders_locked && campaign.deadline_elapsed)
         ) {
-          throw new SocialServiceError('CAMPAIGN_NOT_AVAILABLE', 'Campaign no longer accepts new players');
+          throw new SocialServiceError(
+            'CAMPAIGN_NOT_AVAILABLE',
+            'Campaign no longer accepts new players',
+          );
         }
         const inviter = await client.query(
           `SELECT 1 FROM campaign_memberships
@@ -684,20 +715,27 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
           [campaignId, inviterId],
         );
         if (inviter.rows.length === 0) {
-          throw new SocialServiceError('NOT_ACTIVE_CAMPAIGN_MEMBER', 'Only active campaign members can invite players');
+          throw new SocialServiceError(
+            'NOT_ACTIVE_CAMPAIGN_MEMBER',
+            'Only active campaign members can invite players',
+          );
         }
         const recipient = await client.query(
           `SELECT 1 FROM users WHERE id = $1 AND status = 'active'`,
           [inviteeId],
         );
-        if (recipient.rows.length === 0) throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
+        if (recipient.rows.length === 0)
+          throw new SocialServiceError('PLAYER_NOT_FOUND', 'Player not found');
         const existingMember = await client.query<{ readonly status: string }>(
           `SELECT status FROM campaign_memberships
            WHERE campaign_id = $1 AND user_id = $2`,
           [campaignId, inviteeId],
         );
         if (existingMember.rows[0]?.status === 'active') {
-          throw new SocialServiceError('PLAYER_ALREADY_MEMBER', 'Player is already in this campaign');
+          throw new SocialServiceError(
+            'PLAYER_ALREADY_MEMBER',
+            'Player is already in this campaign',
+          );
         }
         const existingInvitation = await client.query<{ readonly id: string }>(
           `SELECT id FROM campaign_invitations
@@ -722,7 +760,10 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
           [campaignId],
         );
         if (firstTurnJob.rows.length > 0) {
-          throw new SocialServiceError('CAMPAIGN_NOT_AVAILABLE', 'The first turn is already being processed');
+          throw new SocialServiceError(
+            'CAMPAIGN_NOT_AVAILABLE',
+            'The first turn is already being processed',
+          );
         }
         const inserted = await client.query<{ readonly id: string }>(
           `INSERT INTO campaign_invitations (inviter_user_id, invitee_user_id, campaign_id)
@@ -795,7 +836,10 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         );
         const found = identity.rows[0];
         if (!found) {
-          throw new SocialServiceError('CAMPAIGN_INVITATION_NOT_FOUND', 'Campaign invitation not found');
+          throw new SocialServiceError(
+            'CAMPAIGN_INVITATION_NOT_FOUND',
+            'Campaign invitation not found',
+          );
         }
         const campaignResult = await client.query<{
           readonly id: string;
@@ -816,16 +860,21 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
         const invitationResult = await client.query<{
           readonly invitee_user_id: string;
           readonly status: string;
-        }>(
-          'SELECT invitee_user_id, status FROM campaign_invitations WHERE id = $1 FOR UPDATE',
-          [invitationId],
-        );
+        }>('SELECT invitee_user_id, status FROM campaign_invitations WHERE id = $1 FOR UPDATE', [
+          invitationId,
+        ]);
         const invitation = invitationResult.rows[0];
         if (!invitation || invitation.invitee_user_id !== userId) {
-          throw new SocialServiceError('CAMPAIGN_INVITATION_NOT_YOURS', 'Invitation does not belong to this player');
+          throw new SocialServiceError(
+            'CAMPAIGN_INVITATION_NOT_YOURS',
+            'Invitation does not belong to this player',
+          );
         }
         if (invitation.status !== 'pending') {
-          throw new SocialServiceError('CAMPAIGN_INVITATION_NOT_PENDING', 'Invitation is no longer pending');
+          throw new SocialServiceError(
+            'CAMPAIGN_INVITATION_NOT_PENDING',
+            'Invitation is no longer pending',
+          );
         }
         if (!accept) {
           await client.query(
@@ -842,17 +891,26 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
           campaign.map_width === null ||
           campaign.map_height === null
         ) {
-          throw new SocialServiceError('CAMPAIGN_NOT_AVAILABLE', 'Campaign no longer accepts new players');
+          throw new SocialServiceError(
+            'CAMPAIGN_NOT_AVAILABLE',
+            'Campaign no longer accepts new players',
+          );
         }
         const firstTurnJob = await client.query(
           'SELECT 1 FROM turn_jobs WHERE campaign_id = $1 AND turn_number = 1 LIMIT 1',
           [campaign.id],
         );
         if (firstTurnJob.rows.length > 0) {
-          throw new SocialServiceError('CAMPAIGN_NOT_AVAILABLE', 'The first turn is already being processed');
+          throw new SocialServiceError(
+            'CAMPAIGN_NOT_AVAILABLE',
+            'The first turn is already being processed',
+          );
         }
         if (!campaign.orders_locked && campaign.deadline_elapsed) {
-          throw new SocialServiceError('CAMPAIGN_NOT_AVAILABLE', 'The invitation expired with the first-turn deadline');
+          throw new SocialServiceError(
+            'CAMPAIGN_NOT_AVAILABLE',
+            'The invitation expired with the first-turn deadline',
+          );
         }
         const existing = await client.query<{ readonly status: string }>(
           `SELECT status FROM campaign_memberships

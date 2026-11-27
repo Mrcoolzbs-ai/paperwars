@@ -960,8 +960,12 @@ export const friendRequests = pgTable(
   'friend_requests',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    senderUserId: uuid('sender_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    recipientUserId: uuid('recipient_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    senderUserId: uuid('sender_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    recipientUserId: uuid('recipient_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     status: text('status').notNull().default('pending'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
@@ -970,20 +974,32 @@ export const friendRequests = pgTable(
     uniqueIndex('friend_requests_pending_pair_unique')
       .on(table.senderUserId, table.recipientUserId)
       .where(sql`${table.status} = 'pending'`),
-    index('friend_requests_recipient_pending_idx').on(table.recipientUserId, table.createdAt)
+    index('friend_requests_recipient_pending_idx')
+      .on(table.recipientUserId, table.createdAt)
       .where(sql`${table.status} = 'pending'`),
-    index('friend_requests_sender_pending_idx').on(table.senderUserId, table.createdAt)
+    index('friend_requests_sender_pending_idx')
+      .on(table.senderUserId, table.createdAt)
       .where(sql`${table.status} = 'pending'`),
-    check('friend_requests_distinct_users_check', sql`${table.senderUserId} <> ${table.recipientUserId}`),
-    check('friend_requests_status_check', sql`${table.status} in ('pending', 'accepted', 'declined', 'cancelled')`),
+    check(
+      'friend_requests_distinct_users_check',
+      sql`${table.senderUserId} <> ${table.recipientUserId}`,
+    ),
+    check(
+      'friend_requests_status_check',
+      sql`${table.status} in ('pending', 'accepted', 'declined', 'cancelled')`,
+    ),
   ],
 );
 
 export const userFriendships = pgTable(
   'user_friendships',
   {
-    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    friendUserId: uuid('friend_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    friendUserId: uuid('friend_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     createdAt: createdAt(),
   },
   (table) => [
@@ -997,9 +1013,15 @@ export const campaignInvitations = pgTable(
   'campaign_invitations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
-    inviterUserId: uuid('inviter_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    inviteeUserId: uuid('invitee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    inviterUserId: uuid('inviter_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    inviteeUserId: uuid('invitee_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     status: text('status').notNull().default('pending'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
@@ -1009,10 +1031,21 @@ export const campaignInvitations = pgTable(
     uniqueIndex('campaign_invitations_pending_unique')
       .on(table.campaignId, table.inviteeUserId)
       .where(sql`${table.status} = 'pending'`),
-    index('campaign_invitations_invitee_pending_idx').on(table.inviteeUserId, table.createdAt)
+    index('campaign_invitations_invitee_pending_idx')
+      .on(table.inviteeUserId, table.createdAt)
       .where(sql`${table.status} = 'pending'`),
-    index('campaign_invitations_campaign_status_idx').on(table.campaignId, table.status, table.createdAt),
-    check('campaign_invitations_distinct_users_check', sql`${table.inviterUserId} <> ${table.inviteeUserId}`),
-    check('campaign_invitations_status_check', sql`${table.status} in ('pending', 'accepted', 'declined', 'cancelled')`),
+    index('campaign_invitations_campaign_status_idx').on(
+      table.campaignId,
+      table.status,
+      table.createdAt,
+    ),
+    check(
+      'campaign_invitations_distinct_users_check',
+      sql`${table.inviterUserId} <> ${table.inviteeUserId}`,
+    ),
+    check(
+      'campaign_invitations_status_check',
+      sql`${table.status} in ('pending', 'accepted', 'declined', 'cancelled')`,
+    ),
   ],
 );

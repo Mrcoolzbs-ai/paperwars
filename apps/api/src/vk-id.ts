@@ -248,7 +248,9 @@ export async function completeVkAuthorization(
       ? lastNameValue.trim()
       : undefined;
   const avatarUrl =
-    typeof avatarValue === 'string' && avatarValue.startsWith('https://') && avatarValue.length <= 2048
+    typeof avatarValue === 'string' &&
+    avatarValue.startsWith('https://') &&
+    avatarValue.length <= 2048
       ? avatarValue
       : undefined;
   const profile = {

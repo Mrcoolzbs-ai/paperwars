@@ -114,18 +114,21 @@ describe('VK ID OAuth 2.1 integration', () => {
       expect(new URLSearchParams(init?.body as URLSearchParams).get('access_token')).toBe(
         'vk-private-access-token',
       );
-      return new Response(JSON.stringify({
-        user: {
-          user_id: 42,
-          email: 'player@example.test',
-          first_name: 'Алексей',
-          last_name: 'Смирнов',
-          avatar: 'https://cdn.vk.example/avatar.jpg',
+      return new Response(
+        JSON.stringify({
+          user: {
+            user_id: 42,
+            email: 'player@example.test',
+            first_name: 'Алексей',
+            last_name: 'Смирнов',
+            avatar: 'https://cdn.vk.example/avatar.jpg',
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
         },
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      );
     };
     const result = await completeVkAuthorization(
       options,
