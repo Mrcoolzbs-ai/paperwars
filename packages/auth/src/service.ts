@@ -109,8 +109,7 @@ function normalizeVkProfile(profile: VkIdentityProfile | undefined): {
     if (typeof value !== 'string') return null;
     const normalized = value
           .normalize('NFC')
-          .replace(/[\u0000-\u001f\u007f]/gu, '')
-          .replace(/[^\p{L}\p{N} ._-]/gu, ' ')
+              .replace(/[^\p{L}\p{N} ._-]/gu, ' ')
           .trim()
           .replace(/\s+/gu, ' ');
     return normalized.length === 0 ? null : Array.from(normalized).slice(0, 64).join('');
