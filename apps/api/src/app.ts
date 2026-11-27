@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import {
   AuthValidationError,
   ChatServiceError,
+  FeedbackServiceError,
   DisplayNameAlreadyTakenError,
   EmailAlreadyRegisteredError,
   AdminServiceError,
@@ -15,6 +16,7 @@ import {
   type AuthService,
   type CampaignService,
   type ChatService,
+  type FeedbackService,
   SocialServiceError,
   type SocialService,
 } from '@paper-wars/auth';
@@ -56,6 +58,7 @@ export interface CreateAppOptions {
   readonly countrySetupService?: CountrySetupService;
   readonly chatService?: ChatService;
   readonly adminService?: AdminService;
+  readonly feedbackService?: FeedbackService;
   readonly socialService?: SocialService;
   readonly vkId?: VkIdOptions;
   readonly secureCookies?: boolean;
@@ -164,6 +167,13 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
     return reply.code(status).send({
       error: error.code,
       message: messages[error.code] ?? 'Не удалось выполнить социальное действие.',
+    });
+  }
+
+  if (error instanceof FeedbackServiceError) {
+    return reply.code(error.code === 'TICKET_NOT_FOUND' ? 404 : 429).send({
+      error: error.code,
+      message: error.message,
     });
   }
 
@@ -1099,6 +1109,121 @@ function registerChatRoutes(
     }
   });
 }
+function registerFeedbackRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  feedbackService: FeedbackService,
+): void {
+  function ticketNumberParam(request: FastifyRequest): unknown {
+    return (request.params as RecordBody)['ticketNumber'];
+  }
+
+  app.post('/feedback/tickets', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const ticket = await feedbackService.submitTicket(user.id, body['category'], body['fields']);
+      return reply.code(201).send({ ticket });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/feedback/tickets', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      return reply.send({ tickets: await feedbackService.listOwnTickets(user.id) });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/feedback/tickets/:ticketNumber', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const ticket = await feedbackService.getOwnTicket(user.id, ticketNumberParam(request));
+      return reply.send({ ticket });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/feedback/tickets/:ticketNumber/messages', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const message = await feedbackService.addOwnMessage(
+        user.id,
+        ticketNumberParam(request),
+        body['body'],
+      );
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  // Every admin route re-checks admin membership and enabled admin mode in the service.
+  app.get('/admin/feedback/tickets', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const query = (request.query ?? {}) as RecordBody;
+      const tickets = await feedbackService.adminListTickets(user.id, {
+        status: query['status'],
+        category: query['category'],
+        query: query['q'],
+        limit: query['limit'],
+        offset: query['offset'],
+      });
+      return reply.send({ tickets });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/admin/feedback/tickets/:ticketNumber', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const ticket = await feedbackService.adminGetTicket(user.id, ticketNumberParam(request));
+      return reply.send({ ticket });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/feedback/tickets/:ticketNumber/messages', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const message = await feedbackService.adminAddMessage(
+        user.id,
+        ticketNumberParam(request),
+        body['body'],
+        body['visibility'],
+      );
+      return reply.code(201).send({ message });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/admin/feedback/tickets/:ticketNumber/status', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const ticket = await feedbackService.adminSetStatus(
+        user.id,
+        ticketNumberParam(request),
+        body['status'],
+        body['reply'],
+      );
+      return reply.send({ ticket });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+}
+
 function registerPlayerRoutes(
   app: FastifyInstance,
   authService: AuthService,
@@ -1404,6 +1529,10 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   if (options.authService !== undefined && options.chatService !== undefined) {
     registerChatRoutes(app, options.authService, options.chatService);
+  }
+
+  if (options.authService !== undefined && options.feedbackService !== undefined) {
+    registerFeedbackRoutes(app, options.authService, options.feedbackService);
   }
 
   return app;

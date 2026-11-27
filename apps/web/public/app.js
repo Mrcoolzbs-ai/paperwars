@@ -1737,6 +1737,332 @@
     state.socialInviteCampaignId = null;
   }
 
+  const FEEDBACK_CATEGORIES = {
+    bug: { label: 'Жалоба / баг', fields: [
+      ['title', 'Заголовок', true, false], ['whatHappened', 'Что произошло', true, true],
+      ['stepsToReproduce', 'Шаги воспроизведения', true, true], ['expectedResult', 'Ожидаемый результат', true, true],
+      ['actualResult', 'Фактический результат', true, true], ['campaign', 'Кампания (необязательно)', false, false],
+    ] },
+    building: { label: 'Новое здание', fields: [
+      ['name', 'Название', true, false], ['description', 'Назначение и описание', true, true],
+      ['buildingClass', 'Класс или роль здания', false, false], ['costs', 'Стоимость', false, false],
+      ['upkeep', 'Содержание', false, false], ['prerequisites', 'Требования', false, true],
+      ['effects', 'Производство и эффекты', false, true], ['balanceNotes', 'Заметки о балансе', false, true],
+    ] },
+    unit: { label: 'Новый юнит', fields: [
+      ['name', 'Название', true, false], ['role', 'Роль', true, false], ['description', 'Описание', true, true],
+      ['attack', 'Атака', false, false], ['defence', 'Защита', false, false], ['movement', 'Движение', false, false],
+      ['recruitmentCost', 'Стоимость найма', false, false], ['upkeep', 'Содержание', false, false],
+      ['prerequisites', 'Требования', false, true], ['specialAbilities', 'Особые способности', false, true],
+      ['balanceNotes', 'Заметки о балансе', false, true],
+    ] },
+    mechanic: { label: 'Новая механика', fields: [
+      ['problem', 'Проблема', true, true], ['proposedRule', 'Предлагаемое правило', true, true],
+      ['example', 'Пример хода или ситуации', false, true], ['balanceEffects', 'Влияние на баланс', false, true],
+      ['edgeCases', 'Крайние случаи и зависимости', false, true],
+    ] },
+    other: { label: 'Другое предложение', fields: [
+      ['title', 'Заголовок', true, false], ['description', 'Подробное описание', true, true],
+    ] },
+  };
+  const FEEDBACK_STATUSES = {
+    new: 'Новое', in_review: 'На рассмотрении', accepted: 'Принято',
+    rejected: 'Отклонено', needs_info: 'Нужны уточнения', implemented: 'Реализовано',
+  };
+  const feedbackState = { open: false, admin: false, view: 'form', category: 'bug', tickets: [], ticket: null,
+    filters: { q: '', status: '', category: '' }, opener: null, lastNumber: null };
+
+  function feedbackFieldLabel(category, key) {
+    const item = (FEEDBACK_CATEGORIES[category]?.fields || []).find((entry) => entry[0] === key);
+    return item ? item[1].replace(' (необязательно)', '') : key;
+  }
+
+  function feedbackStatusPill(status) {
+    return '<span class="feedback-status ' + escapeHtml(status) + '">' + escapeHtml(FEEDBACK_STATUSES[status] || status) + '</span>';
+  }
+
+  function feedbackOptions(map, selected, emptyLabel) {
+    return (emptyLabel ? '<option value="">' + escapeHtml(emptyLabel) + '</option>' : '') +
+      Object.entries(map).map(([value, label]) =>
+        '<option value="' + escapeHtml(value) + '"' + (value === selected ? ' selected' : '') + '>' +
+        escapeHtml(typeof label === 'string' ? label : label.label) + '</option>').join('');
+  }
+
+  function renderFeedbackTabs() {
+    const host = $('#feedback-tabs');
+    const tabs = feedbackState.admin
+      ? [['list', 'Все обращения']]
+      : [['form', 'Новое обращение'], ['list', 'Мои обращения']];
+    host.innerHTML = tabs.map(([id, label]) =>
+      '<button class="feedback-tab' + (feedbackState.view === id ? ' active' : '') + '" type="button" data-feedback-tab="' + id + '">' +
+      escapeHtml(label) + '</button>').join('');
+  }
+
+  function renderFeedbackForm() {
+    const category = feedbackState.category;
+    const template = FEEDBACK_CATEGORIES[category];
+    const fields = template.fields.map(([key, label, required, long]) =>
+      '<label class="field' + (long ? ' wide' : '') + '"><span>' + escapeHtml(label) + (required ? ' *' : '') + '</span>' +
+      (long
+        ? '<textarea name="' + key + '" rows="3" maxlength="4000"' + (required ? ' required' : '') + '></textarea>'
+        : '<input name="' + key + '" type="text" maxlength="200"' + (required ? ' required' : '') + '>') +
+      '</label>').join('');
+    const hint = category === 'bug' || category === 'other' ? ''
+      : '<p class="feedback-hint">Необязательные характеристики можно оставить пустыми или написать «пока не знаю» — баланс уточнят позже.</p>';
+    $('#feedback-body').innerHTML =
+      '<form id="feedback-form" class="feedback-form" novalidate>' +
+      '<label class="field"><span>Тип обращения</span><select id="feedback-category">' + feedbackOptions(FEEDBACK_CATEGORIES, category) + '</select></label>' +
+      hint + '<div class="feedback-form-grid">' + fields + '</div>' +
+      '<div class="feedback-actions"><button class="button button-primary" type="submit">Отправить</button></div></form>';
+  }
+
+  function renderFeedbackList() {
+    const admin = feedbackState.admin;
+    const filters = admin
+      ? '<form id="feedback-filter-form" class="feedback-filters">' +
+        '<label class="field"><span>Поиск (номер, текст, автор)</span><input id="feedback-filter-q" type="search" maxlength="100" value="' + escapeHtml(feedbackState.filters.q) + '"></label>' +
+        '<label class="field"><span>Статус</span><select id="feedback-filter-status">' + feedbackOptions(FEEDBACK_STATUSES, feedbackState.filters.status, 'Все') + '</select></label>' +
+        '<label class="field"><span>Тип</span><select id="feedback-filter-category">' + feedbackOptions(FEEDBACK_CATEGORIES, feedbackState.filters.category, 'Все') + '</select></label>' +
+        '<button class="button button-outline" type="submit">Найти</button></form>'
+      : '<form id="feedback-lookup-form" class="feedback-filters">' +
+        '<label class="field"><span>Открыть по номеру</span><input id="feedback-lookup-number" type="text" inputmode="numeric" maxlength="15" placeholder="#123"></label>' +
+        '<span></span><span></span><button class="button button-outline" type="submit">Открыть</button></form>';
+    const rows = feedbackState.tickets.length
+      ? feedbackState.tickets.map((ticket) =>
+        '<button class="feedback-row" type="button" data-feedback-open="' + ticket.ticketNumber + '">' +
+        '<span class="feedback-number">#' + ticket.ticketNumber + '</span>' +
+        '<span><strong>' + escapeHtml(ticket.title) + '</strong><small>' + escapeHtml(FEEDBACK_CATEGORIES[ticket.category]?.label || ticket.category) +
+        (admin ? ' · ' + escapeHtml(ticket.authorLabel) : '') + ' · ' + escapeHtml(formatChatTimestamp(ticket.updatedAt)) + '</small></span>' +
+        feedbackStatusPill(ticket.status) + '</button>').join('')
+      : '<div class="empty-state compact">' + (admin ? 'Обращений не найдено.' : 'У тебя пока нет обращений.') + '</div>';
+    $('#feedback-body').innerHTML = filters + '<div class="feedback-list">' + rows + '</div>';
+  }
+
+  function renderFeedbackThread(messages) {
+    if (!messages.length) return '<p class="muted">Сообщений пока нет.</p>';
+    return messages.map((message) =>
+      '<article class="feedback-bubble ' + (message.authorRole === 'admin' ? 'admin ' : '') +
+      (message.visibility === 'internal' ? 'internal ' : '') + escapeHtml(message.kind) + '">' +
+      '<header><span>' + escapeHtml(message.authorLabel) + (message.visibility === 'internal' ? ' · внутреннее' : '') +
+      '</span><span>' + escapeHtml(formatChatTimestamp(message.createdAt)) + '</span></header>' +
+      '<p>' + escapeHtml(message.body) + '</p></article>').join('');
+  }
+
+  function renderFeedbackDetail() {
+    const ticket = feedbackState.ticket;
+    const admin = feedbackState.admin;
+    const fields = Object.entries(ticket.payload).map(([key, value]) =>
+      '<div><dt>' + escapeHtml(feedbackFieldLabel(ticket.category, key)) + '</dt><dd>' + escapeHtml(value) + '</dd></div>').join('');
+    const adminControls = admin
+      ? '<form id="feedback-status-form" class="feedback-actions"><label class="field"><span>Статус</span><select id="feedback-status-select">' +
+        feedbackOptions(FEEDBACK_STATUSES, ticket.status) + '</select></label>' +
+        '<button class="button button-outline" type="submit">Изменить статус</button></form>'
+      : '';
+    const visibility = admin
+      ? '<label class="field"><span>Видимость</span><select id="feedback-reply-visibility"><option value="public">Публичный ответ автору</option><option value="internal">Внутренняя заметка</option></select></label>'
+      : '';
+    const meta = [
+      FEEDBACK_CATEGORIES[ticket.category]?.label || ticket.category,
+      'Автор: ' + ticket.authorLabel,
+      'Создано: ' + formatChatTimestamp(ticket.createdAt),
+      'Статус изменён: ' + formatChatTimestamp(ticket.statusChangedAt),
+    ];
+    if (admin && ticket.reviewerLabel) meta.push('Рассмотрел: ' + ticket.reviewerLabel + ', ' + formatChatTimestamp(ticket.reviewedAt));
+    $('#feedback-body').innerHTML =
+      '<button class="back-link" type="button" data-feedback-tab="list">‹ К списку</button>' +
+      '<div class="feedback-detail-head"><h3>#' + ticket.ticketNumber + ' · ' + escapeHtml(ticket.title) + '</h3>' + feedbackStatusPill(ticket.status) + '</div>' +
+      '<div class="feedback-meta">' + meta.map(escapeHtml).join(' · ') + '</div>' +
+      '<dl class="feedback-fields">' + fields + '</dl>' + adminControls +
+      '<h3>Переписка</h3><div class="feedback-thread">' + renderFeedbackThread(ticket.messages) + '</div>' +
+      '<form id="feedback-reply-form" class="feedback-form">' + visibility +
+      '<label class="field"><span>' + (admin ? 'Ответ или заметка' : 'Дополнить обращение') + '</span><textarea id="feedback-reply-body" rows="3" maxlength="4000" required></textarea></label>' +
+      '<div class="feedback-actions"><button class="button button-primary" type="submit">Отправить</button></div></form>';
+  }
+
+  function renderFeedbackSubmitted(ticket) {
+    $('#feedback-body').innerHTML =
+      '<div class="feedback-success"><strong>#' + ticket.ticketNumber + '</strong><p>Обращение принято. Сохрани номер: по нему его можно открыть в разделе «Мои обращения».</p>' +
+      '<div class="feedback-actions"><button class="button button-outline" type="button" data-feedback-open="' + ticket.ticketNumber + '">Открыть обращение</button>' +
+      '<button class="button button-outline" type="button" data-feedback-tab="form">Отправить ещё</button></div></div>';
+  }
+
+  async function loadFeedbackList() {
+    const admin = feedbackState.admin;
+    if (admin) {
+      const params = new URLSearchParams();
+      const { q, status, category } = feedbackState.filters;
+      if (q.trim()) params.set('q', q.trim());
+      if (status) params.set('status', status);
+      if (category) params.set('category', category);
+      const query = params.toString();
+      feedbackState.tickets = (await request('/admin/feedback/tickets' + (query ? '?' + query : ''))).tickets;
+    } else {
+      feedbackState.tickets = (await request('/feedback/tickets')).tickets;
+    }
+  }
+
+  async function showFeedbackView(view) {
+    feedbackState.view = view;
+    renderFeedbackTabs();
+    setMessage('#feedback-message', '');
+    try {
+      if (view === 'form') renderFeedbackForm();
+      else {
+        await loadFeedbackList();
+        renderFeedbackList();
+      }
+    } catch (error) {
+      setMessage('#feedback-message', userErrorMessage(error));
+    }
+  }
+
+  async function openFeedbackTicket(number) {
+    const base = feedbackState.admin ? '/admin/feedback/tickets/' : '/feedback/tickets/';
+    try {
+      feedbackState.ticket = (await request(base + encodeURIComponent(number))).ticket;
+      feedbackState.view = 'detail';
+      renderFeedbackTabs();
+      renderFeedbackDetail();
+      setMessage('#feedback-message', '');
+    } catch (error) {
+      setMessage('#feedback-message', userErrorMessage(error));
+    }
+  }
+
+  async function openFeedbackModal() {
+    if (!state.token || !state.user) {
+      showToast('Войди в аккаунт, чтобы отправить обращение.', true);
+      return;
+    }
+    // Same predicate as the rest of the admin UI; the server re-checks it on every admin call.
+    feedbackState.admin = isAdminMode();
+    feedbackState.opener = document.activeElement;
+    feedbackState.open = true;
+    const modal = $('#feedback-modal');
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    $('#feedback-title').textContent = feedbackState.admin ? 'Входящие обращения' : 'Жалобы и предложения';
+    $('#feedback-kicker').textContent = feedbackState.admin ? 'ПАНЕЛЬ АДМИНИСТРАТОРА' : 'ОБРАТНАЯ СВЯЗЬ';
+    await showFeedbackView(feedbackState.admin ? 'list' : 'form');
+    $('#feedback-close').focus();
+  }
+
+  function closeFeedbackModal() {
+    if (!feedbackState.open) return;
+    feedbackState.open = false;
+    const modal = $('#feedback-modal');
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    feedbackState.ticket = null;
+    if (feedbackState.opener && typeof feedbackState.opener.focus === 'function') feedbackState.opener.focus();
+    feedbackState.opener = null;
+  }
+
+  async function submitFeedbackForm(form) {
+    const category = feedbackState.category;
+    const fields = {};
+    for (const [key] of FEEDBACK_CATEGORIES[category].fields) {
+      const value = form.elements[key].value.trim();
+      if (value) fields[key] = value;
+    }
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const { ticket } = await request('/feedback/tickets', { method: 'POST', body: JSON.stringify({ category, fields }) });
+      feedbackState.lastNumber = ticket.ticketNumber;
+      renderFeedbackSubmitted(ticket);
+      setMessage('#feedback-message', 'Обращение #' + ticket.ticketNumber + ' отправлено.', true);
+    } catch (error) {
+      setMessage('#feedback-message', userErrorMessage(error));
+      button.disabled = false;
+    }
+  }
+
+  function bindFeedback() {
+    $('#feedback-open-button').addEventListener('click', () => void openFeedbackModal());
+    $('#feedback-close').addEventListener('click', closeFeedbackModal);
+    $('#feedback-modal').addEventListener('pointerdown', (event) => {
+      if (event.target === $('#feedback-modal')) closeFeedbackModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (!feedbackState.open) return;
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        closeFeedbackModal();
+      } else if (event.key === 'Tab') {
+        const focusable = [...$('#feedback-modal').querySelectorAll('button, input, select, textarea, [href]')]
+          .filter((element) => !element.disabled && element.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
+    const body = $('#feedback-body');
+    body.addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-feedback-tab]');
+      if (tab) void showFeedbackView(tab.dataset.feedbackTab);
+      const open = event.target.closest('[data-feedback-open]');
+      if (open) void openFeedbackTicket(open.dataset.feedbackOpen);
+    });
+    $('#feedback-tabs').addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-feedback-tab]');
+      if (tab) void showFeedbackView(tab.dataset.feedbackTab);
+    });
+    body.addEventListener('change', (event) => {
+      if (event.target.id === 'feedback-category') {
+        feedbackState.category = event.target.value;
+        renderFeedbackForm();
+      }
+    });
+    body.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      if (form.id === 'feedback-form') {
+        if (!form.reportValidity()) return;
+        await submitFeedbackForm(form);
+      } else if (form.id === 'feedback-filter-form') {
+        feedbackState.filters = {
+          q: $('#feedback-filter-q').value,
+          status: $('#feedback-filter-status').value,
+          category: $('#feedback-filter-category').value,
+        };
+        await showFeedbackView('list');
+      } else if (form.id === 'feedback-lookup-form') {
+        const number = $('#feedback-lookup-number').value.trim().replace(/^#/, '');
+        if (/^[0-9]{1,15}$/.test(number)) await openFeedbackTicket(number);
+        else setMessage('#feedback-message', 'Введи номер обращения, например #123.');
+      } else if (form.id === 'feedback-reply-form') {
+        const number = feedbackState.ticket.ticketNumber;
+        const text = $('#feedback-reply-body').value;
+        try {
+          if (feedbackState.admin) {
+            await request('/admin/feedback/tickets/' + number + '/messages', { method: 'POST',
+              body: JSON.stringify({ body: text, visibility: $('#feedback-reply-visibility').value }) });
+          } else {
+            await request('/feedback/tickets/' + number + '/messages', { method: 'POST', body: JSON.stringify({ body: text }) });
+          }
+          await openFeedbackTicket(number);
+          setMessage('#feedback-message', 'Сообщение отправлено.', true);
+        } catch (error) {
+          setMessage('#feedback-message', userErrorMessage(error));
+        }
+      } else if (form.id === 'feedback-status-form') {
+        const number = feedbackState.ticket.ticketNumber;
+        try {
+          const { ticket } = await request('/admin/feedback/tickets/' + number + '/status', { method: 'POST',
+            body: JSON.stringify({ status: $('#feedback-status-select').value }) });
+          feedbackState.ticket = ticket;
+          renderFeedbackDetail();
+          setMessage('#feedback-message', 'Статус обновлён.', true);
+        } catch (error) {
+          setMessage('#feedback-message', userErrorMessage(error));
+        }
+      }
+    });
+  }
+
   async function sendFriendRequest() {
     const profile = state.selectedPlayerProfile;
     if (!profile) return;
@@ -1846,6 +2172,7 @@
         setMessage('#players-modal-message', userErrorMessage(error));
       }
     });
+    bindFeedback();
     $('#players-close').addEventListener('click', closePlayersModal);
     $('#players-button').addEventListener('click', () => void openPlayersModal());
     $('#campaign-people-button').addEventListener('click', () => {
@@ -5206,6 +5533,7 @@
     });
 
     $('#logout-button').addEventListener('click', async () => {
+      closeFeedbackModal();
       closeChatModal();
       closePlayersModal();
       stopChatNotificationPolling();
