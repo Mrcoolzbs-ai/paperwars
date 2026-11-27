@@ -32,6 +32,12 @@ export const users = pgTable(
     email: text('email'),
     passwordHash: text('password_hash'),
     displayName: text('display_name').notNull(),
+    vkFirstName: text('vk_first_name'),
+    vkLastName: text('vk_last_name'),
+    vkAvatarUrl: text('vk_avatar_url'),
+    avatarData: bytea('avatar_data'),
+    avatarMimeType: text('avatar_mime_type'),
+    avatarUpdatedAt: timestamp('avatar_updated_at', { withTimezone: true, mode: 'date' }),
     status: text('status').notNull().default('active'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
@@ -44,7 +50,23 @@ export const users = pgTable(
     ),
     check(
       'users_display_name_length_check',
-      sql`char_length(btrim(${table.displayName})) between 2 and 32`,
+      sql`char_length(btrim(${table.displayName})) between 2 and 64`,
+    ),
+    check(
+      'users_avatar_data_size_check',
+      sql`${table.avatarData} is null or octet_length(${table.avatarData}) <= 524288`,
+    ),
+    check(
+      'users_avatar_mime_type_check',
+      sql`${table.avatarMimeType} is null or ${table.avatarMimeType} in ('image/png', 'image/jpeg', 'image/webp')`,
+    ),
+    check(
+      'users_avatar_pair_check',
+      sql`(${table.avatarData} is null) = (${table.avatarMimeType} is null)`,
+    ),
+    check(
+      'users_vk_avatar_url_check',
+      sql`${table.vkAvatarUrl} is null or (char_length(${table.vkAvatarUrl}) <= 2048 and ${table.vkAvatarUrl} like 'https://%')`,
     ),
     check('users_status_check', sql`${table.status} in ('active', 'disabled')`),
   ],
@@ -933,3 +955,64 @@ export const userAdminSettings = pgTable('user_admin_settings', {
   enabled: boolean('enabled').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 });
+
+export const friendRequests = pgTable(
+  'friend_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    senderUserId: uuid('sender_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    recipientUserId: uuid('recipient_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('pending'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('friend_requests_pending_pair_unique')
+      .on(table.senderUserId, table.recipientUserId)
+      .where(sql`${table.status} = 'pending'`),
+    index('friend_requests_recipient_pending_idx').on(table.recipientUserId, table.createdAt)
+      .where(sql`${table.status} = 'pending'`),
+    index('friend_requests_sender_pending_idx').on(table.senderUserId, table.createdAt)
+      .where(sql`${table.status} = 'pending'`),
+    check('friend_requests_distinct_users_check', sql`${table.senderUserId} <> ${table.recipientUserId}`),
+    check('friend_requests_status_check', sql`${table.status} in ('pending', 'accepted', 'declined', 'cancelled')`),
+  ],
+);
+
+export const userFriendships = pgTable(
+  'user_friendships',
+  {
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    friendUserId: uuid('friend_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.friendUserId] }),
+    index('user_friendships_friend_idx').on(table.friendUserId, table.userId),
+    check('user_friendships_canonical_pair_check', sql`${table.userId} < ${table.friendUserId}`),
+  ],
+);
+
+export const campaignInvitations = pgTable(
+  'campaign_invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+    inviterUserId: uuid('inviter_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    inviteeUserId: uuid('invitee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('pending'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    respondedAt: timestamp('responded_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    uniqueIndex('campaign_invitations_pending_unique')
+      .on(table.campaignId, table.inviteeUserId)
+      .where(sql`${table.status} = 'pending'`),
+    index('campaign_invitations_invitee_pending_idx').on(table.inviteeUserId, table.createdAt)
+      .where(sql`${table.status} = 'pending'`),
+    index('campaign_invitations_campaign_status_idx').on(table.campaignId, table.status, table.createdAt),
+    check('campaign_invitations_distinct_users_check', sql`${table.inviterUserId} <> ${table.inviteeUserId}`),
+    check('campaign_invitations_status_check', sql`${table.status} in ('pending', 'accepted', 'declined', 'cancelled')`),
+  ],
+);

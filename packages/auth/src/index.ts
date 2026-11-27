@@ -5,3 +5,4 @@ export * from './service.js';
 export * from './campaigns.js';
 export * from './chat.js';
 export * from './admin.js';
+export * from './social.js';

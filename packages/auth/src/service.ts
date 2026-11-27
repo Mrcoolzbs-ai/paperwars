@@ -23,6 +23,12 @@ export interface AuthUser {
   readonly displayName: string;
 }
 
+export interface VkIdentityProfile {
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly avatarUrl?: string;
+}
+
 export interface AuthProfile extends AuthUser {
   readonly hasPassword: boolean;
   readonly hasVk: boolean;
@@ -47,8 +53,12 @@ export interface AuthServiceOptions {
 
 export interface AuthService {
   login(email: unknown, password: unknown): Promise<AuthSession>;
-  signInWithVk(providerUserId: string): Promise<AuthSession>;
-  linkVkIdentity(userId: string, providerUserId: string): Promise<void>;
+  signInWithVk(providerUserId: string, profile?: VkIdentityProfile): Promise<AuthSession>;
+  linkVkIdentity(
+    userId: string,
+    providerUserId: string,
+    profile?: VkIdentityProfile,
+  ): Promise<void>;
   getProfile(userId: string): Promise<AuthProfile>;
   updateProfile(userId: string, displayName: unknown, email: unknown): Promise<AuthProfile>;
   updatePassword(userId: string, currentPassword: unknown, newPassword: unknown): Promise<void>;
@@ -81,14 +91,49 @@ function normalizeDisplayName(value: unknown): string {
   if (typeof value !== 'string') throw new AuthValidationError('Nickname must be a string');
   const name = value.normalize('NFC').trim().replace(/\s+/gu, ' ');
   const length = Array.from(name).length;
-  if (length < 2 || length > 32 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(name)) {
+  if (length < 2 || length > 64 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(name)) {
     throw new AuthValidationError(
-      'Nickname must be 2–32 characters and use letters, numbers, spaces, dots, dashes or underscores',
+      'Nickname must be 2–64 characters and use letters, numbers, spaces, dots, dashes or underscores',
     );
   }
   return name;
 }
 
+function normalizeVkProfile(profile: VkIdentityProfile | undefined): {
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly avatarUrl: string | null;
+  readonly displayName: string | null;
+} {
+  const normalizePart = (value: string | undefined): string | null => {
+    if (typeof value !== 'string') return null;
+    const normalized = value
+          .normalize('NFC')
+          .replace(/[\u0000-\u001f\u007f]/gu, '')
+          .replace(/[^\p{L}\p{N} ._-]/gu, ' ')
+          .trim()
+          .replace(/\s+/gu, ' ');
+    return normalized.length === 0 ? null : Array.from(normalized).slice(0, 64).join('');
+  };
+  const firstName = normalizePart(profile?.firstName);
+  const lastName = normalizePart(profile?.lastName);
+  const avatarUrl =
+    typeof profile?.avatarUrl === 'string' &&
+    profile.avatarUrl.length <= 2048 &&
+    profile.avatarUrl.startsWith('https://')
+      ? profile.avatarUrl
+      : null;
+  const fullName = [firstName, lastName].filter((part): part is string => part !== null).join(' ');
+  let displayName: string | null = null;
+  if (fullName.length >= 2) {
+    try {
+      displayName = normalizeDisplayName(Array.from(fullName).slice(0, 64).join(''));
+    } catch {
+      displayName = null;
+    }
+  }
+  return { firstName, lastName, avatarUrl, displayName };
+}
 function hashRefreshToken(rawToken: string): string {
   return createHash('sha256').update(rawToken, 'utf8').digest('hex');
 }
@@ -342,8 +387,9 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       );
     },
 
-    async signInWithVk(providerUserId) {
+    async signInWithVk(providerUserId, profile) {
       const subject = providerUserId.trim();
+      const vkProfile = normalizeVkProfile(profile);
       if (subject.length === 0 || subject.length > 256) throw new InvalidCredentialsError();
       const client = await options.pool.connect();
       let transactionOpen = false;
@@ -367,6 +413,15 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         let user: AuthUser;
         if (linkedUser !== undefined) {
           if (linkedUser.status !== 'active') throw new InvalidCredentialsError();
+          await client.query(
+            `UPDATE users
+             SET vk_first_name = COALESCE($2, vk_first_name),
+                 vk_last_name = COALESCE($3, vk_last_name),
+                 vk_avatar_url = COALESCE($4, vk_avatar_url),
+                 updated_at = $5
+             WHERE id = $1`,
+            [linkedUser.id, vkProfile.firstName, vkProfile.lastName, vkProfile.avatarUrl, clock()],
+          );
           user = {
             id: linkedUser.id,
             email: linkedUser.email,
@@ -374,16 +429,20 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           };
         } else {
           const userId = randomUUID();
-          const displayName = 'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
+          const displayName =
+            vkProfile.displayName ??
+            'Игрок-' + userId.replace(/-/g, '').slice(0, 26).toUpperCase();
           const created = await client.query<{
             id: string;
             email: string | null;
             display_name: string;
           }>(
-            `INSERT INTO users (id, email, password_hash, display_name)
-             VALUES ($1, NULL, NULL, $2)
+            `INSERT INTO users (
+               id, email, password_hash, display_name,
+               vk_first_name, vk_last_name, vk_avatar_url
+             ) VALUES ($1, NULL, NULL, $2, $3, $4, $5)
              RETURNING id, email, display_name`,
-            [userId, displayName],
+            [userId, displayName, vkProfile.firstName, vkProfile.lastName, vkProfile.avatarUrl],
           );
           const row = created.rows[0];
           if (row === undefined) throw new Error('VK user insert did not return a row');
@@ -419,8 +478,9 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       }
     },
 
-    async linkVkIdentity(userId, providerUserId) {
+    async linkVkIdentity(userId, providerUserId, profile) {
       const subject = providerUserId.trim();
+      const vkProfile = normalizeVkProfile(profile);
       if (subject.length === 0 || subject.length > 256) throw new InvalidCredentialsError();
       const client = await options.pool.connect();
       let transactionOpen = false;
@@ -458,6 +518,15 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
           );
           if (existing.rows[0]?.user_id !== userId) throw new ExternalIdentityAlreadyLinkedError();
         }
+        await client.query(
+          `UPDATE users
+           SET vk_first_name = COALESCE($2, vk_first_name),
+               vk_last_name = COALESCE($3, vk_last_name),
+               vk_avatar_url = COALESCE($4, vk_avatar_url),
+               updated_at = $5
+           WHERE id = $1`,
+          [userId, vkProfile.firstName, vkProfile.lastName, vkProfile.avatarUrl, clock()],
+        );
         await client.query('COMMIT');
         transactionOpen = false;
       } catch (error) {

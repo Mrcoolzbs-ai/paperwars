@@ -16,7 +16,7 @@
 - [Обработка хода, транзакции и Worker](architecture/turn-processing.md).
 - [Разведка, руины, золото и доступ к находкам](architecture/discovery.md).
 - [Информационная видимость и DTO-проекции](architecture/information-visibility.md).
-- [Аутентификация и lifecycle кампании](architecture/authentication.md).
+- [Аутентификация, публичные профили, дружба и lifecycle кампании](architecture/authentication.md).
 - [Религии и идеологии](architecture/social-systems.md).
 - [Графический Web-клиент](architecture/web-client.md) — карта мира, редактор стартовой территории и подключение к API.
 

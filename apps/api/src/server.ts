@@ -7,6 +7,7 @@ import {
   createCampaignService,
   createChatService,
   createAdminService,
+  createSocialService,
 } from '@paper-wars/auth';
 import { createPostgresPersistence, runMigrations } from '@paper-wars/persistence';
 import {
@@ -153,6 +154,7 @@ try {
     rngVersion,
   });
   const chatService = createChatService({ pool: persistence.pool });
+  const socialService = createSocialService({ pool: persistence.pool });
   const adminService = createAdminService({
     pool: persistence.pool,
     adminCode: process.env['ADMIN_CODE'] ?? '',
@@ -174,6 +176,7 @@ try {
     campaignService,
     chatService,
     adminService,
+    socialService,
     countrySetupService,
     ...(webEntryPath === undefined ? {} : { webEntryPath }),
     ...(vkId === undefined ? {} : { vkId }),

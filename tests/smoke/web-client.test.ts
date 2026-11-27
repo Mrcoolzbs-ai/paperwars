@@ -27,9 +27,17 @@ describe('browser client', () => {
     ]);
 
     expect(html).toContain('id="auth-screen"');
+    expect(html).toContain('id="players-modal"');
+    expect(html).toContain('id="profile-avatar-file"');
+    expect(html).toContain('id="campaign-people-button"');
     expect(html).toContain('src="/app.js"');
     expect(html).not.toContain('unpkg.com/@vkid/sdk');
     expect(script).toContain('function loadVkIdSdk');
+    expect(script).toContain("request('/friends')");
+    expect(script).toContain("request('/players/' + encodeURIComponent(playerId))");
+    expect(script).toContain("request('/auth/profile/avatar'");
+    expect(script).toContain('data-player-action="invite-campaign"');
+    expect(script).not.toContain('Кто отправил:');
     expect(script).toContain('https://unpkg.com/@vkid/sdk@2.6.1/dist-sdk/umd/index.js');
     expect(script).toContain('https://cdn.jsdelivr.net/npm/@vkid/sdk@2.6.1/dist-sdk/umd/index.js');
     expect(script).toContain('await loadVkIdSdk()');

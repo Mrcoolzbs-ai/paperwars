@@ -15,6 +15,8 @@ import {
   type AuthService,
   type CampaignService,
   type ChatService,
+  SocialServiceError,
+  type SocialService,
 } from '@paper-wars/auth';
 import { createSimulationEngine } from '@paper-wars/simulation';
 import { CampaignTurnProcessingError } from '@paper-wars/persistence';
@@ -54,6 +56,7 @@ export interface CreateAppOptions {
   readonly countrySetupService?: CountrySetupService;
   readonly chatService?: ChatService;
   readonly adminService?: AdminService;
+  readonly socialService?: SocialService;
   readonly vkId?: VkIdOptions;
   readonly secureCookies?: boolean;
   /** Optional built HTML entry point used by the production server. */
@@ -130,6 +133,36 @@ function clearRefreshCookie(reply: FastifyReply, secure: boolean): void {
   );
 }
 function sendAuthError(error: unknown, reply: FastifyReply): unknown {
+  if (error instanceof SocialServiceError) {
+    const status =
+      error.code === 'PLAYER_NOT_FOUND' ||
+      error.code === 'CAMPAIGN_NOT_FOUND' ||
+      error.code === 'FRIEND_REQUEST_NOT_FOUND' ||
+      error.code === 'CAMPAIGN_INVITATION_NOT_FOUND'
+        ? 404
+        : error.code === 'NOT_ACTIVE_CAMPAIGN_MEMBER' ||
+            error.code === 'FRIEND_REQUEST_NOT_YOURS' ||
+            error.code === 'CAMPAIGN_INVITATION_NOT_YOURS'
+          ? 403
+          : 409;
+    const messages: Record<string, string> = {
+      PLAYER_NOT_FOUND: 'Игрок не найден.',
+      ALREADY_FRIENDS: 'Этот игрок уже у тебя в друзьях.',
+      FRIEND_REQUEST_NOT_FOUND: 'Заявка в друзья не найдена.',
+      FRIEND_REQUEST_NOT_PENDING: 'Эта заявка уже обработана.',
+      FRIEND_REQUEST_NOT_YOURS: 'У тебя нет прав на эту заявку.',
+      CAMPAIGN_NOT_FOUND: 'Кампания не найдена.',
+      NOT_ACTIVE_CAMPAIGN_MEMBER: 'Только участники кампании могут приглашать игроков и смотреть её состав.',
+      PLAYER_ALREADY_MEMBER: 'Этот игрок уже состоит в кампании.',
+      CAMPAIGN_NOT_AVAILABLE: 'Кампания больше не принимает новых игроков.',
+      CAMPAIGN_FULL: 'В кампании закончились свободные места.',
+      CAMPAIGN_INVITATION_NOT_FOUND: 'Приглашение в кампанию не найдено.',
+      CAMPAIGN_INVITATION_NOT_PENDING: 'Это приглашение уже обработано.',
+      CAMPAIGN_INVITATION_NOT_YOURS: 'Приглашение адресовано другому игроку.',
+    };
+    return reply.code(status).send({ error: error.code, message: messages[error.code] ?? 'Не удалось выполнить социальное действие.' });
+  }
+
   if (error instanceof AdminServiceError) {
     const status =
       error.code === 'ADMIN_CODE_UNAVAILABLE'
@@ -282,6 +315,7 @@ function registerAuthRoutes(
   authService: AuthService,
   secureCookies: boolean,
   adminService?: AdminService,
+  socialService?: SocialService,
 ): void {
   app.post('/auth/login', async (request, reply) => {
     try {
@@ -340,7 +374,8 @@ function registerAuthRoutes(
     try {
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const profile = await authService.getProfile(user.id);
-      return reply.send({ profile });
+      const social = socialService === undefined ? {} : await socialService.getOwnProfile(user.id);
+      return reply.send({ profile: { ...profile, ...social } });
     } catch (error) {
       return sendAuthError(error, reply);
     }
@@ -351,7 +386,8 @@ function registerAuthRoutes(
       const user = await authService.authenticateAccessToken(getBearerToken(request));
       const body = asRecord(request.body);
       const profile = await authService.updateProfile(user.id, body['displayName'], body['email']);
-      return reply.send({ profile });
+      const social = socialService === undefined ? {} : await socialService.getOwnProfile(user.id);
+      return reply.send({ profile: { ...profile, ...social } });
     } catch (error) {
       return sendAuthError(error, reply);
     }
@@ -449,10 +485,10 @@ function registerVkRoutes(
         stateCookie: getCookie(request, 'vk_oauth_state'),
       });
       if (result.linkUserId !== undefined) {
-        await authService.linkVkIdentity(result.linkUserId, result.providerUserId);
+        await authService.linkVkIdentity(result.linkUserId, result.providerUserId, result.profile);
         return reply.redirect('/?vk=linked');
       }
-      const session = await authService.signInWithVk(result.providerUserId);
+      const session = await authService.signInWithVk(result.providerUserId, result.profile);
       setRefreshCookie(reply, session, secureCookies);
       return reply.redirect('/');
     } catch (error) {
@@ -1059,6 +1095,170 @@ function registerChatRoutes(
     }
   });
 }
+function registerPlayerRoutes(
+  app: FastifyInstance,
+  authService: AuthService,
+  socialService: SocialService,
+): void {
+  app.put('/auth/profile/avatar', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      await socialService.uploadAvatar(user.id, body['dataUrl']);
+      const profile = await socialService.getOwnProfile(user.id);
+      return reply.send({ profile });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete('/auth/profile/avatar', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await socialService.removeAvatar(user.id);
+      const profile = await socialService.getOwnProfile(user.id);
+      return reply.send({ profile });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/players/search', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const query = asRecord(request.query)['q'];
+      const players = await socialService.searchPlayers(user.id, query);
+      return reply.send({ players });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get<{ Params: { playerId: string } }>('/players/:playerId/avatar', async (request, reply) => {
+    try {
+      const avatar = await socialService.getAvatar(request.params.playerId);
+      if (avatar === null) return reply.code(404).send({ error: 'AVATAR_NOT_FOUND' });
+      return reply
+        .type(avatar.contentType)
+        .header('Cache-Control', 'public, max-age=86400, immutable')
+        .header('Last-Modified', avatar.updatedAt.toUTCString())
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(avatar.data);
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get<{ Params: { playerId: string } }>('/players/:playerId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const profile = await socialService.getPublicProfile(user.id, request.params.playerId);
+      return reply.send({ profile });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/friends', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const dashboard = await socialService.getFriendsDashboard(user.id);
+      return reply.send(dashboard);
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post('/friends/requests', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const result = await socialService.sendFriendRequest(user.id, body['recipientUserId']);
+      return reply.code(result.status === 'accepted' ? 200 : 201).send(result);
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post<{ Params: { requestId: string } }>('/friends/requests/:requestId/respond', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      if (typeof body['accept'] !== 'boolean') throw new AuthValidationError('accept must be a boolean');
+      await socialService.respondFriendRequest(user.id, request.params.requestId, body['accept']);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete<{ Params: { requestId: string } }>('/friends/requests/:requestId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await socialService.cancelFriendRequest(user.id, request.params.requestId);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete<{ Params: { friendId: string } }>('/friends/:friendId', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      await socialService.removeFriend(user.id, request.params.friendId);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get('/invitations/campaigns', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const invitations = await socialService.listCampaignInvitations(user.id);
+      return reply.send({ invitations });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.get<{ Params: { campaignId: string } }>('/campaigns/:campaignId/players', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const players = await socialService.listCampaignPlayers(user.id, request.params.campaignId);
+      return reply.send({ players });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post<{ Params: { campaignId: string } }>('/campaigns/:campaignId/invitations', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      const invitation = await socialService.createCampaignInvitation(
+        user.id,
+        request.params.campaignId,
+        body['inviteeUserId'],
+      );
+      return reply.code(201).send({ invitation });
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.post<{ Params: { invitationId: string } }>('/invitations/campaigns/:invitationId/respond', async (request, reply) => {
+    try {
+      const user = await authService.authenticateAccessToken(getBearerToken(request));
+      const body = asRecord(request.body);
+      if (typeof body['accept'] !== 'boolean') throw new AuthValidationError('accept must be a boolean');
+      await socialService.respondCampaignInvitation(user.id, request.params.invitationId, body['accept']);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+}
 /** Creates an API instance without opening a socket or starting background work. */
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
@@ -1145,12 +1345,17 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
       options.authService,
       options.secureCookies ?? false,
       options.adminService,
+      options.socialService,
     );
     registerVkRoutes(app, options.authService, options.secureCookies ?? false, options.vkId);
   }
 
   if (options.authService !== undefined && options.campaignService !== undefined) {
     registerCampaignRoutes(app, options.authService, options.campaignService);
+  }
+
+  if (options.authService !== undefined && options.socialService !== undefined) {
+    registerPlayerRoutes(app, options.authService, options.socialService);
   }
 
   if (options.authService !== undefined && options.countrySetupService !== undefined) {
