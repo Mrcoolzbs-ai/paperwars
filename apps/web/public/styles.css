@@ -1657,3 +1657,334 @@ canvas.world-grid{position:absolute;inset:0;display:block;width:100%;height:100%
   .chat-room-title-row { align-items: flex-start; }
   .chat-room-turn { font-size: 7px; }
 }
+
+
+/* Player profiles, friendship controls and campaign invitations */
+.profile-avatar-image {
+  display: block;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1px solid #9a855e;
+  object-fit: cover;
+  background: #18251e;
+}
+.profile-avatar-fallback {
+  display: grid;
+  place-items: center;
+}
+.profile-avatar-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+.profile-avatar-upload input {
+  max-width: 100%;
+}
+.players-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 8, 6, .82);
+  backdrop-filter: blur(7px);
+}
+.players-modal.hidden { display: none; }
+.players-window {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(1050px, 100%);
+  max-height: min(820px, calc(100dvh - 36px));
+  overflow: hidden;
+  border: 1px solid #746347;
+  background: #101914;
+  box-shadow: 0 24px 80px #000b;
+}
+.players-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #354638;
+}
+.players-header h2 {
+  margin: 4px 0 0;
+  color: #eee8d7;
+  font: 600 24px "Playfair Display", Georgia, serif;
+}
+.players-modal-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, .95fr) minmax(280px, 1.05fr);
+  min-height: 0;
+}
+.players-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+  border-right: 1px solid #354638;
+}
+.players-sidebar section { display: grid; gap: 8px; }
+.players-sidebar h3 {
+  margin: 0;
+  color: #d7c79d;
+  font: 700 10px "DM Mono", monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.players-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.players-search .field { min-width: 0; }
+.players-search .button { min-height: 41px; }
+.players-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.player-list-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #34463a;
+  border-radius: 2px;
+  background: #142019;
+  color: #e7eadf;
+  text-align: left;
+  cursor: pointer;
+}
+.player-list-item:hover,
+.campaign-roster-player:hover {
+  border-color: #b59c68;
+  background: #202c22;
+}
+.player-list-item > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.player-list-item strong {
+  overflow: hidden;
+  color: #e8e6d9;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-list-item small {
+  color: #93a394;
+  font-size: 10px;
+}
+.player-list-arrow { color: #cdb783; }
+.player-avatar {
+  display: block;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #665b43;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1a2a20;
+}
+.player-avatar-fallback {
+  display: grid;
+  place-items: center;
+  color: #e1d3ae;
+  font: 700 11px "DM Mono", monospace;
+}
+.player-request-item {
+  display: grid;
+  grid-template-columns: 32px minmax(60px,1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid #34463a;
+  background: #142019;
+}
+.player-request-name {
+  display: grid;
+  min-width: 0;
+  color: #e8e6d9;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.player-request-name small {
+  color: #95a390;
+  font-size: 9px;
+}
+.button-small {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.campaign-invitation-card {
+  display: grid;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid #6a5a3e;
+  background: #211f17;
+}
+.campaign-invitation-from {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.campaign-invitation-from > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.campaign-invitation-from strong {
+  color: #f0e5c8;
+  font-size: 12px;
+}
+.campaign-invitation-from small {
+  color: #b3a78a;
+  font-size: 9px;
+}
+.campaign-invitation-actions {
+  display: flex;
+  gap: 7px;
+}
+.players-profile-panel {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: 300px;
+  padding: 22px;
+  overflow: auto;
+}
+.player-profile-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #a4af9f;
+  text-align: center;
+}
+.player-profile-empty > span {
+  color: #b6a276;
+  font-size: 38px;
+}
+.player-profile-empty strong {
+  color: #e6e5d9;
+}
+.player-profile-empty p {
+  max-width: 260px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.player-public-profile {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(390px, 100%);
+  text-align: center;
+}
+.player-public-avatar .player-avatar {
+  width: 112px;
+  height: 112px;
+  font-size: 28px;
+  border-color: #a38a59;
+  box-shadow: 0 0 0 5px #1a2a20;
+}
+.player-public-profile h3 {
+  margin: 6px 0 0;
+  color: #f0ead8;
+  font: 600 26px "Playfair Display", Georgia, serif;
+  overflow-wrap: anywhere;
+}
+.player-public-profile p { margin: 0; }
+.player-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+.player-profile-actions .button { text-decoration: none; }
+.player-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 11px;
+  border: 1px solid #53634f;
+  color: #bdc9b8;
+  font-size: 11px;
+}
+.player-profile-date {
+  color: #8d9b8b;
+  font-size: 10px;
+}
+.players-window > .form-message {
+  min-height: 20px;
+  margin: 0;
+  padding: 0 18px 12px;
+}
+.campaign-roster {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 8px 12px;
+  border: 1px solid #344638;
+  border-top: 0;
+  background: #101914;
+}
+.campaign-roster-label {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  color: #9baa94;
+  font: 700 9px "DM Mono", monospace;
+  letter-spacing: .1em;
+}
+.campaign-roster-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid #405344;
+  border-radius: 24px;
+  background: #17241b;
+  color: #dbe3d7;
+  font-size: 10px;
+  cursor: pointer;
+}
+.campaign-roster-player .player-avatar {
+  width: 26px;
+  height: 26px;
+}
+.campaign-roster-player > span:last-child {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+.campaign-roster-player small {
+  color: #d5bd85;
+  font-size: 8px;
+}
+@media(max-width:760px) {
+  .players-modal { padding: 8px; }
+  .players-window { max-height: calc(100dvh - 16px); }
+  .players-modal-layout { grid-template-columns: minmax(0,1fr); overflow: auto; }
+  .players-sidebar { overflow: visible; border-right: 0; border-bottom: 1px solid #354638; }
+  .players-profile-panel { min-height: 250px; }
+  .player-request-item { grid-template-columns: 30px minmax(50px,1fr) auto; }
+  .player-request-item [data-friend-action="decline"] { grid-column: 3; }
+  .workspace-header-actions { flex-wrap: wrap; }
+  .campaign-roster { margin-bottom: 4px; }
+}

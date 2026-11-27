@@ -114,10 +114,21 @@ describe('VK ID OAuth 2.1 integration', () => {
       expect(new URLSearchParams(init?.body as URLSearchParams).get('access_token')).toBe(
         'vk-private-access-token',
       );
-      return new Response(JSON.stringify({ user: { user_id: 42, email: 'player@example.test' } }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({
+          user: {
+            user_id: 42,
+            email: 'player@example.test',
+            first_name: 'Алексей',
+            last_name: 'Смирнов',
+            avatar: 'https://cdn.vk.example/avatar.jpg',
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
     };
     const result = await completeVkAuthorization(
       options,
@@ -126,6 +137,11 @@ describe('VK ID OAuth 2.1 integration', () => {
     );
     expect(result).toEqual({
       providerUserId: '42',
+      profile: {
+        firstName: 'Алексей',
+        lastName: 'Смирнов',
+        avatarUrl: 'https://cdn.vk.example/avatar.jpg',
+      },
     });
     expect(calls.map((url) => url.pathname)).toEqual(['/oauth2/auth', '/oauth2/user_info']);
   });
