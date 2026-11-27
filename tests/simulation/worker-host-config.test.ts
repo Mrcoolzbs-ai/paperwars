@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseBooleanEnvironmentValue,
-  parseTurnWorkerHostConfig,
-} from '@paper-wars/worker';
+import { parseBooleanEnvironmentValue, parseTurnWorkerHostConfig } from '@paper-wars/worker';
 
 const validEnvironment = {
   DATABASE_URL: 'postgresql://paperwars:secret@localhost:5432/paperwars',

@@ -61,9 +61,12 @@ try {
     },
   });
   console.info(
-    '[paperwars-worker] Started as ' + workerId + ' using ' +
-      config.rulesetVersion + '/' + config.rngVersion +
-      '; polling every ' + config.pollIntervalMs + ' ms.',
+    '[paperwars-worker] Started as',
+    workerId,
+    'using',
+    config.rulesetVersion + '/' + config.rngVersion,
+    'poll interval',
+    config.pollIntervalMs + ' ms',
   );
   await runPromise;
 } catch (error) {
