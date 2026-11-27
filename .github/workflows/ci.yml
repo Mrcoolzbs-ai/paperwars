@@ -61,6 +61,13 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
+      - name: Diagnose Prettier differences
+        run: |
+          for file in apps/api/src/app.ts apps/api/src/vk-id.ts packages/auth/src/service.ts packages/auth/src/social.ts packages/persistence/src/postgres/schema.ts tests/auth/vk-id.test.ts; do
+            output="/tmp/$(echo "$file" | tr '/' '_').formatted"
+            pnpm exec prettier "$file" > "$output"
+            diff -u "$file" "$output" || true
+          done
       - name: Format check
         run: pnpm format:check
       - name: Tests
