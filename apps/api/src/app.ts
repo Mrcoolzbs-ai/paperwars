@@ -161,12 +161,10 @@ function sendAuthError(error: unknown, reply: FastifyReply): unknown {
       CAMPAIGN_INVITATION_NOT_PENDING: 'Это приглашение уже обработано.',
       CAMPAIGN_INVITATION_NOT_YOURS: 'Приглашение адресовано другому игроку.',
     };
-    return reply
-      .code(status)
-      .send({
-        error: error.code,
-        message: messages[error.code] ?? 'Не удалось выполнить социальное действие.',
-      });
+    return reply.code(status).send({
+      error: error.code,
+      message: messages[error.code] ?? 'Не удалось выполнить социальное действие.',
+    });
   }
 
   if (error instanceof AdminServiceError) {

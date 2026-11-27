@@ -534,7 +534,8 @@ export function createSocialService(options: { readonly pool: Pool }): SocialSer
           requestId,
         ]);
         const found = identity.rows[0];
-        if (!found) throw new SocialServiceError('FRIEND_REQUEST_NOT_FOUND', 'Friend request not found');
+        if (!found)
+          throw new SocialServiceError('FRIEND_REQUEST_NOT_FOUND', 'Friend request not found');
         await lockUsersInOrder(client, found.sender_user_id, found.recipient_user_id);
         const request = await client.query<{
           readonly sender_user_id: string;
