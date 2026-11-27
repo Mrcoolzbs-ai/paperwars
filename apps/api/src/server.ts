@@ -13,6 +13,7 @@ import {
   createBaselineRuleset,
   createBaselineTurnResolver,
   createTurnWorker,
+  parseBooleanEnvironmentValue,
 } from '@paper-wars/worker';
 import { EnvironmentSeedKeyProvider } from '@paper-wars/randomness';
 import { createCountrySetupService, recalculateCountryPopulations } from '@paper-wars/world';
@@ -94,6 +95,11 @@ if (vkIsConfigured) {
 
 const rulesetVersion = requiredEnv('RULESET_VERSION');
 const rngVersion = requiredEnv('RNG_VERSION');
+const embeddedWorkerEnabled = parseBooleanEnvironmentValue(
+  'TURN_WORKER_ENABLED',
+  process.env['TURN_WORKER_ENABLED'],
+  true,
+);
 const socialSystemAdminUserIds = (process.env['SOCIAL_SYSTEM_ADMIN_USER_IDS'] ?? '')
   .split(',')
   .map((value) => value.trim())
@@ -182,20 +188,24 @@ try {
 
   await app.listen({ port, host });
 
-  const ruleset = createBaselineRuleset(rulesetVersion, rngVersion);
-  const turnWorker = createTurnWorker({
-    pool: persistence.pool,
-    workerId: `paperwars-api-${process.pid}-${randomUUID()}`,
-    keyProvider: seedKeyProvider,
-    ruleset,
-    resolver: createBaselineTurnResolver(),
-  });
-  workerAbortController = new AbortController();
-  workerRunPromise = turnWorker.run(workerAbortController.signal, {
-    pollIntervalMs: integerEnv('TURN_WORKER_POLL_INTERVAL_MS', 1000),
-    onError: (error) =>
-      app?.log.error({ err: error }, 'Turn worker failed to process a queued turn'),
-  });
+  if (embeddedWorkerEnabled) {
+    const ruleset = createBaselineRuleset(rulesetVersion, rngVersion);
+    const turnWorker = createTurnWorker({
+      pool: persistence.pool,
+      workerId: `paperwars-api-${process.pid}-${randomUUID()}`,
+      keyProvider: seedKeyProvider,
+      ruleset,
+      resolver: createBaselineTurnResolver(),
+    });
+    workerAbortController = new AbortController();
+    workerRunPromise = turnWorker.run(workerAbortController.signal, {
+      pollIntervalMs: integerEnv('TURN_WORKER_POLL_INTERVAL_MS', 1000),
+      onError: (error) =>
+        app?.log.error({ err: error }, 'Turn worker failed to process a queued turn'),
+    });
+  } else {
+    app.log.info('Embedded turn worker is disabled; run the standalone worker service.');
+  }
 } catch (error) {
   app?.log.error(error);
   await shutdown();

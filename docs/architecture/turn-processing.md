@@ -4,7 +4,7 @@
 
 ## 6. Обработка хода, приказы и worker jobs
 
-Начальные инфраструктурные части Stage 1.7–1.8 реализованы. В ветке `feat/global-map-orders` (открытый PR #44, ещё не влитый в `main`) подключён Worker, который запускает baseline resolver, атомарно сохраняет snapshot, события, RNG-журнал, отчёты и проекции территории/находок. В этом инкременте поддержаны приказы строительства и колонизации, а не все игровые фазы Baseline.
+Инфраструктурные части Stage 1.7–1.8 влиты в `main`. PR #44 подключил baseline resolver и транзакционную проекцию результата; PR #55 расширил командный центр и уточнил работу карты, PR #62 закрепил snapshot как источник населения карточки и карты. Текущие обработчики baseline resolver включают `construction`, `colonization`, `demolition`, `structure_removal`, `general_recruitment`, `unit_recruitment` и `army_formation`; это ограниченная реализация, а не завершение всех фаз Baseline.
 
 ### 6.0. Реализованный pure orchestration core — Stage 1.7 (начальный инкремент)
 
@@ -18,7 +18,7 @@
 6. Проверяет, что RNG source привязан к тому же campaignId, turnNumber и rngVersion, что и snapshot; чужой seed отклоняется до вызова resolver.
 7. Сам формирует авторитетный `randomDraws` и проверяет campaign, turn, source snapshot version и однозначное соответствие каждого входного приказа одному order result.
 
-Ruleset resolver возвращает `TurnSimulationResult` без RNG-журнала: журнал принадлежит orchestration engine и не может быть подменён resolver. Первый baseline resolver реализован отдельно в `@paper-wars/worker` и поддерживает строительство и колонизацию; это ограниченный вертикальный срез, а не реализация всех фаз, экономики, боёв и сезонных событий. Ветка PR #44 дополняет pure unit-тесты интеграцией Worker и persistence.
+Ruleset resolver возвращает `TurnSimulationResult` без RNG-журнала: журнал принадлежит orchestration engine и не может быть подменён resolver. Текущий `baseline-v1` resolver реализован в `@paper-wars/worker`; он обслуживает лишь перечисленные поддержанные типы приказов. Отсутствующие фазы или типы не подменяются фиктивным no-op success: неподдержанный приказ получает явный rejected result. Unit- и PostgreSQL smoke-тесты покрывают resolver/Worker/persistence integration.
 
 ### 6.1. Семантика хода и snapshots
 
@@ -65,6 +65,13 @@ Ruleset resolver возвращает `TurnSimulationResult` без RNG-журн
 - Если запись открытия для клетки уже существует, повторного броска нет. Захват добавляет `captured` в историю и уведомляет только первоначального открывателя; находка не раскрывается новому владельцу и доступ ему не выдаётся.
 - Worker гидратирует seeded terrain и постоянные открытия из БД перед резолвом, а затем атомарно проецирует занятые клетки, население, постройки и записи разведки в реляционные таблицы. Любая ошибка откатывает весь результат хода.
 
+### 6.2.3. Production host и режим отдельного процесса
+
+- `packages/worker/src/host.ts` — самостоятельный entrypoint. Он использует `createBaselineRuleset(RULESET_VERSION, RNG_VERSION)` и `createBaselineTurnResolver()` из текущей реализации; отдельной копии игровых правил нет.
+- Host проверяет доступность PostgreSQL (`SELECT 1`), читает тот же набор seed encryption keys, запускает `createTurnWorker().run()` и завершает polling после SIGINT/SIGTERM, дожидаясь окончания уже начатой обработки хода.
+- `TURN_WORKER_POLL_INTERVAL_MS` задаёт интервал опроса (10–60000 мс; по умолчанию 1000), `TURN_WORKER_ID_PREFIX` задаёт необязательный префикс уникального ID процесса.
+- API сохраняет прежний single-process режим: `TURN_WORKER_ENABLED=true` по умолчанию. Для отдельного Worker выставляется `TURN_WORKER_ENABLED=false` у API, после чего Worker запускается командой `pnpm start:worker`.
+- Отдельный Worker не применяет миграции: схема должна быть подготовлена API или явной командой `db:migrate`. API и Worker используют одну БД, совместимые `RULESET_VERSION`/`RNG_VERSION` и одинаковые `SEED_ENCRYPTION_KEYS`/`SEED_ENCRYPTION_ACTIVE_KEY_VERSION`.
 ### 6.3. Защита операций над приказами и участниками
 
 - Любая операция создания, изменения, удаления или подтверждения приказа выполняется в транзакции и сначала берёт `FOR SHARE` на строку `campaigns`.

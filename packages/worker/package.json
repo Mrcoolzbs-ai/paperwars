@@ -30,6 +30,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
+    "start": "node ./dist/host.js",
     "clean": "rm -rf dist"
   }
 }
