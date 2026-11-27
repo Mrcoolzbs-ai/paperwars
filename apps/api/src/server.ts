@@ -6,6 +6,7 @@ import {
   createAccessTokenSigner,
   createCampaignService,
   createChatService,
+  createFeedbackService,
   createAdminService,
   createSocialService,
 } from '@paper-wars/auth';
@@ -165,6 +166,7 @@ try {
     pool: persistence.pool,
     adminCode: process.env['ADMIN_CODE'] ?? '',
   });
+  const feedbackService = createFeedbackService({ pool: persistence.pool, adminService });
   const countrySetupService = createCountrySetupService({
     pool: persistence.pool,
     socialSystemAdminUserIds,
@@ -182,6 +184,7 @@ try {
     campaignService,
     chatService,
     adminService,
+    feedbackService,
     socialService,
     countrySetupService,
     ...(webEntryPath === undefined ? {} : { webEntryPath }),
