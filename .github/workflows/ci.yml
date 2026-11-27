@@ -61,10 +61,6 @@ jobs:
         run: pnpm -r --workspace-concurrency=1 --if-present typecheck
       - name: Lint
         run: pnpm lint
-      - name: Diagnose worker test formatting
-        run: |
-          pnpm exec prettier tests/simulation/worker-host-config.test.ts > /tmp/formatted-worker-host-config.test.ts
-          diff -u tests/simulation/worker-host-config.test.ts /tmp/formatted-worker-host-config.test.ts || true
       - name: Format check
         run: pnpm format:check
       - name: Tests

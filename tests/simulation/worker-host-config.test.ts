@@ -59,8 +59,8 @@ describe('turn worker host configuration', () => {
     expect(parseBooleanEnvironmentValue('TURN_WORKER_ENABLED', undefined, true)).toBe(true);
     expect(parseBooleanEnvironmentValue('TURN_WORKER_ENABLED', 'false', true)).toBe(false);
     expect(parseBooleanEnvironmentValue('TURN_WORKER_ENABLED', 'TRUE', false)).toBe(true);
-    expect(() =>
-      parseBooleanEnvironmentValue('TURN_WORKER_ENABLED', 'sometimes', true),
-    ).toThrow('TURN_WORKER_ENABLED must be "true" or "false"');
+    expect(() => parseBooleanEnvironmentValue('TURN_WORKER_ENABLED', 'sometimes', true)).toThrow(
+      'TURN_WORKER_ENABLED must be "true" or "false"',
+    );
   });
 });
